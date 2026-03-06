@@ -171,12 +171,18 @@ export function UnifiedChatInterface({ properties }: Props) {
   const activeListing = properties.find(p => p.id === propertyId);
   const [priceFloor, setPriceFloor] = useState<number>(Number(activeListing?.priceFloor || 0));
   const [priceCeiling, setPriceCeiling] = useState<number>(Number(activeListing?.priceCeiling || 0));
+  const [guardrailsSource, setGuardrailsSource] = useState<string | undefined>(activeListing?.guardrailsSource || undefined);
+  const [floorReasoning, setFloorReasoning] = useState<string | null | undefined>(activeListing?.floorReasoning);
+  const [ceilingReasoning, setCeilingReasoning] = useState<string | null | undefined>(activeListing?.ceilingReasoning);
 
   // Keep guardrails in sync when property changes
   useEffect(() => {
     setPriceFloor(Number(activeListing?.priceFloor || 0));
     setPriceCeiling(Number(activeListing?.priceCeiling || 0));
-  }, [propertyId]);
+    setGuardrailsSource(activeListing?.guardrailsSource || undefined);
+    setFloorReasoning(activeListing?.floorReasoning);
+    setCeilingReasoning(activeListing?.ceilingReasoning);
+  }, [propertyId, activeListing]);
 
   // Agent vs Guest Chat Toggle
   const [chatMode, setChatMode] = useState<"agent" | "guests">("agent");
@@ -401,14 +407,7 @@ export function UnifiedChatInterface({ properties }: Props) {
   const handleMarketSetup = async () => {
     if (isSettingUp || !dateRange?.from || !dateRange?.to) return;
 
-    // Block if guardrails are not set
-    if (guardrailsNotSet) {
-      toast.warning("Set Price Guardrails First", {
-        description: "Click the \"Set Guardrails\" button above to define your floor and ceiling price before clicking Run Aria.",
-        duration: 5000,
-      });
-      return;
-    }
+    // Guardrails are no longer a blocker — Agent 10 will set them if they are 0!
 
     setIsSettingUp(true);
     useContextStore.getState().setIsMarketAnalysisRunning(true);
@@ -488,6 +487,23 @@ export function UnifiedChatInterface({ properties }: Props) {
       toast.success("Aria is Ready", {
         description: `Analyzed ${data.eventsCount} market signals in ${data.duration}. Ask me anything!`,
       });
+
+      if (data.guardrailsSetByAi && data.guardrails) {
+        setPriceFloor(data.guardrails.floor);
+        setPriceCeiling(data.guardrails.ceiling);
+        setGuardrailsSource(data.guardrails.source);
+        setFloorReasoning(data.guardrails.floorReasoning);
+        setCeilingReasoning(data.guardrails.ceilingReasoning);
+
+        // Wait a slight moment so they don't overlap too intensely
+        setTimeout(() => {
+          toast.info("Auto-Guardrails Configured", {
+            description: "Aria has set the floor and ceiling values automatically based on market intelligence. Check them; if you want, you can overwrite them too.",
+            duration: 8000, // Longer duration for reading
+          });
+        }, 800);
+      }
+
       triggerMarketRefresh();
       // Data injection now happens automatically on the user's first real message
       // in route.ts — no need for a separate grounding call.
@@ -670,11 +686,15 @@ export function UnifiedChatInterface({ properties }: Props) {
                   listingId={propertyId}
                   initialFloor={priceFloor}
                   initialCeiling={priceCeiling}
+                  guardrailsSource={guardrailsSource}
+                  floorReasoning={floorReasoning}
+                  ceilingReasoning={ceilingReasoning}
                   currencyCode={activeListing?.currencyCode || "AED"}
                   highlightIfZero
                   onSaved={(floor, ceiling) => {
                     setPriceFloor(floor);
                     setPriceCeiling(ceiling);
+                    setGuardrailsSource("manual");
                   }}
                 />
               </div>
@@ -735,7 +755,7 @@ export function UnifiedChatInterface({ properties }: Props) {
                           variant="outline"
                           size="sm"
                           onClick={handleMarketSetup}
-                          disabled={isLoading || isSettingUp || !dateRange?.from || !dateRange?.to || guardrailsNotSet}
+                          disabled={isLoading || isSettingUp || !dateRange?.from || !dateRange?.to}
                           className="h-9 gap-2 bg-background hover:bg-background/80 border-border/50 font-bold shadow-sm"
                         >
                           <Settings className={`h-4 w-4 ${isSettingUp ? "animate-spin text-amber-500" : ""}`} />
@@ -743,11 +763,7 @@ export function UnifiedChatInterface({ properties }: Props) {
                         </Button>
                       </span>
                     </TooltipTrigger>
-                    {guardrailsNotSet && (
-                      <TooltipContent side="bottom" className="bg-amber-600 text-white font-bold text-xs px-3 py-2 max-w-[240px] text-center">
-                        ⚠️ Please set the Guardrails first, then click Run Aria
-                      </TooltipContent>
-                    )}
+                    {/* Tooltip removed since guardrails missing is no longer an error */}
                   </Tooltip>
                 </TooltipProvider>
 
@@ -837,7 +853,53 @@ export function UnifiedChatInterface({ properties }: Props) {
                                     <span className={`text-sm font-black tabular-nums ${prop.change_pct > 0 ? "text-emerald-500" : "text-amber-500"}`}>AED {prop.proposed_price} <span className="text-[10px] ml-1 opacity-70">({prop.change_pct > 0 ? "+" : ""}{prop.change_pct}%)</span></span>
                                   </div>
                                 </div>
-                                <p className="text-muted-foreground/80 text-[11px] leading-relaxed italic">{prop.reasoning}</p>
+                                {typeof prop.reasoning === 'string' ? (
+                                  <p className="text-muted-foreground/80 text-[11px] leading-relaxed italic">{prop.reasoning}</p>
+                                ) : (
+                                  <details className="group mt-1 cursor-pointer">
+                                    <summary className="text-[11px] font-bold uppercase tracking-widest text-primary/70 hover:text-primary list-none flex items-center gap-1 mb-2">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-primary/40 group-open:bg-primary transition-colors" />
+                                      View Pricing Intelligence
+                                    </summary>
+
+                                    <div className="pl-3 border-l tracking-normal text-xs border-primary/20 space-y-4 animate-in fade-in slide-in-from-top-1">
+                                      {/* Comparisons */}
+                                      {prop.comparisons && (
+                                        <div className="space-y-1.5">
+                                          <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Market Positioning</div>
+                                          <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                            <div className="bg-background/40 p-1.5 rounded-md border border-border/40">
+                                              <span className="block text-muted-foreground mb-0.5">Recommended</span>
+                                              <span className={`font-bold ${prop.comparisons.vs_recommended?.diff_pct > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                                                {prop.comparisons.vs_recommended?.diff_pct > 0 ? '+' : ''}{prop.comparisons.vs_recommended?.diff_pct}%
+                                              </span> <span className="text-muted-foreground/50">vs AED {prop.comparisons.vs_recommended?.comp_price}</span>
+                                            </div>
+                                            <div className="bg-background/40 p-1.5 rounded-md border border-border/40">
+                                              <span className="block text-muted-foreground mb-0.5">Top Comp ({prop.comparisons.vs_top_comp?.comp_name?.substring(0, 10)})</span>
+                                              <span className={`font-bold ${prop.comparisons.vs_top_comp?.diff_pct > 0 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                                                {prop.comparisons.vs_top_comp?.diff_pct > 0 ? '+' : ''}{prop.comparisons.vs_top_comp?.diff_pct}%
+                                              </span> <span className="text-muted-foreground/50">vs AED {prop.comparisons.vs_top_comp?.comp_price}</span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Detailed Reasoning */}
+                                      {prop.reasoning && (
+                                        <div className="space-y-2 mt-2">
+                                          <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Decision Engine</div>
+                                          <ul className="space-y-1.5 text-[11px] text-muted-foreground/90">
+                                            {prop.reasoning.reason_market && <li><strong>Market:</strong> {prop.reasoning.reason_market}</li>}
+                                            {prop.reasoning.reason_news && <li><strong>News:</strong> {prop.reasoning.reason_news}</li>}
+                                            {prop.reasoning.reason_benchmark && <li><strong>Benchmark:</strong> {prop.reasoning.reason_benchmark}</li>}
+                                            {prop.reasoning.reason_guardrails && <li><strong>Guardrails:</strong> {prop.reasoning.reason_guardrails}</li>}
+                                            {prop.server_notes && <li className="text-amber-600"><strong>System Guard:</strong> {prop.server_notes}</li>}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </details>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -867,17 +929,12 @@ export function UnifiedChatInterface({ properties }: Props) {
                           <Input
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            placeholder={guardrailsNotSet ? "Please set the Guardrails and click Run Aria" : !isChatActive ? "Select date range and click 'Run Aria' to start..." : "Ask about pricing, events, market rates..."}
-                            disabled={isLoading || !isChatActive || guardrailsNotSet}
+                            placeholder={!isChatActive ? "Select date range and click 'Run Aria' to start..." : "Ask about pricing, events, market rates..."}
+                            disabled={isLoading || !isChatActive}
                             className="w-full"
                           />
                         </div>
                       </TooltipTrigger>
-                      {guardrailsNotSet && (
-                        <TooltipContent side="top" className="bg-amber-600 text-white font-bold text-xs px-3 py-2 max-w-[280px] text-center">
-                          ⚠️ Please set the Guardrails first, then click Run Aria
-                        </TooltipContent>
-                      )}
                     </Tooltip>
                   </TooltipProvider>
                   <Button type="submit" disabled={isLoading || !input.trim() || !isChatActive}>

@@ -178,6 +178,8 @@ export function MarketEventsTable() {
 
                                 const isEvent = ev.eventType === 'event';
                                 const isHoliday = ev.eventType === 'holiday';
+                                const isDailyEvent = ev.eventType === 'daily_event';
+                                const isNews = ev.eventType === 'news';
 
                                 return (
                                     <TableRow key={ev.id} className="hover:bg-muted/30 group transition-colors">
@@ -196,30 +198,49 @@ export function MarketEventsTable() {
 
                                         <TableCell className="align-top pt-4">
                                             <div className="flex flex-col gap-1.5 max-w-[300px]">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-sm font-bold text-foreground">
-                                                        {ev.title}
-                                                    </span>
-                                                </div>
-                                                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 group-hover:line-clamp-none transition-all">
-                                                    {ev.description}
-                                                </p>
-
-                                                {ev.source && ev.source.startsWith('http') && (
+                                                {ev.source && ev.source.startsWith('http') ? (
                                                     <a
                                                         href={ev.source}
                                                         target="_blank"
                                                         rel="noreferrer"
-                                                        className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1 mt-1 transition-all"
+                                                        className="group/link flex flex-col gap-1.5"
                                                     >
-                                                        Go to source
-                                                        <ExternalLink className="h-2.5 w-2.5" />
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-sm font-bold text-foreground group-hover/link:text-primary transition-colors">
+                                                                {ev.title}
+                                                            </span>
+                                                            <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover/link:opacity-100 transition-all" />
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 group-hover:line-clamp-none transition-all hover:text-foreground">
+                                                            {ev.description}
+                                                        </p>
                                                     </a>
+                                                ) : (
+                                                    <>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-sm font-bold text-foreground">
+                                                                {ev.title}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 group-hover:line-clamp-none transition-all">
+                                                            {ev.description}
+                                                        </p>
+                                                    </>
                                                 )}
+
+
 
                                                 <div className="flex flex-wrap gap-2 mt-1.5">
                                                     {isEvent && <Badge variant="outline" className="text-[9px] bg-blue-500/5 text-blue-500 border-blue-500/20">Event</Badge>}
                                                     {isHoliday && <Badge variant="outline" className="text-[9px] bg-purple-500/5 text-purple-500 border-purple-500/20">Holiday</Badge>}
+                                                    {isDailyEvent && <Badge variant="outline" className="text-[9px] bg-amber-500/5 text-amber-500 border-amber-500/20">Daily Show</Badge>}
+                                                    {isNews && <Badge variant="outline" className="text-[9px] bg-red-500/5 text-red-500 border-red-500/20">Market News</Badge>}
+                                                    {ev.source && ev.source.startsWith('http') && (
+                                                        <Badge variant="outline" className="text-[9px] bg-emerald-500/5 text-emerald-600 border-emerald-500/20 flex items-center gap-1">
+                                                            <div className="h-1 w-1 bg-emerald-500 rounded-full animate-pulse" />
+                                                            {new URL(ev.source).hostname.replace('www.', '')} (Verified)
+                                                        </Badge>
+                                                    )}
                                                 </div>
                                             </div>
                                         </TableCell>

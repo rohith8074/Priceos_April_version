@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { ChevronDown, ChevronUp, TrendingUp, TrendingDown, Minus, ExternalLink, BarChart3, RefreshCw, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { useContextStore } from "@/stores/context-store";
+import { cn } from "@/lib/utils";
 
 interface BenchmarkSummary {
     id: number;
@@ -276,25 +277,33 @@ export function BenchmarkWidget({ listingId, dateFrom, dateTo, refreshKey = 0 }:
                                     {compsOpen && (
                                         <div className="divide-y divide-border/30 animate-in slide-in-from-top-1 duration-150">
                                             {comps.map((comp, idx) => (
-                                                <div key={idx} className="px-3 py-2.5 flex items-start justify-between gap-2 hover:bg-muted/10 transition-colors">
+                                                <a
+                                                    key={idx}
+                                                    href={comp.sourceUrl ?? "#"}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={cn(
+                                                        "group/comp px-3 py-2.5 flex items-start justify-between gap-2 hover:bg-muted/30 transition-all relative block",
+                                                        !comp.sourceUrl && "pointer-events-none opacity-80"
+                                                    )}
+                                                >
                                                     <div className="flex flex-col min-w-0">
                                                         <div className="flex items-center gap-1.5">
-                                                            <span className="text-[11px] font-bold truncate max-w-[140px]">{comp.name ?? "Unnamed"}</span>
+                                                            <span className="text-[11px] font-bold truncate max-w-[140px] group-hover/comp:text-[#f39c12] transition-colors flex items-center gap-1">
+                                                                {comp.name ?? "Unnamed Listing"}
+                                                                {comp.sourceUrl && <ExternalLink className="h-2 w-2 opacity-0 group-hover/comp:opacity-100 transition-all translate-x-1" />}
+                                                            </span>
                                                         </div>
                                                         <div className="flex flex-col gap-1 mt-0.5">
                                                             <div className="flex items-center gap-1.5">
-                                                                {comp.sourceUrl ? (
-                                                                    <a
-                                                                        href={comp.sourceUrl}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        className="text-[9px] px-1.5 py-0.5 rounded bg-[#f39c12]/10 text-[#f39c12] hover:bg-[#f39c12]/20 font-semibold border border-[#f39c12]/20 transition-colors"
-                                                                    >
-                                                                        {comp.source ?? "OTA"}
-                                                                    </a>
-                                                                ) : (
-                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-semibold">{comp.source ?? "OTA"}</span>
-                                                                )}
+                                                                <span className={cn(
+                                                                    "text-[9px] px-1.5 py-0.5 rounded font-semibold border transition-colors",
+                                                                    comp.source === "Airbnb" ? "bg-rose-500/10 text-rose-600 border-rose-500/20" :
+                                                                        comp.source === "Booking.com" ? "bg-blue-500/10 text-blue-600 border-blue-500/20" :
+                                                                            "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                                                                )}>
+                                                                    {comp.source ?? "OTA"}
+                                                                </span>
 
                                                                 {comp.rating && (
                                                                     <span className="text-[9px] text-amber-500 font-bold">★ {comp.rating}</span>
@@ -302,28 +311,22 @@ export function BenchmarkWidget({ listingId, dateFrom, dateTo, refreshKey = 0 }:
                                                                 {comp.reviews != null && (
                                                                     <span className="text-[9px] text-muted-foreground">{comp.reviews} reviews</span>
                                                                 )}
-                                                            </div>
 
-                                                            {comp.sourceUrl && (
-                                                                <a
-                                                                    href={comp.sourceUrl}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="text-[9px] font-bold text-[#f39c12] hover:underline flex items-center gap-1 transition-all"
-                                                                >
-                                                                    Go to listing
-                                                                    <ExternalLink className="h-2 w-2" />
-                                                                </a>
-                                                            )}
+                                                                {comp.sourceUrl && (
+                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 font-bold border border-emerald-500/20 flex items-center gap-1 ml-1 scale-90 origin-left">
+                                                                        Verified
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div className="flex flex-col items-end shrink-0">
                                                         <span className="text-[12px] font-black text-[#f39c12]">
-                                                            {comp.avgRate ? `AED ${Number(comp.avgRate).toFixed(0)}` : "—"}
+                                                            {comp.avgRate ? `AED ${Math.round(Number(comp.avgRate))}` : "—"}
                                                         </span>
-                                                        <span className="text-[8px] text-muted-foreground">avg/night</span>
+                                                        <span className="text-[8px] text-muted-foreground uppercase font-medium">avg/night</span>
                                                     </div>
-                                                </div>
+                                                </a>
                                             ))}
                                         </div>
                                     )}

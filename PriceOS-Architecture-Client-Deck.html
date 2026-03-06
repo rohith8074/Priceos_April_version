@@ -1,0 +1,2195 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PriceOS — Architecture & Technical Deep Dive</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --amber: #f39c12;
+            --amber-light: rgba(243, 156, 18, 0.1);
+            --amber-border: rgba(243, 156, 18, 0.25);
+            --dark-bg: #0a0a1a;
+            --card-bg: #111127;
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+            --green: #10b981;
+            --red: #ef4444;
+            --blue: #3b82f6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--dark-bg);
+            color: var(--text);
+            line-height: 1.7;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ─── Print ─── */
+        @media print {
+            body {
+                background: #fff;
+                color: #1a1a2e;
+            }
+
+            .page-break {
+                page-break-before: always;
+            }
+
+            .no-print {
+                display: none;
+            }
+
+            header {
+                background: #fff !important;
+                border-bottom: 2px solid #f39c12;
+            }
+
+            .card {
+                background: #f8fafc !important;
+                border: 1px solid #e2e8f0 !important;
+                color: #1a1a2e !important;
+            }
+
+            .card h3,
+            .card h4 {
+                color: #1a1a2e !important;
+            }
+
+            .card p,
+            .card li {
+                color: #475569 !important;
+            }
+
+            .badge {
+                background: rgba(243, 156, 18, 0.15) !important;
+            }
+
+            table {
+                border: 1px solid #e2e8f0;
+            }
+
+            th {
+                background: #f1f5f9 !important;
+                color: #1a1a2e !important;
+            }
+
+            td {
+                color: #475569 !important;
+                border-color: #e2e8f0 !important;
+            }
+
+            .screenshot-placeholder {
+                background: #f1f5f9 !important;
+                border-color: #cbd5e1 !important;
+            }
+        }
+
+        /* ─── Header ─── */
+        header {
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%);
+            border-bottom: 1px solid var(--amber-border);
+            padding: 50px 60px;
+            text-align: center;
+        }
+
+        header .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+
+        header .logo-icon {
+            width: 56px;
+            height: 56px;
+            background: var(--amber);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            box-shadow: 0 8px 30px rgba(243, 156, 18, 0.3);
+        }
+
+        header h1 {
+            font-size: 2.4rem;
+            font-weight: 900;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, #fff, #f39c12);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        header .subtitle {
+            color: var(--text-muted);
+            font-size: 1.05rem;
+            margin-top: 8px;
+        }
+
+        header .meta {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            font-size: 0.78rem;
+            color: var(--text-dim);
+        }
+
+        header .meta span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* ─── Layout ─── */
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 40px 30px;
+        }
+
+        /* ─── TOC ─── */
+        .toc {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 48px;
+        }
+
+        .toc h2 {
+            font-size: 1.3rem;
+            font-weight: 800;
+            margin-bottom: 20px;
+            color: #fff;
+        }
+
+        .toc-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .toc a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            text-decoration: none;
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .toc a:hover {
+            background: var(--amber-light);
+            color: var(--amber);
+        }
+
+        .toc a .num {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            background: var(--amber-light);
+            color: var(--amber);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        /* ─── Sections ─── */
+        section {
+            margin-bottom: 56px;
+        }
+
+        section h2 {
+            font-size: 1.5rem;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            margin-bottom: 20px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        section h2 .section-num {
+            padding: 4px 12px;
+            border-radius: 8px;
+            background: var(--amber-light);
+            border: 1px solid var(--amber-border);
+            color: var(--amber);
+            font-size: 0.65rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        section h3 {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: #fff;
+            margin: 28px 0 12px;
+            letter-spacing: -0.3px;
+        }
+
+        section h4 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--amber);
+            margin: 20px 0 8px;
+        }
+
+        p {
+            color: var(--text-muted);
+            margin-bottom: 14px;
+            font-size: 0.88rem;
+        }
+
+        .highlight {
+            color: var(--amber);
+            font-weight: 700;
+        }
+
+        blockquote {
+            border-left: 3px solid var(--amber);
+            padding: 12px 20px;
+            margin: 16px 0;
+            background: var(--amber-light);
+            border-radius: 0 8px 8px 0;
+            font-size: 0.85rem;
+            color: var(--text);
+        }
+
+        /* ─── Cards ─── */
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .card-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 700px) {
+            .card-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ─── Tables ─── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 24px;
+            font-size: 0.8rem;
+        }
+
+        th {
+            background: rgba(243, 156, 18, 0.08);
+            color: var(--amber);
+            font-weight: 700;
+            text-align: left;
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--amber-border);
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--card-border);
+            color: var(--text-muted);
+            vertical-align: top;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        /* ─── Code ─── */
+        pre {
+            background: #0d0d20;
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 18px 22px;
+            margin: 14px 0 20px;
+            overflow-x: auto;
+            font-size: 0.78rem;
+            line-height: 1.65;
+            color: #c3d6e8;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        }
+
+        code {
+            background: rgba(243, 156, 18, 0.1);
+            color: var(--amber);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        }
+
+        /* ─── Badges ─── */
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-size: 0.65rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-amber {
+            background: var(--amber-light);
+            color: var(--amber);
+            border: 1px solid var(--amber-border);
+        }
+
+        .badge-green {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--green);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+
+        .badge-red {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--red);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+        }
+
+        .badge-blue {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--blue);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+        }
+
+        /* ─── Flow diagrams ─── */
+        .flow-box {
+            border: 1px solid var(--card-border);
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 20px;
+            margin: 16px 0;
+        }
+
+        .flow-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .flow-step:last-child {
+            border-bottom: none;
+        }
+
+        .flow-step .step-num {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: var(--amber-light);
+            border: 1px solid var(--amber-border);
+            color: var(--amber);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 800;
+            flex-shrink: 0;
+        }
+
+        .flow-step .step-content {
+            flex: 1;
+        }
+
+        .flow-step .step-content strong {
+            color: #fff;
+            font-size: 0.85rem;
+        }
+
+        .flow-step .step-content p {
+            margin: 4px 0 0;
+            font-size: 0.78rem;
+        }
+
+        /* ─── Agent Cards ─── */
+        .agent-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border-left: 3px solid var(--amber);
+        }
+
+        .agent-card .agent-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .agent-card .agent-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: var(--amber-light);
+            border: 1px solid var(--amber-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .agent-card .agent-name {
+            font-size: 1rem;
+            font-weight: 800;
+            color: #fff;
+        }
+
+        .agent-card .agent-role {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+
+        /* ─── Screenshot Placeholder ─── */
+        .screenshot-placeholder {
+            border: 2px dashed var(--amber-border);
+            border-radius: 12px;
+            padding: 40px 24px;
+            text-align: center;
+            margin: 20px 0;
+            background: rgba(243, 156, 18, 0.03);
+        }
+
+        .screenshot-placeholder .icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .screenshot-placeholder .label {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--amber);
+            margin-bottom: 4px;
+        }
+
+        .screenshot-placeholder .hint {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+
+        /* ─── Dividers ─── */
+        .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--amber-border), transparent);
+            margin: 48px 0;
+        }
+
+        /* ─── Safety Layers ─── */
+        .layer {
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 18px 22px;
+            margin-bottom: 12px;
+        }
+
+        .layer-1 {
+            border-left: 3px solid #3b82f6;
+        }
+
+        .layer-2 {
+            border-left: 3px solid var(--amber);
+        }
+
+        .layer-3 {
+            border-left: 3px solid var(--green);
+        }
+
+        /* ─── Stats row ─── */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 18px;
+            text-align: center;
+        }
+
+        .stat-card .stat-value {
+            font-size: 2rem;
+            font-weight: 900;
+            color: #fff;
+            background: linear-gradient(135deg, #fff, var(--amber));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-card .stat-label {
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 4px;
+        }
+
+        /* ─── Footer ─── */
+        footer {
+            text-align: center;
+            padding: 40px 30px;
+            border-top: 1px solid var(--card-border);
+            color: var(--text-dim);
+            font-size: 0.75rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ═══════════════════════════════════ HEADER ═══════════════════════════════════ -->
+    <header>
+        <div class="logo">
+            <div class="logo-icon">⚡</div>
+            <div>
+                <h1>PriceOS</h1>
+                <div class="subtitle">Architecture & Technical Deep Dive</div>
+            </div>
+        </div>
+        <p style="color: #94a3b8; font-size: 0.88rem; max-width: 560px; margin: 0 auto;">
+            AI-Powered Revenue Management for Dubai Short-Term Rentals
+        </p>
+        <div class="meta">
+            <span>📋 Version 2.0</span>
+            <span>📅 March 5, 2026</span>
+            <span>🔒 Confidential</span>
+        </div>
+    </header>
+
+    <div class="container">
+
+        <!-- ═══════════════════════════════════ KEY NUMBERS ═══════════════════════════════════ -->
+        <div class="stats-row" style="margin-top: 20px;">
+            <div class="stat-card">
+                <div class="stat-value">9</div>
+                <div class="stat-label">AI Agents</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">22</div>
+                <div class="stat-label">Sections</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">3</div>
+                <div class="stat-label">Safety Layers</div>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════ TOC ═══════════════════════════════════ -->
+        <div class="toc">
+            <h2>📑 Table of Contents — 22 Sections</h2>
+            <div class="toc-grid">
+                <a href="#sec1"><span class="num">1</span> Executive Summary</a>
+                <a href="#sec-pms"><span class="num">9</span> PMS Integration ⭐</a>
+                <a href="#sec2"><span class="num">2</span> System Architecture</a>
+                <a href="#sec-post"><span class="num">10</span> Post-Approval ⭐</a>
+                <a href="#sec3"><span class="num">3</span> Two Phases: Setup & Chat</a>
+                <a href="#sec-security"><span class="num">11</span> Security & Access ⭐</a>
+                <a href="#sec4"><span class="num">4</span> The 9-Agent System</a>
+                <a href="#sec-perf"><span class="num">12</span> Performance ⭐</a>
+                <a href="#sec-orchestration"><span class="num">5</span> Agent Orchestration ⭐</a>
+                <a href="#sec-cost"><span class="num">13</span> Cost Model ⭐</a>
+                <a href="#sec6"><span class="num">6</span> Pricing Formula</a>
+                <a href="#sec-errors"><span class="num">14</span> Error Handling ⭐</a>
+                <a href="#sec7"><span class="num">7</span> Safety & Guardrails</a>
+                <a href="#sec-example"><span class="num">17</span> Real Example ⭐</a>
+                <a href="#sec9"><span class="num">8</span> UI Walkthrough</a>
+                <a href="#sec-faq"><span class="num">21</span> FAQ ⭐</a>
+                <a href="#sec10"><span class="num">18</span> Onboarding Tour</a>
+                <a href="#sec12"><span class="num">20</span> Status & Roadmap</a>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════ SECTION 1 ═══════════════════════════════════ -->
+        <section id="sec1">
+            <h2><span class="section-num">Section 1</span> Executive Summary</h2>
+
+            <blockquote>
+                A Revenue Manager selects a property and date range → clicks "Run Aria" → AI agents scan the internet
+                for competitor rates and events → the manager chats with <strong>Aria</strong> (the AI Revenue Manager)
+                to get pricing optimization proposals → reviews and approves them.
+            </blockquote>
+
+            <p>PriceOS is an <span class="highlight">AI-powered revenue management platform</span> designed for Dubai's
+                short-term rental market. It combines real-time internet research, multi-agent AI analysis, and safety
+                guardrails to help property managers optimize nightly pricing.</p>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Full Dashboard Screenshot</div>
+                <div class="hint">Insert full-page screenshot of the PriceOS agent-chat page here</div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ SECTION 2 ═══════════════════════════════════ -->
+        <section id="sec2">
+            <h2><span class="section-num">Section 2</span> System Architecture</h2>
+
+            <h3>Three-Panel Layout</h3>
+            <p>PriceOS uses a three-panel layout optimized for revenue management workflows:</p>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Panel</th>
+                        <th>Width</th>
+                        <th>Purpose</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Left — Property List</strong></td>
+                        <td>~240px</td>
+                        <td>All properties with occupancy % and target rate. Click to select.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Center — Chat + Controls</strong></td>
+                        <td>Flexible</td>
+                        <td>Agent/Guest toggle, date picker, Run Aria button, chat with Aria</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Right — Intelligence Sidebar</strong></td>
+                        <td>~320px</td>
+                        <td>Summary metrics, Market Signals, Calendar heatmap</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Annotated Three-Panel Layout</div>
+                <div class="hint">Insert annotated screenshot showing the three panels with labels</div>
+            </div>
+
+            <h3>Architecture Overview</h3>
+            <pre>
+┌──────────────────────────────────────────────────────────────────┐
+│                    FRONTEND (Next.js 16 + React 19)               │
+│  Property List │ Chat Interface │ Right Sidebar                   │
+└──────────────────────────┬───────────────────────────────────────┘
+                           │ API Calls
+┌──────────────────────────▼───────────────────────────────────────┐
+│                  BACKEND (40+ API Routes)                         │
+│  /api/chat  │  /api/market-setup  │  /api/calendar-metrics        │
+└──────────┬───────────┬──────────────────┬────────────────────────┘
+           │           │                  │
+    ┌──────▼───┐ ┌─────▼───────┐ ┌───────▼───────────┐
+    │ PostgreSQL│ │  Lyzr AI    │ │  Perplexity API   │
+    │ (Neon DB) │ │  (9 Agents) │ │  (Internet Search)│
+    └──────────┘ └─────────────┘ └───────────────────┘
+  </pre>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ SECTION 3 ═══════════════════════════════════ -->
+        <section id="sec3" class="page-break">
+            <h2><span class="section-num">Section 3</span> The Two Phases: Setup & Chat</h2>
+
+            <h3>Phase 1: Setup <span class="badge badge-amber">~15 seconds</span></h3>
+            <p>Triggered by clicking <strong>"Run Aria"</strong>. Two internet-search agents run in parallel:</p>
+
+            <div class="flow-box">
+                <div class="flow-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <strong>User clicks "Run Aria"</strong>
+                        <p>Frontend sends POST to /api/market-setup with property ID and date range</p>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <strong>Marketing Agent scans the internet</strong>
+                        <p>Uses Perplexity Sonar to find Dubai events, holidays, and demand trends → Saves to
+                            <code>market_events</code> table
+                        </p>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <strong>Benchmark Agent scans competitor rates</strong>
+                        <p>Searches Airbnb/Booking.com for similar properties → Calculates P25-P90 rate distribution →
+                            Saves to <code>benchmark_data</code> table</p>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <strong>Toast: "Aria is Ready" ✅</strong>
+                        <p>Chat interface activated. User can now ask questions.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Run Aria Button + "Aria is Ready" Toast</div>
+                <div class="hint">Insert screenshot showing the Run Aria button and the success toast notification</div>
+            </div>
+
+            <h3>Phase 2: Chat <span class="badge badge-blue">User-driven</span></h3>
+            <p>User types questions. Aria classifies intent, delegates to sub-agents, and responds with merged analysis.
+            </p>
+
+            <div class="flow-box">
+                <div class="flow-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <strong>User types a message (e.g., "Full analysis")</strong>
+                        <p>Frontend sends to POST /api/chat</p>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <strong>Backend fetches ALL property data from PostgreSQL</strong>
+                        <p>Listings, inventory, reservations, events, benchmarks — builds a single JSON payload</p>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <strong>Payload injected into first message to Lyzr AI</strong>
+                        <p>Agent 1 (Aria) receives all data + user's question</p>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <strong>Aria delegates to sub-agents → merges outputs → responds</strong>
+                        <p>For "Full analysis": all 4 sub-agents produce a 10-section report</p>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="step-num">5</div>
+                    <div class="step-content">
+                        <strong>Server enforces guardrails → returns to user</strong>
+                        <p>enforceGuardrails() validates every proposal before display</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ SECTION 4 ═══════════════════════════════════ -->
+        <section id="sec4" class="page-break">
+            <h2><span class="section-num">Section 4</span> The 9-Agent System</h2>
+
+            <h3>Group A: Chat Agents <span class="badge badge-green">Active during conversation</span></h3>
+            <p>These agents receive data through a JSON payload and have <strong>ZERO database access</strong> — making
+                them secure, testable, and fast.</p>
+
+            <div class="agent-card">
+                <div class="agent-header">
+                    <div class="agent-icon">🧠</div>
+                    <div>
+                        <div class="agent-name">Agent 1: Aria (CRO Router)</div>
+                        <div class="agent-role">Gemini 3.0 Flash • temp=0.2 • 4,000 tokens • User-facing orchestrator
+                        </div>
+                    </div>
+                </div>
+                <p>Reads the user's message, classifies intent using a routing table, delegates to sub-agents, merges
+                    their outputs into a unified response. <strong>Never computes pricing itself</strong> — always
+                    delegates to PriceGuard.</p>
+                <h4>Routing Table</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User Says</th>
+                            <th>Agent 2</th>
+                            <th>Agent 3</th>
+                            <th>Agent 4</th>
+                            <th>Agent 5</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>"What's my occupancy?"</td>
+                            <td>✅</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>—</td>
+                        </tr>
+                        <tr>
+                            <td>"Booking velocity"</td>
+                            <td>—</td>
+                            <td>✅</td>
+                            <td>—</td>
+                            <td>—</td>
+                        </tr>
+                        <tr>
+                            <td>"Competitor rates"</td>
+                            <td>—</td>
+                            <td>—</td>
+                            <td>✅</td>
+                            <td>—</td>
+                        </tr>
+                        <tr>
+                            <td>"What should I price?"</td>
+                            <td>✅</td>
+                            <td>—</td>
+                            <td>✅</td>
+                            <td>✅</td>
+                        </tr>
+                        <tr>
+                            <td style="color: var(--amber); font-weight: 700;">"Full analysis"</td>
+                            <td>✅</td>
+                            <td>✅</td>
+                            <td>✅</td>
+                            <td>✅</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card-grid">
+                <div class="agent-card">
+                    <div class="agent-header">
+                        <div class="agent-icon">📊</div>
+                        <div>
+                            <div class="agent-name">Agent 2: Property Analyst</div>
+                            <div class="agent-role">GPT-4o-mini • temp=0.1 • Calendar & gap analysis</div>
+                        </div>
+                    </div>
+                    <p>Detects gap types (orphan nights, micro-gaps), recommends LOS changes, calculates revenue impact.
+                        Recommends LOS relaxation before discounting.</p>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-header">
+                        <div class="agent-icon">📈</div>
+                        <div>
+                            <div class="agent-name">Agent 3: Booking Intelligence</div>
+                            <div class="agent-role">GPT-4o-mini • temp=0.1 • Reservation patterns</div>
+                        </div>
+                    </div>
+                    <p>Analyzes booking velocity (accelerating/stable/decelerating), LOS buckets, channel mix breakdown,
+                        and cancellation rates.</p>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-header">
+                        <div class="agent-icon">🏆</div>
+                        <div>
+                            <div class="agent-name">Agent 4: Market Research</div>
+                            <div class="agent-role">GPT-4o-mini • temp=0.1 • Competitor & event analysis</div>
+                        </div>
+                    </div>
+                    <p>Provides market position verdict (UNDERPRICED/FAIR/OVERPRICED), percentile ranking, event premium
+                        factors (1.05x–1.30x).</p>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-header">
+                        <div class="agent-icon">🛡️</div>
+                        <div>
+                            <div class="agent-name">Agent 5: PriceGuard</div>
+                            <div class="agent-role">GPT-4o-mini • temp=0.0 • Pricing engine + safety validator</div>
+                        </div>
+                    </div>
+                    <p><strong>Most critical agent.</strong> Has unconditional veto power. Computes prices using a
+                        strict 4-step formula, clamps to guardrails, validates every proposal. See <a href="#sec6"
+                            style="color: var(--amber);">Section 6</a> for the full formula.</p>
+                </div>
+            </div>
+
+            <h3>Group B: Setup Agents <span class="badge badge-amber">Run once per "Run Aria"</span></h3>
+            <div class="card-grid">
+                <div class="agent-card">
+                    <div class="agent-header">
+                        <div class="agent-icon">📡</div>
+                        <div>
+                            <div class="agent-name">Agent 6: Marketing Agent</div>
+                            <div class="agent-role">Perplexity Sonar • Internet search → market_events table</div>
+                        </div>
+                    </div>
+                    <p>Scans the internet for upcoming Dubai events (Art Dubai, GITEX, Ramadan, F1), holidays, and
+                        demand trends.</p>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-header">
+                        <div class="agent-icon">📊</div>
+                        <div>
+                            <div class="agent-name">Agent 7: Benchmark Agent</div>
+                            <div class="agent-role">Perplexity Sonar • Internet search → benchmark_data table</div>
+                        </div>
+                    </div>
+                    <p>Searches Airbnb and Booking.com for competitor rates in the same area. Returns P25-P90
+                        distribution and per-comparable details.</p>
+                </div>
+            </div>
+
+            <h3>Group C: Guest Agents <span class="badge badge-blue">Separate pipeline</span></h3>
+            <div class="card-grid">
+                <div class="agent-card">
+                    <div class="agent-header">
+                        <div class="agent-icon">💬</div>
+                        <div>
+                            <div class="agent-name">Agent 8: Guest Reply Agent</div>
+                            <div class="agent-role">GPT-4o-mini • temp=0.4 • Draft guest replies</div>
+                        </div>
+                    </div>
+                    <p>Drafts natural guest replies. Never quotes exact prices. Matches tone to situation (complaint →
+                        empathetic, inquiry → helpful).</p>
+                </div>
+                <div class="agent-card">
+                    <div class="agent-header">
+                        <div class="agent-icon">📝</div>
+                        <div>
+                            <div class="agent-name">Agent 9: Summary Agent</div>
+                            <div class="agent-role">GPT-4o-mini • Conversation analysis</div>
+                        </div>
+                    </div>
+                    <p>Analyzes all guest conversations for sentiment, themes, and action items.</p>
+                </div>
+            </div>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Full Analysis Response from Aria</div>
+                <div class="hint">Insert screenshot showing Aria's 10-section analysis response</div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ SECTION 6 ═══════════════════════════════════ -->
+        <section id="sec6" class="page-break">
+            <h2><span class="section-num">Section 6</span> The Pricing Formula</h2>
+
+            <h3>Step 1: Compute Base Price</h3>
+            <pre>
+For each available date:
+
+  IF date overlaps a market_event → base = benchmark.recommended_event
+  ELSE IF Friday or Saturday      → base = benchmark.recommended_weekend
+  ELSE (weekday)                   → base = benchmark.recommended_weekday
+
+  FALLBACK (if benchmark = 0):
+    base = MAX(current_price, floor_price)
+    Weekend: base × 1.10  |  Event: base × 1.20
+  </pre>
+
+            <h3>Step 2: Apply Multipliers</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Factor</th>
+                        <th>Condition</th>
+                        <th>Multiplier</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td rowspan="3"><strong>Event Impact</strong></td>
+                        <td>High impact</td>
+                        <td>× 1.30</td>
+                    </tr>
+                    <tr>
+                        <td>Medium impact</td>
+                        <td>× 1.15</td>
+                    </tr>
+                    <tr>
+                        <td>Low impact</td>
+                        <td>× 1.05</td>
+                    </tr>
+                    <tr>
+                        <td rowspan="2"><strong>Occupancy</strong></td>
+                        <td>Below 30%</td>
+                        <td>× 0.90 (low demand)</td>
+                    </tr>
+                    <tr>
+                        <td>Above 70%</td>
+                        <td>× 1.10 (high demand)</td>
+                    </tr>
+                </tbody>
+            </table>
+            <pre>proposed_price = ROUND(base × event_factor × occupancy_factor)</pre>
+
+            <h3>Step 3: Clamp to Guardrails</h3>
+            <pre>
+if proposed_price &lt; floor_price  → proposed_price = floor_price
+if proposed_price &gt; ceiling_price → proposed_price = ceiling_price
+  </pre>
+            <p><span class="badge badge-red">Mandatory</span> This step has <strong>NO exceptions</strong>.</p>
+
+            <h3>Step 4: Validate & Assign Risk</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rule</th>
+                        <th>Check</th>
+                        <th>If Fails</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Rule 1</td>
+                        <td>price ≥ floor?</td>
+                        <td><span class="badge badge-red">REJECT</span></td>
+                    </tr>
+                    <tr>
+                        <td>Rule 2</td>
+                        <td>price ≤ ceiling?</td>
+                        <td><span class="badge badge-red">REJECT</span></td>
+                    </tr>
+                    <tr>
+                        <td>Rule 3</td>
+                        <td>|change| ≤ 50%?</td>
+                        <td><span class="badge badge-red">REJECT</span></td>
+                    </tr>
+                    <tr>
+                        <td>Rule 4</td>
+                        <td>change > 25% has event?</td>
+                        <td><span class="badge badge-amber">FLAG</span></td>
+                    </tr>
+                    <tr>
+                        <td>Rule 5</td>
+                        <td>price < P25?</td>
+                        <td><span class="badge badge-amber">FLAG</span></td>
+                    </tr>
+                    <tr>
+                        <td>Rule 6</td>
+                        <td>price > P75?</td>
+                        <td><span class="badge badge-amber">FLAG</span></td>
+                    </tr>
+                    <tr>
+                        <td>All pass</td>
+                        <td>—</td>
+                        <td><span class="badge badge-green">APPROVED</span></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Example Calculation</h3>
+            <p>Property: floor=<code>600</code>, ceiling=<code>1800</code>, current=<code>400</code>,
+                occupancy=<code>47%</code></p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Day Type</th>
+                        <th>Base</th>
+                        <th>Event</th>
+                        <th>Proposed</th>
+                        <th>After Clamp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Mar 5 (Wed)</td>
+                        <td>Weekday</td>
+                        <td>420</td>
+                        <td>—</td>
+                        <td>420</td>
+                        <td><strong>600</strong> ↑ clamped to floor</td>
+                    </tr>
+                    <tr>
+                        <td>Mar 7 (Fri)</td>
+                        <td>Weekend</td>
+                        <td>550</td>
+                        <td>—</td>
+                        <td>550</td>
+                        <td><strong>600</strong> ↑ clamped to floor</td>
+                    </tr>
+                    <tr>
+                        <td>Mar 8 (Sat)</td>
+                        <td>Event + Weekend</td>
+                        <td>700</td>
+                        <td>×1.30</td>
+                        <td>910</td>
+                        <td><strong>910</strong> ✅</td>
+                    </tr>
+                    <tr>
+                        <td>Mar 12 (Wed)</td>
+                        <td>Weekday</td>
+                        <td>420</td>
+                        <td>—</td>
+                        <td>420</td>
+                        <td><strong>600</strong> ↑ clamped to floor</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Pricing Proposal Cards</div>
+                <div class="hint">Insert screenshot showing proposal cards with different risk levels (green/amber/red)
+                </div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ SECTION 7 ═══════════════════════════════════ -->
+        <section id="sec7">
+            <h2><span class="section-num">Section 7</span> Safety & Guardrails — Defense in Depth</h2>
+
+            <p>PriceOS uses a <strong>three-layer defense</strong> system. Even if one layer fails, the others catch it:
+            </p>
+
+            <div class="layer layer-1">
+                <h4>Layer 1: Prompt Instructions <span class="badge badge-blue">LLM Instructions</span></h4>
+                <p>PriceGuard prompt explicitly says "NEVER below floor price." CRO Router is told "always delegate
+                    pricing to PriceGuard."</p>
+                <p style="font-size: 0.75rem;">✅ Usually works &nbsp;&nbsp; ⚠️ LLM can sometimes hallucinate or ignore
+                </p>
+            </div>
+
+            <div class="layer layer-2">
+                <h4>Layer 2: PriceGuard Agent <span class="badge badge-amber">Dedicated AI Validator</span></h4>
+                <p>A separate agent with temp=0.0 (zero creativity). Runs a strict 4-step validation pipeline. Has
+                    unconditional veto power — even Aria cannot override it.</p>
+                <p style="font-size: 0.75rem;">✅ Very reliable &nbsp;&nbsp; ⚠️ Still an LLM at its core</p>
+            </div>
+
+            <div class="layer layer-3">
+                <h4>Layer 3: Server-Side Code <span class="badge badge-green">Hardcoded TypeScript</span></h4>
+                <p>The <code>enforceGuardrails()</code> function runs in TypeScript <strong>AFTER</strong> the LLM
+                    responds. It performs floor/ceiling clamping, swing checks (±50%), and deterministic risk
+                    calculation. <strong>Cannot be bypassed by any prompt change.</strong></p>
+                <p style="font-size: 0.75rem;">✅ ALWAYS runs &nbsp;&nbsp; ✅ Deterministic &nbsp;&nbsp; ✅ Testable</p>
+            </div>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Guardrails Warning Tooltip</div>
+                <div class="hint">Insert screenshot showing the amber warning tooltip when hovering over "Run Aria"
+                    without guardrails set</div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ SECTION 9 ═══════════════════════════════════ -->
+        <section id="sec9" class="page-break">
+            <h2><span class="section-num">Section 9</span> User Interface Walkthrough</h2>
+
+            <h3>Button & Control Reference</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Element</th>
+                        <th>Location</th>
+                        <th>What It Does</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td><strong>Property Cards</strong></td>
+                        <td>Left sidebar</td>
+                        <td>Click to select a property for analysis</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td><strong>Agent / Users Toggle</strong></td>
+                        <td>Top of center panel</td>
+                        <td>Switch between Pricing AI and Guest Inbox</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td><strong>Date Range Picker</strong></td>
+                        <td>Top toolbar</td>
+                        <td>Set the date window for analysis</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td><strong>Set Guardrails</strong></td>
+                        <td>Header, beside property name</td>
+                        <td>Set floor/ceiling prices</td>
+                    </tr>
+                    <tr>
+                        <td>5</td>
+                        <td><strong>Run Aria</strong></td>
+                        <td>Top toolbar</td>
+                        <td>Launch internet research agents</td>
+                    </tr>
+                    <tr>
+                        <td>6</td>
+                        <td><strong>Chat Input</strong></td>
+                        <td>Bottom of center panel</td>
+                        <td>Type questions to Aria</td>
+                    </tr>
+                    <tr>
+                        <td>7</td>
+                        <td><strong>Summary Tab</strong></td>
+                        <td>Right sidebar</td>
+                        <td>Occupancy, AVG rate, guest insights</td>
+                    </tr>
+                    <tr>
+                        <td>8</td>
+                        <td><strong>Signals Tab</strong></td>
+                        <td>Right sidebar</td>
+                        <td>Market events, benchmarks</td>
+                    </tr>
+                    <tr>
+                        <td>9</td>
+                        <td><strong>Calendar Tab</strong></td>
+                        <td>Right sidebar</td>
+                        <td>Heatmap with occupancy</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Annotated UI with Numbered Labels</div>
+                <div class="hint">Insert annotated screenshot with numbered arrows pointing to each element</div>
+            </div>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Chat Conversation with Aria</div>
+                <div class="hint">Insert screenshot showing a chat conversation with Aria's analysis response</div>
+            </div>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Signals Tab — Market Events + Benchmarks</div>
+                <div class="hint">Insert screenshot of the Signals tab showing competitor rates and event cards</div>
+            </div>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Calendar Heatmap</div>
+                <div class="hint">Insert screenshot of the Calendar tab showing color-coded occupancy heatmap</div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ SECTION 10 ═══════════════════════════════════ -->
+        <section id="sec10">
+            <h2><span class="section-num">Section 10</span> Onboarding Tour Guide</h2>
+
+            <p>PriceOS includes a <strong>built-in interactive onboarding tour</strong> for first-time users. It guides
+                them through the interface step-by-step, making them click each element to learn.</p>
+
+            <h3>The 6 Interactive Steps</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Step</th>
+                        <th>Element</th>
+                        <th>Instruction</th>
+                        <th>What They Learn</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1️⃣</td>
+                        <td>Property List</td>
+                        <td>👆 Click a property</td>
+                        <td>Properties show occupancy + rate</td>
+                    </tr>
+                    <tr>
+                        <td>2️⃣</td>
+                        <td>Set Guardrails</td>
+                        <td>👆 Click Set Guardrails</td>
+                        <td>Floor/ceiling protect pricing</td>
+                    </tr>
+                    <tr>
+                        <td>3️⃣</td>
+                        <td>Date Range</td>
+                        <td>👆 Select dates</td>
+                        <td>Analysis scoped to dates only</td>
+                    </tr>
+                    <tr>
+                        <td>4️⃣</td>
+                        <td>Run Aria</td>
+                        <td>👆 Click Run Aria</td>
+                        <td>Triggers internet research</td>
+                    </tr>
+                    <tr>
+                        <td>5️⃣</td>
+                        <td>Chat Input</td>
+                        <td>💬 Type "Full analysis"</td>
+                        <td>Aria understands natural language</td>
+                    </tr>
+                    <tr>
+                        <td>6️⃣</td>
+                        <td>Sidebar</td>
+                        <td>📊 Explore tabs</td>
+                        <td>Real-time data panels</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="card">
+                <h4>How the Tour Works</h4>
+                <p>• <strong>Welcome Modal</strong> → Introduces Aria, offers "Show Me Around" or "Skip"</p>
+                <p>• <strong>Spotlight Effect</strong> → Dark overlay with a cutout hole around the current element</p>
+                <p>• <strong>Pulsing Ring</strong> → Amber border pulses to draw attention</p>
+                <p>• <strong>Action-Driven</strong> → User clicks the real element (not just "Next")</p>
+                <p>• <strong>Success Flash</strong> → Green checkmark appears after each completed step</p>
+                <p>• <strong>Progress Bar</strong> → Fills up as the user progresses through the tour</p>
+                <p>• <strong>Persistence</strong> → Stores completion in browser, won't show again after tour is
+                    done/skipped</p>
+            </div>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Welcome Modal</div>
+                <div class="hint">Insert screenshot showing the tour welcome modal with "Show Me Around" button</div>
+            </div>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Tour Step — Property List Highlighted</div>
+                <div class="hint">Insert screenshot showing Step 1 with the property list spotlighted and tooltip
+                    visible</div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ SECTION 12 ═══════════════════════════════════ -->
+        <section id="sec12" class="page-break">
+            <h2><span class="section-num">Section 12</span> Status & Roadmap</h2>
+
+            <h3>Current Completion</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Done</th>
+                        <th>Pending</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>CRO Router (Aria)</td>
+                        <td>11</td>
+                        <td>0</td>
+                        <td><span class="badge badge-green">100%</span></td>
+                    </tr>
+                    <tr>
+                        <td>Property Analyst</td>
+                        <td>6</td>
+                        <td>0</td>
+                        <td><span class="badge badge-green">100%</span></td>
+                    </tr>
+                    <tr>
+                        <td>Booking Intelligence</td>
+                        <td>2</td>
+                        <td>0</td>
+                        <td><span class="badge badge-green">100%</span></td>
+                    </tr>
+                    <tr>
+                        <td>Market Research</td>
+                        <td>4</td>
+                        <td>0</td>
+                        <td><span class="badge badge-green">100%</span></td>
+                    </tr>
+                    <tr>
+                        <td>PriceGuard</td>
+                        <td>7</td>
+                        <td>0</td>
+                        <td><span class="badge badge-green">100%</span></td>
+                    </tr>
+                    <tr>
+                        <td>Marketing Agent</td>
+                        <td>2</td>
+                        <td>2</td>
+                        <td><span class="badge badge-amber">50%</span></td>
+                    </tr>
+                    <tr>
+                        <td>Benchmark Agent</td>
+                        <td>3</td>
+                        <td>1</td>
+                        <td><span class="badge badge-amber">75%</span></td>
+                    </tr>
+                    <tr>
+                        <td>Guest Reply Agent</td>
+                        <td>1</td>
+                        <td>9</td>
+                        <td><span class="badge badge-red">10%</span></td>
+                    </tr>
+                    <tr>
+                        <td>System Infrastructure</td>
+                        <td>1</td>
+                        <td>10</td>
+                        <td><span class="badge badge-red">9%</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Overall</strong></td>
+                        <td><strong>37</strong></td>
+                        <td><strong>22</strong></td>
+                        <td><strong>Agent Layer: 92%</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Future Roadmap</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Feature</th>
+                        <th>Effort</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Daily Revenue Loop</td>
+                        <td>~8 hrs</td>
+                        <td>Automated 6AM analysis + proposals</td>
+                    </tr>
+                    <tr>
+                        <td>Batch Approvals</td>
+                        <td>~6 hrs</td>
+                        <td>Approve/reject multiple proposals at once</td>
+                    </tr>
+                    <tr>
+                        <td>Auto-Approve</td>
+                        <td>~3 hrs</td>
+                        <td>Low-risk proposals execute automatically</td>
+                    </tr>
+                    <tr>
+                        <td>Anomaly Detector</td>
+                        <td>~6 hrs</td>
+                        <td>Post-execution monitoring</td>
+                    </tr>
+                    <tr>
+                        <td>WhatsApp/Slack Alerts</td>
+                        <td>~6 hrs</td>
+                        <td>Critical notifications via messaging</td>
+                    </tr>
+                    <tr>
+                        <td>User Roles</td>
+                        <td>~8 hrs</td>
+                        <td>Admin / Revenue Manager / Operator / Read-Only</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ NEW: PMS INTEGRATION ═══════════════════════════════════ -->
+        <section id="sec-pms" class="page-break">
+            <h2><span class="section-num">Section 9</span> PMS Integration & Data Sync</h2>
+
+            <h3>How Does Data Get Into PriceOS?</h3>
+            <pre>
+Hostaway PMS (your existing system)
+    ↓ API Sync
+PriceOS Database (Neon PostgreSQL)
+    ↓ Automatic
+PriceOS Dashboard (what you see)
+            </pre>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data Type</th>
+                        <th>Source</th>
+                        <th>Sync Method</th>
+                        <th>Frequency</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Property Details</strong></td>
+                        <td>Hostaway API</td>
+                        <td>Automatic</td>
+                        <td>On first load (cached)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Calendar/Inventory</strong></td>
+                        <td>Hostaway API</td>
+                        <td>Automatic</td>
+                        <td>Each page load</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Reservations</strong></td>
+                        <td>Hostaway API</td>
+                        <td>Automatic</td>
+                        <td>Each page load</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Guest Conversations</strong></td>
+                        <td>Hostaway API</td>
+                        <td>Automatic</td>
+                        <td>On-demand</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Market Events</strong></td>
+                        <td>Internet Search</td>
+                        <td>"Run Aria"</td>
+                        <td>Manual trigger</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Competitor Rates</strong></td>
+                        <td>Internet Search</td>
+                        <td>"Run Aria"</td>
+                        <td>Manual trigger</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>PMS Support</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>PMS</th>
+                        <th>Status</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Hostaway</strong></td>
+                        <td><span class="badge badge-green">Supported</span></td>
+                        <td>Current integration</td>
+                    </tr>
+                    <tr>
+                        <td>Guesty</td>
+                        <td><span class="badge badge-amber">Planned</span></td>
+                        <td>~2 weeks estimated</td>
+                    </tr>
+                    <tr>
+                        <td>Lodgify</td>
+                        <td><span class="badge badge-amber">Planned</span></td>
+                        <td>On roadmap</td>
+                    </tr>
+                    <tr>
+                        <td>Custom REST API</td>
+                        <td><span class="badge badge-amber">Planned</span></td>
+                        <td>For custom PMS systems</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="card">
+                <h4>Do I Need to Enter Data Manually?</h4>
+                <p><strong>No.</strong> Once your Hostaway API keys are connected, all data imports automatically. The
+                    only manual inputs are:</p>
+                <p>1. <strong>Floor/Ceiling prices</strong> — Set once per property</p>
+                <p>2. <strong>Date range</strong> — Select each analysis period</p>
+                <p>3. <strong>"Run Aria"</strong> — Click to trigger internet research</p>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ NEW: POST-APPROVAL ═══════════════════════════════════ -->
+        <section id="sec-post">
+            <h2><span class="section-num">Section 10</span> Post-Approval: What Happens Next?</h2>
+
+            <h3>Does the price auto-update on Airbnb? <span class="badge badge-red">Not Yet</span></h3>
+            <p>Currently, PriceOS is in <strong>"AI advises, human decides"</strong> mode:</p>
+
+            <div class="flow-box">
+                <div class="flow-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <strong>Aria proposes prices</strong>
+                        <p>Based on market data, events, and your guardrails</p>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <strong>You review proposals in PriceOS</strong>
+                        <p>Each proposal shows current price, proposed price, change %, risk level, and reasoning</p>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <strong>You approve or reject each proposal</strong>
+                        <p>Approved proposals are saved with full audit data</p>
+                    </div>
+                </div>
+                <div class="flow-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <strong>You manually update your PMS</strong>
+                        <p>Use the approved prices as a reference when updating Hostaway/Airbnb/Booking.com</p>
+                    </div>
+                </div>
+            </div>
+
+            <h3>Planned Automation Phases</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Phase</th>
+                        <th>Feature</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Phase 1 (Now)</strong></td>
+                        <td>AI recommends → Human approves → Human pushes</td>
+                        <td><span class="badge badge-green">Live</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Phase 2</strong></td>
+                        <td>AI recommends → Human approves → <strong>Auto-push</strong></td>
+                        <td><span class="badge badge-amber">~3 weeks</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Phase 3</strong></td>
+                        <td>Low-risk auto-approved → Auto-push</td>
+                        <td><span class="badge badge-amber">~6 weeks</span></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Phase 4</strong></td>
+                        <td>Daily 6AM auto-analysis + proposals</td>
+                        <td><span class="badge badge-amber">~8 weeks</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ NEW: SECURITY ═══════════════════════════════════ -->
+        <section id="sec-security" class="page-break">
+            <h2><span class="section-num">Section 11</span> Security & Access Control</h2>
+
+            <div class="card-grid">
+                <div class="card">
+                    <h4>🔐 Authentication</h4>
+                    <p>• Email + Password login (Neon Auth / BetterAuth)</p>
+                    <p>• Secure HTTP-only session cookies</p>
+                    <p>• Auto-logout after idle period</p>
+                    <p>• Bcrypt-hashed passwords (never plain text)</p>
+                </div>
+                <div class="card">
+                    <h4>🔒 Data Privacy</h4>
+                    <p>• Guest data encrypted at rest (TLS in transit)</p>
+                    <p>• API keys stored in environment variables only</p>
+                    <p>• Chat history auto-purge after configurable period</p>
+                    <p>• Database region configurable (can deploy to UAE)</p>
+                </div>
+            </div>
+
+            <h3>Planned User Roles (Roadmap)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Role</th>
+                        <th>View</th>
+                        <th>Analyze</th>
+                        <th>Approve</th>
+                        <th>Configure</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Admin</strong></td>
+                        <td>✅</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Revenue Manager</strong></td>
+                        <td>✅</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                        <td>❌</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Operator</strong></td>
+                        <td>✅</td>
+                        <td>✅</td>
+                        <td>❌</td>
+                        <td>❌</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Read-Only</strong></td>
+                        <td>✅</td>
+                        <td>❌</td>
+                        <td>❌</td>
+                        <td>❌</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ NEW: PERFORMANCE ═══════════════════════════════════ -->
+        <section id="sec-perf">
+            <h2><span class="section-num">Section 12</span> Performance & Response Times</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>Typical Time</th>
+                        <th>What's Happening</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Login</strong></td>
+                        <td>~1 second</td>
+                        <td>Auth check + session creation</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Load property list</strong></td>
+                        <td>~2 seconds</td>
+                        <td>Fetch all listings + occupancy metrics</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Select a property</strong></td>
+                        <td>~1 second</td>
+                        <td>Load inventory + reservations</td>
+                    </tr>
+                    <tr>
+                        <td style="color: var(--amber);"><strong>"Run Aria"</strong></td>
+                        <td style="color: var(--amber);"><strong>10-20 sec</strong></td>
+                        <td>2 internet search agents + database writes</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Simple chat question</strong></td>
+                        <td><strong>3-6 sec</strong></td>
+                        <td>Data injection + single agent response</td>
+                    </tr>
+                    <tr>
+                        <td style="color: var(--amber);"><strong>"Full analysis"</strong></td>
+                        <td style="color: var(--amber);"><strong>8-15 sec</strong></td>
+                        <td>Data injection + all 4 sub-agents + merge</td>
+                    </tr>
+                    <tr>
+                        <td><strong>AI reply suggestion</strong></td>
+                        <td>~3 seconds</td>
+                        <td>Guest Reply Agent processes conversation</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ NEW: COST MODEL ═══════════════════════════════════ -->
+        <section id="sec-cost" class="page-break">
+            <h2><span class="section-num">Section 13</span> Cost Model & API Economics</h2>
+
+            <h3>Monthly Cost Estimates</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Portfolio Size</th>
+                        <th>Run Aria / month</th>
+                        <th>Chat / month</th>
+                        <th>Est. AI Cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>5 properties</strong></td>
+                        <td>~50</td>
+                        <td>~200</td>
+                        <td><strong>~$5-10</strong></td>
+                    </tr>
+                    <tr>
+                        <td><strong>20 properties</strong></td>
+                        <td>~200</td>
+                        <td>~800</td>
+                        <td><strong>~$20-40</strong></td>
+                    </tr>
+                    <tr>
+                        <td><strong>50 properties</strong></td>
+                        <td>~500</td>
+                        <td>~2,000</td>
+                        <td><strong>~$50-90</strong></td>
+                    </tr>
+                    <tr>
+                        <td><strong>200 properties</strong></td>
+                        <td>~2,000</td>
+                        <td>~8,000</td>
+                        <td><strong>~$180-300</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+            <p style="font-size: 0.75rem; color: var(--text-dim);">AI API costs only. Infrastructure (Neon, Vercel) is
+                ~$25-50/month base tier.</p>
+
+            <h3>What Drives the Cost?</h3>
+            <pre>
+Each "Run Aria" click  = 2 Perplexity + 2 Lyzr calls  ≈ $0.02
+Each chat message      = 1-4 sub-agent calls           ≈ $0.01-0.04
+"Full analysis" command = 5 total agent calls           ≈ $0.04-0.05
+            </pre>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ NEW: ERROR HANDLING ═══════════════════════════════════ -->
+        <section id="sec-errors">
+            <h2><span class="section-num">Section 14</span> Error Handling & Fallbacks</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Failure Scenario</th>
+                        <th>What Happens</th>
+                        <th>User Experience</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Perplexity search fails</td>
+                        <td>Fallback to cached data</td>
+                        <td>Market events may be empty</td>
+                    </tr>
+                    <tr>
+                        <td>Lyzr API is down</td>
+                        <td>Error toast shown</td>
+                        <td>"Try again in a few minutes"</td>
+                    </tr>
+                    <tr>
+                        <td>LLM hallucinated output</td>
+                        <td><code>enforceGuardrails()</code> catches it</td>
+                        <td>Bad proposals REJECTED</td>
+                    </tr>
+                    <tr>
+                        <td><strong>LLM ignores floor price</strong></td>
+                        <td><strong>Server code ALWAYS clamps</strong></td>
+                        <td><strong>Impossible to bypass</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Hostaway API down</td>
+                        <td>Cached data from last sync</td>
+                        <td>Stale data warning</td>
+                    </tr>
+                    <tr>
+                        <td>Rate limit hit (429)</td>
+                        <td>Auto-retry after 2s</td>
+                        <td>Slight delay, transparent</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="card">
+                <h4>Best Practice</h4>
+                <p>Click <strong>"Run Aria"</strong> before each pricing session to get the latest market data.
+                    Competitor rates and events are only as fresh as the last time you clicked "Run Aria."</p>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ NEW: EXAMPLE OUTPUT ═══════════════════════════════════ -->
+        <section id="sec-example" class="page-break">
+            <h2><span class="section-num">Section 17</span> Real Example: Full Analysis Output</h2>
+
+            <p>Below is a <strong>sample</strong> of what Aria produces when a Revenue Manager types <strong>"Full
+                    analysis"</strong>:</p>
+
+            <div class="card" style="border-left: 3px solid var(--green);">
+                <h4>📍 Executive Summary</h4>
+                <p>Overall health: <strong>MODERATE</strong> — Your JBR Beach Studio is at the <strong>65th
+                        percentile</strong>. Occupancy is 47% for the next 15 days. Opportunities exist during Art Dubai
+                    (Mar 6-9).</p>
+            </div>
+
+            <div class="card">
+                <h4>📊 Performance Scorecard</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>Current</th>
+                            <th>Market Avg</th>
+                            <th>Assessment</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Occupancy</td>
+                            <td>47%</td>
+                            <td>~60%</td>
+                            <td>⚠️ Below market</td>
+                        </tr>
+                        <tr>
+                            <td>ADR</td>
+                            <td>AED 533</td>
+                            <td>AED 450</td>
+                            <td>✅ Above median</td>
+                        </tr>
+                        <tr>
+                            <td>Floor / Ceiling</td>
+                            <td>600 / 1,800</td>
+                            <td>—</td>
+                            <td>Set</td>
+                        </tr>
+                        <tr>
+                            <td>Market Position</td>
+                            <td>65th %ile</td>
+                            <td>—</td>
+                            <td>FAIR</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card" style="border-left: 3px solid var(--amber);">
+                <h4>💰 Pricing Proposals</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Day</th>
+                            <th>Current</th>
+                            <th>Proposed</th>
+                            <th>Change</th>
+                            <th>Verdict</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Mar 10</td>
+                            <td>Mon</td>
+                            <td>AED 400</td>
+                            <td><strong>AED 600</strong></td>
+                            <td>+50%</td>
+                            <td><span class="badge badge-green">Approved</span></td>
+                        </tr>
+                        <tr>
+                            <td>Mar 11</td>
+                            <td>Tue</td>
+                            <td>AED 400</td>
+                            <td><strong>AED 600</strong></td>
+                            <td>+50%</td>
+                            <td><span class="badge badge-green">Approved</span></td>
+                        </tr>
+                        <tr>
+                            <td>Mar 14</td>
+                            <td>Fri</td>
+                            <td>AED 400</td>
+                            <td><strong>AED 650</strong></td>
+                            <td>+63%</td>
+                            <td><span class="badge badge-amber">Flagged</span></td>
+                        </tr>
+                        <tr>
+                            <td>Mar 8</td>
+                            <td>Sat/Event</td>
+                            <td>AED 400</td>
+                            <td><strong>AED 910</strong></td>
+                            <td>+128%</td>
+                            <td><span class="badge badge-red">Rejected</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card" style="border-left: 3px solid var(--green);">
+                <h4>📈 Revenue Projection</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Scenario</th>
+                            <th>15-Day Revenue</th>
+                            <th>vs Current</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Current pricing</td>
+                            <td>AED 3,200</td>
+                            <td>—</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Proposed pricing</strong></td>
+                            <td><strong>AED 4,850</strong></td>
+                            <td style="color: var(--green);"><strong>+51% uplift</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="screenshot-placeholder">
+                <div class="icon">📸</div>
+                <div class="label">Actual Chat Screenshot</div>
+                <div class="hint">Insert screenshot of this analysis in the chat interface</div>
+            </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- ═══════════════════════════════════ NEW: FAQ ═══════════════════════════════════ -->
+        <section id="sec-faq" class="page-break">
+            <h2><span class="section-num">Section 21</span> FAQ — Frequently Asked Questions</h2>
+
+            <div class="card">
+                <h4>🛡️ Can the AI ever set a price below my floor price?</h4>
+                <p><strong>No — it is physically impossible.</strong> The floor price is enforced by three layers: (1)
+                    AI prompt, (2) PriceGuard agent, and (3) server-side TypeScript code. Even if layers 1 and 2 fail,
+                    layer 3 always runs.</p>
+            </div>
+            <div class="card">
+                <h4>📊 How accurate are the competitor rates?</h4>
+                <p>They come from <strong>live internet searches</strong> of Airbnb and Booking.com. In well-supplied
+                    areas like JBR, Marina, Downtown, accuracy is ±5-10%. Always review the "comps" list to verify.</p>
+            </div>
+            <div class="card">
+                <h4>🔄 If I approve a price, does it update on Airbnb automatically?</h4>
+                <p><strong>Not yet.</strong> Currently manual. Auto-push to Hostaway is the next major feature (~3
+                    weeks). See Section 10.</p>
+            </div>
+            <div class="card">
+                <h4>👥 Can my team of 5 use this simultaneously?</h4>
+                <p><strong>Yes.</strong> Each user has independent sessions. Two managers can analyze different
+                    properties at the same time.</p>
+            </div>
+            <div class="card">
+                <h4>💰 How much does it cost per property?</h4>
+                <p>AI costs are ~<strong>$1-2 per property/month</strong> with typical usage. Infrastructure is
+                    ~$25-50/month shared. See Section 13.</p>
+            </div>
+            <div class="card">
+                <h4>📱 Does it work on mobile/tablet?</h4>
+                <p>Responsive on tablets (iPad). For phones, the layout collapses but laptop/tablet is recommended for
+                    analysis.</p>
+            </div>
+            <div class="card">
+                <h4>🔌 What PMS systems are supported?</h4>
+                <p><strong>Currently Hostaway only.</strong> Guesty and Lodgify planned. Custom REST API connectors
+                    available on request.</p>
+            </div>
+            <div class="card">
+                <h4>⚡ What if Aria gives wrong prices?</h4>
+                <p>Server-side code <strong>always clamps</strong> prices to your floor/ceiling. Bad proposals are
+                    auto-REJECTED. You always have final approval.</p>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════════════════ AGENT ORCHESTRATION DIAGRAM ═══════════════════════════════════ -->
+        <div class="divider"></div>
+        <section id="sec-orchestration" class="page-break">
+            <h2><span class="section-num">Section 5</span> Agent Orchestration — How Agents Connect</h2>
+            <p>This is the <strong>master diagram</strong> showing how all 9 agents interact:</p>
+
+            <div class="card">
+                <h4>Complete System Flow</h4>
+                <div class="mermaid">
+                    graph TB
+                    subgraph "PHASE 1: Setup"
+                    U1["👤 Revenue Manager"] -->|"Clicks Run Aria"| API1["POST /api/market-setup"]
+                    API1 -->|"Parallel"| A6["🔍 Agent 6: Marketing"]
+                    API1 -->|"Parallel"| A7["📊 Agent 7: Benchmark"]
+                    A6 -->|"Internet Search"| WEB1["🌐 Dubai Events"]
+                    A7 -->|"Internet Search"| WEB2["🌐 Competitor Rates"]
+                    A6 -->|"WRITES"| DB1[("market_events")]
+                    A7 -->|"WRITES"| DB2[("benchmark_data")]
+                    end
+
+                    subgraph "PHASE 2: Chat"
+                    U1 -->|"Types message"| API2["POST /api/chat"]
+                    API2 -->|"READS 5 tables"| DB3[("PostgreSQL")]
+                    API2 -->|"JSON + message"| A1["🧠 Agent 1: ARIA"]
+                    A1 --> A2["📊 Property Analyst"]
+                    A1 --> A3["📈 Booking Intel"]
+                    A1 --> A4["🏆 Market Research"]
+                    A1 --> A5["🛡️ PriceGuard"]
+                    A2 & A3 & A4 & A5 -->|"Results"| A1
+                    A1 -->|"Merged"| API2
+                    API2 -->|"enforceGuardrails"| SAFE["🔒 Server Safety"]
+                    SAFE -->|"Validated"| U1
+                    end
+
+                    subgraph "GUEST PIPELINE"
+                    U1 -->|"Guest Inbox"| A8["💬 Guest Reply"]
+                    U1 --> A9["📝 Summary"]
+                    end
+                </div>
+            </div>
+
+            <div class="card">
+                <h4>CRO Router — Intent Routing Logic</h4>
+                <div class="mermaid">
+                    flowchart LR
+                    MSG["User Message"] --> CL{"🧠 Aria Classifies"}
+                    CL -->|"Occupancy?"| PA["📊 Property Analyst"]
+                    CL -->|"Velocity?"| BI["📈 Booking Intel"]
+                    CL -->|"Competitors?"| MR["🏆 Market Research"]
+                    CL -->|"Price?"| PG["🛡️ PriceGuard"]
+                    CL -->|"Full analysis"| ALL["ALL 4 Agents"]
+                    PA & BI & MR & PG & ALL --> MERGE["🧠 Aria Merges"]
+                    MERGE --> RESP["📄 10-Section Report"]
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <footer>
+        <p>PriceOS Architecture Document v2.0 (Expanded) — 22 Sections — Client Review Meeting, March 5, 2026</p>
+        <p style="margin-top: 6px;">Confidential — Not for public distribution</p>
+    </footer>
+
+    <!-- Mermaid.js for rendering diagrams -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#f39c12',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#e67e22',
+                lineColor: '#94a3b8',
+                secondaryColor: '#111127',
+                tertiaryColor: '#0a0a1a',
+                fontSize: '14px'
+            }
+        });
+    </script>
+
+</body>
+
+</html>

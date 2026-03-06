@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
             gte(marketEvents.endDate, dateFrom),
             lte(marketEvents.startDate, dateTo)
           ))
-          .limit(20),
+          .limit(50),
 
         // Q3: Benchmark data (latest for this range)
         db.select()
@@ -235,6 +235,9 @@ export async function POST(req: NextRequest) {
       console.log(`📡 [Context Sync] Building JSON payload for direct injection...`);
 
       propertyDataPayload = {
+        // ── Today's date and data freshness ──
+        today: new Date().toISOString().split('T')[0],
+        market_data_scanned_at: benchmark?.createdAt ? new Date(benchmark.createdAt).toISOString() : new Date().toISOString(),
         // ── The date range the user selected in the UI ──
         analysis_window: {
           from: dateFrom,
@@ -276,7 +279,7 @@ export async function POST(req: NextRequest) {
           recommended_event: Number(benchmark.recommendedEvent || benchmark.p90Rate || 0),
           reasoning: benchmark.reasoning || "",
         } : null,
-        market_events: events.map(e => ({
+        market_events: events.filter(e => e.eventType === 'event' || e.eventType === 'holiday').map(e => ({
           title: e.title,
           start_date: e.startDate,
           end_date: e.endDate,
@@ -284,6 +287,30 @@ export async function POST(req: NextRequest) {
           description: e.description || "",
           suggested_premium_pct: e.suggestedPremium ? Number(e.suggestedPremium) : 0,
         })),
+        news: events.filter(e => e.eventType === 'news').map(n => ({
+          headline: n.title,
+          date: n.startDate,
+          category: "market",
+          sentiment: n.sentiment || "neutral",
+          demand_impact: n.demandImpact || "neutral",
+          suggested_premium_pct: n.suggestedPremium ? Number(n.suggestedPremium) : 0,
+          description: n.description || "",
+          source: n.source || "Web"
+        })),
+        daily_events: events.filter(e => e.eventType === 'daily_event').map(d => ({
+          title: d.title,
+          date: d.startDate,
+          impact: d.expectedImpact || "medium",
+          suggested_premium_pct: d.suggestedPremium ? Number(d.suggestedPremium) : 0,
+          source: d.source || "Web",
+          description: d.description || ""
+        })),
+        demand_outlook: {
+          trend: events.find(e => e.demandTrend)?.demandTrend || "moderate",
+          reason: "Aggregated from market intelligence.",
+          negative_factors: events.filter(e => e.eventType === 'news' && e.sentiment === 'negative').map(e => e.title),
+          positive_factors: events.filter(e => e.eventType === 'news' && e.sentiment === 'positive').map(e => e.title),
+        },
         recent_reservations: resRows.map(r => ({
           guestName: r.guestName || "Guest",
           startDate: r.startDate,

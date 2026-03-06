@@ -33,7 +33,10 @@ export const listings = pgTable("listings", {
   amenities: jsonb("amenities").$type<string[]>(), // Postgres natively supports JSON array of strings
   address: text("address"),
   priceFloor: numeric("price_floor", { precision: 10, scale: 2 }).notNull().default('0'),
+  floorReasoning: text("floor_reasoning"),
   priceCeiling: numeric("price_ceiling", { precision: 10, scale: 2 }).notNull().default('0'),
+  ceilingReasoning: text("ceiling_reasoning"),
+  guardrailsSource: text("guardrails_source").notNull().default("manual"), // 'manual' | 'ai'
 });
 
 // ─────────────────────────────────────────────────────────
@@ -106,11 +109,15 @@ export const marketEvents = pgTable("market_events", {
   // ── event + holiday fields ──
   expectedImpact: text("expected_impact"),      // 'high' | 'medium' | 'low'
   confidence: integer("confidence"),            // 0-100
-  suggestedPremium: numeric("suggested_premium", { precision: 5, scale: 2 }),
+  suggestedPremium: numeric("suggested_premium", { precision: 5, scale: 2 }), // can be negative for news
   source: text("source"),
   description: text("description"),
   location: text("location"),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
+
+  // ── news fields ──
+  sentiment: text("sentiment"),                 // 'positive' | 'negative' | 'neutral'
+  demandImpact: text("demand_impact"),          // 'positive_high' | 'negative_medium', etc.
 
   // ── competitor_intel fields ──
   compSampleSize: integer("comp_sample_size"),

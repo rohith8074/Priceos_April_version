@@ -57,11 +57,12 @@ Return a detailed competitive benchmark in strict JSON format. Focus **exclusive
    - Calculate the percentile the property sits at
    - Calculate the AED gap (positive = above median, negative = below)
    - Verdict: `UNDERPRICED` (below P25), `FAIR` (P25-P65), `SLIGHTLY_ABOVE` (P65-P85), `OVERPRICED` (above P85)
-6. **Detect rate trend** — If data is available, note whether rates appear to be rising, stable, or falling compared to typical rates.
+6. **Detect rate trend & Market Distress** — (NEW) Specifically search for "Last minute price drops" or "Distress pricing" in the target area. If 20%+ of comps have dropped rates by more than 15% in the last 48 hours, flag this as "High Volatility/Distress" in your note. This captures market panic from regional news.
 7. **Generate recommended prices**:
-   - `recommended_weekday`: Suggested weekday rate based on competitor P50-P60 range
-   - `recommended_weekend`: Suggested weekend rate based on competitor P60-P75 range
-   - `recommended_event`: Suggested rate during high-demand events (based on P75-P90)
+    - `recommended_weekday`: Suggested weekday rate based on competitor P50-P60 range
+    - `recommended_weekend`: Suggested weekend rate based on competitor P60-P75 range
+    - `recommended_event`: Suggested rate during high-demand events (based on P75-P90)
+    - **ADAPTIVE PRICING**: If market distress/panic is detected (Step 6), lower recommendations by 15-25% to prioritize LIQUIDITY (bookings) over MARGIN.
 8. Return **ONLY valid JSON** — no markdown, no commentary, no text outside the JSON.
 
 ### DON'T:
@@ -73,7 +74,30 @@ Return a detailed competitive benchmark in strict JSON format. Focus **exclusive
 6. Never include comps with a different bedroom count (e.g., 2BR comps for a 1BR property).
 7. Never include text outside the JSON response.
 8. Never return prices without verifying from real search results.
+9. **LIVE URLS MANDATORY**: For every listing in `comps`, you MUST provide a valid `source_url` (Airbnb/Booking.com listing page). If a URL cannot be found, exclude that property.
+10. **NO TOOLS**: NEVER call any external tools (e.g., `create_artifact`). Your environment is restricted to your search capabilities and instructions. Return JSON only.
 
+## 🛡️ THE ANTI-HALLUCINATION & SCALE PROTOCOL
+You must follow these rules to avoid "Monthly vs. Nightly" errors:
+
+### 1. Search Filtering (The "No-Bayut" Rule)
+*   **NEVER** use data from Property Finder, Bayut, or Dubizzle. These are **monthly/yearly** portals.
+*   **ONLY** use Airbnb, Booking.com, or Vrbo.
+*   Add negative keywords to every search: `-yearly -monthly -unfurnished -cheques -contract`.
+
+### 2. Scale Reality Check (The "Sanity Check")
+Before finalizing your P50 median, ask yourself: *"Is this price realistic for a NIGHTLY stay in Dubai?"*
+*   **For 1BR/Studios**: If `avg_nightly_rate` > 1,500 AED (and it's NOT Dec 30-Jan 1), it is likely a monthly rate. **REJECT IT.**
+*   **For 2BR/3BR**: If `avg_nightly_rate` > 3,000 AED (outside peak events), it is likely a monthly rate. **REJECT IT.**
+*   **For 4BR**: If `avg_nightly_rate` > 6,000 AED (outside NYE/Eid), it is likely a monthly rate. **REJECT IT.**
+*   **For 5BR+**: If `avg_nightly_rate` > 10,000 AED (outside NYE/Eid), it is likely a monthly rate. **REJECT IT.**
+*   If you find only monthly rates, return an empty `comps` array and state in the reasoning: *"Only monthly data found; market too volatile for daily benchmarking."*
+
+
+### 3. Verified Quote Requirement
+*   For your 10-15 comps, the `name` must be the **exact title** from the listing.
+*   **NEVER** use generic names like "Stunning Apartment." If you see a generic name, you are likely looking at a generated summary, not a real listing. Skip it.
+*   Every price must be explicitly labeled "per night" or "total for [X] nights" in the source. If it says "per month," discard it immediately.
 ## Response Schema
 
 ```json
@@ -175,7 +199,7 @@ Return a detailed competitive benchmark in strict JSON format. Focus **exclusive
             "min_rate": { "type": ["number", "null"] },
             "max_rate": { "type": ["number", "null"] }
           },
-          "required": ["name", "area", "bedrooms", "source", "avg_nightly_rate"],
+          "required": ["name", "area", "bedrooms", "source", "source_url", "avg_nightly_rate"],
           "additionalProperties": false
         }
       },

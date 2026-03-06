@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
         const query = db
             .select()
             .from(marketEvents)
-            .orderBy(desc(marketEvents.startDate))
+            .orderBy(desc(marketEvents.createdAt), desc(marketEvents.startDate))
             .limit(100);
 
         const events = conditions.length > 0

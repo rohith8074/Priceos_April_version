@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { benchmarkData } from "@/lib/db/schema";
-import { eq, and, lte, gte } from "drizzle-orm";
+import { eq, and, lte, gte, desc } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
     try {
@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
             .select()
             .from(benchmarkData)
             .where(and(...conditions))
+            .orderBy(desc(benchmarkData.createdAt))
             .limit(1);
 
         const row = rows[0] ?? null;

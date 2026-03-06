@@ -11,6 +11,9 @@ interface PriceGuardrailsEditorProps {
     listingId: number;
     initialFloor: number;
     initialCeiling: number;
+    guardrailsSource?: string;
+    floorReasoning?: string | null;
+    ceilingReasoning?: string | null;
     currencyCode?: string;
     /** Called after successful save with the new values */
     onSaved?: (floor: number, ceiling: number) => void;
@@ -23,6 +26,9 @@ export function PriceGuardrailsEditor({
     listingId,
     initialFloor,
     initialCeiling,
+    guardrailsSource = "manual",
+    floorReasoning,
+    ceilingReasoning,
     currencyCode = "AED",
     onSaved,
     highlightIfZero = true,
@@ -39,6 +45,8 @@ export function PriceGuardrailsEditor({
         setCeiling(String(initialCeiling || ""));
         setIsEditing(false);
     }, [listingId, initialFloor, initialCeiling]);
+
+    const isAiSet = guardrailsSource === "ai";
 
     const isZero = !initialFloor && !initialCeiling;
     const needsAttention = highlightIfZero && isZero;
@@ -103,15 +111,21 @@ export function PriceGuardrailsEditor({
                         : "border-border/50 bg-muted/30 hover:bg-muted/60 text-muted-foreground hover:text-foreground",
                     className
                 )}
-                title="Click to edit price guardrails"
+                title={isAiSet ? (floorReasoning || ceilingReasoning || "AI suggested guardrails") : "Click to edit price guardrails"}
             >
                 {needsAttention ? (
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                 ) : (
-                    <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                    <ShieldCheck className={cn("h-3.5 w-3.5 shrink-0", isAiSet ? "text-primary" : "text-emerald-500")} />
                 )}
-                <span className="text-[11px] font-bold uppercase tracking-widest">
+                <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest">
                     {needsAttention ? "Set Guardrails" : "Guardrails"}
+                    {isAiSet && !needsAttention && (
+                        <span className="bg-primary/20 text-primary px-1.5 py-0.5 rounded text-[8px] flex items-center gap-1 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                            AI SET
+                        </span>
+                    )}
                 </span>
                 <span className="text-[11px] font-mono">
                     {needsAttention
