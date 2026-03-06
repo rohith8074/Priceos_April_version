@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PriceOS — Internal Architecture & System Design</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --surface-2: #1a1a2e;
+            --border: #2a2a3e;
+            --text: #e0e0f0;
+            --text-dim: #8888aa;
+            --accent: #6c5ce7;
+            --accent-glow: rgba(108, 92, 231, 0.15);
+            --green: #00d2a0;
+            --red: #ff6b6b;
+            --orange: #ffb347;
+            --blue: #4ecdc4;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            font-size: 14px;
+        }
+
+        @media print {
+            body {
+                background: white;
+                color: #1a1a2e;
+                font-size: 11px;
+            }
+
+            .page-break {
+                page-break-before: always;
+            }
+
+            .no-print {
+                display: none;
+            }
+
+            h1,
+            h2,
+            h3 {
+                color: #1a1a2e;
+            }
+
+            table {
+                font-size: 10px;
+            }
+
+            .cover {
+                background: white !important;
+            }
+
+            .cover h1 {
+                color: #6c5ce7 !important;
+            }
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px;
+        }
+
+        /* Cover Page */
+        .cover {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background: linear-gradient(135deg, var(--bg) 0%, var(--surface-2) 100%);
+            padding: 60px 40px;
+        }
+
+        .cover .logo {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, var(--accent), var(--blue));
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 32px;
+            box-shadow: 0 20px 60px rgba(108, 92, 231, 0.3);
+        }
+
+        .cover h1 {
+            font-size: 48px;
+            font-weight: 800;
+            color: white;
+            letter-spacing: -1.5px;
+            margin-bottom: 12px;
+        }
+
+        .cover .subtitle {
+            font-size: 20px;
+            color: var(--text-dim);
+            font-weight: 300;
+            margin-bottom: 48px;
+        }
+
+        .cover .meta {
+            display: flex;
+            gap: 32px;
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+
+        .cover .meta span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Section Headers */
+        h1 {
+            font-size: 32px;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        h2 {
+            font-size: 24px;
+            font-weight: 700;
+            color: white;
+            margin-top: 48px;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--accent);
+        }
+
+        h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--blue);
+            margin-top: 32px;
+            margin-bottom: 12px;
+        }
+
+        p {
+            margin-bottom: 16px;
+            color: var(--text);
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0 24px;
+            font-size: 13px;
+        }
+
+        thead th {
+            background: var(--surface-2);
+            color: var(--accent);
+            font-weight: 600;
+            text-align: left;
+            padding: 10px 14px;
+            border-bottom: 2px solid var(--accent);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        tbody td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        tbody tr:hover {
+            background: var(--accent-glow);
+        }
+
+        /* Code blocks */
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            margin: 16px 0;
+            color: var(--text-dim);
+        }
+
+        code {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            background: var(--surface-2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--green);
+        }
+
+        /* Cards */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 16px 0;
+        }
+
+        .card.highlight {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .card h4 {
+            font-size: 15px;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 8px;
+        }
+
+        .card p {
+            color: var(--text-dim);
+            font-size: 13px;
+            margin-bottom: 0;
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge.green {
+            background: rgba(0, 210, 160, 0.15);
+            color: var(--green);
+        }
+
+        .badge.red {
+            background: rgba(255, 107, 107, 0.15);
+            color: var(--red);
+        }
+
+        .badge.orange {
+            background: rgba(255, 179, 71, 0.15);
+            color: var(--orange);
+        }
+
+        .badge.blue {
+            background: rgba(78, 205, 196, 0.15);
+            color: var(--blue);
+        }
+
+        /* Architecture diagrams */
+        .diagram {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .flow-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 20px 0;
+        }
+
+        .flow-box {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .flow-box.active {
+            border-color: var(--green);
+            box-shadow: 0 0 20px rgba(0, 210, 160, 0.1);
+        }
+
+        .flow-box h5 {
+            font-size: 13px;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 4px;
+        }
+
+        .flow-box p {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin: 0;
+        }
+
+        .section-number {
+            display: inline-block;
+            width: 32px;
+            height: 32px;
+            background: var(--accent);
+            color: white;
+            border-radius: 8px;
+            text-align: center;
+            line-height: 32px;
+            font-weight: 700;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+
+        /* TOC */
+        .toc {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            margin: 32px 0;
+        }
+
+        .toc h3 {
+            margin-top: 0;
+            color: white;
+        }
+
+        .toc ol {
+            padding-left: 24px;
+        }
+
+        .toc li {
+            margin-bottom: 8px;
+            color: var(--text-dim);
+        }
+
+        .toc a {
+            color: var(--blue);
+            text-decoration: none;
+        }
+
+        .toc a:hover {
+            text-decoration: underline;
+        }
+
+        ul,
+        ol {
+            padding-left: 24px;
+            margin-bottom: 16px;
+        }
+
+        li {
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 40px 0;
+        }
+
+        .agent-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 12px;
+            margin: 20px 0;
+        }
+
+        .agent-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .agent-card .agent-num {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .agent-card h5 {
+            font-size: 15px;
+            font-weight: 700;
+            color: white;
+            margin: 4px 0;
+        }
+
+        .agent-card .model {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+
+        .agent-card p {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin: 0;
+        }
+
+        .step-list {
+            counter-reset: step;
+            list-style: none;
+            padding: 0;
+        }
+
+        .step-list li {
+            counter-increment: step;
+            padding: 12px 16px 12px 52px;
+            position: relative;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .step-list li::before {
+            content: counter(step);
+            position: absolute;
+            left: 16px;
+            top: 12px;
+            width: 24px;
+            height: 24px;
+            background: var(--accent);
+            color: white;
+            border-radius: 6px;
+            text-align: center;
+            line-height: 24px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- COVER PAGE -->
+    <div class="cover">
+        <div class="logo">P</div>
+        <h1>PriceOS</h1>
+        <p class="subtitle">Internal Architecture & System Design</p>
+        <div class="meta">
+            <span>📄 Version 2.0</span>
+            <span>📅 March 6, 2026</span>
+            <span>🏗️ Production System</span>
+        </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="container">
+
+        <!-- TOC -->
+        <div class="toc">
+            <h3>📋 Table of Contents</h3>
+            <ol>
+                <li><a href="#overview">Executive Overview</a></li>
+                <li><a href="#stack">Tech Stack</a></li>
+                <li><a href="#architecture">System Architecture</a></li>
+                <li><a href="#database">Database Schema</a></li>
+                <li><a href="#agents">AI Agent Architecture</a></li>
+                <li><a href="#safety">Safety & Anti-Hallucination</a></li>
+                <li><a href="#intelligence">The 7-Step Intelligence Sweep</a></li>
+                <li><a href="#api">API Architecture</a></li>
+                <li><a href="#frontend">Frontend Architecture</a></li>
+                <li><a href="#sync">Data Sync Pipeline</a></li>
+                <li><a href="#security">Security Architecture</a></li>
+                <li><a href="#deployment">Deployment & Cost</a></li>
+                <li><a href="#decisions">Key Design Decisions</a></li>
+                <li><a href="#glossary">Glossary</a></li>
+            </ol>
+        </div>
+
+        <!-- SECTION 1 -->
+        <h2 id="overview"><span class="section-number">1</span> Executive Overview</h2>
+        <p>PriceOS is an <strong>AI-powered dynamic pricing copilot</strong> purpose-built for Dubai short-term rental
+            property managers. It replaces manual pricing spreadsheets with an autonomous multi-agent system that scans
+            the internet for market intelligence, benchmarks competitors in real-time, and generates daily pricing
+            recommendations — all through a conversational interface called <strong>Aria</strong>.</p>
+
+        <div class="card highlight">
+            <h4>💡 What Makes PriceOS Unique</h4>
+            <p>Unlike traditional pricing tools that use static rules, PriceOS deploys 10 specialized AI agents that
+                collaborate in real-time — scanning for geopolitical threats, competitor prices, events, and economic
+                signals to generate defensible pricing decisions.</p>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Capability</th>
+                    <th>Traditional Tools</th>
+                    <th>PriceOS</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Pricing decisions</td>
+                    <td>Manual / rule-based</td>
+                    <td>AI agents with real-time internet access</td>
+                </tr>
+                <tr>
+                    <td>Market intelligence</td>
+                    <td>Static quarterly reports</td>
+                    <td>Live scanning (wars, events, currency, weather)</td>
+                </tr>
+                <tr>
+                    <td>User interface</td>
+                    <td>Dashboards with sliders</td>
+                    <td>Conversational AI ("Aria, what should I price?")</td>
+                </tr>
+                <tr>
+                    <td>Competitor data</td>
+                    <td>Manual surveys</td>
+                    <td>Real-time Airbnb/Booking.com scraping</td>
+                </tr>
+                <tr>
+                    <td>Safety guardrails</td>
+                    <td>None</td>
+                    <td>4-layer protection: PriceGuard + Guardrails Agent</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="page-break"></div>
+
+        <!-- SECTION 2 -->
+        <h2 id="stack"><span class="section-number">2</span> Tech Stack</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Layer</th>
+                    <th>Technology</th>
+                    <th>Purpose</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Frontend</td>
+                    <td>Next.js 16 + React 19</td>
+                    <td>Server-rendered web application</td>
+                </tr>
+                <tr>
+                    <td>Styling</td>
+                    <td>Tailwind CSS 4 + shadcn/ui</td>
+                    <td>Premium dark-mode UI</td>
+                </tr>
+                <tr>
+                    <td>State</td>
+                    <td>Zustand</td>
+                    <td>Client-side state management</td>
+                </tr>
+                <tr>
+                    <td>Database</td>
+                    <td>Neon (Serverless PostgreSQL)</td>
+                    <td>Auto-scaling Postgres</td>
+                </tr>
+                <tr>
+                    <td>ORM</td>
+                    <td>Drizzle ORM</td>
+                    <td>Type-safe SQL, zero overhead</td>
+                </tr>
+                <tr>
+                    <td>AI Platform</td>
+                    <td>Lyzr Studio</td>
+                    <td>Multi-agent orchestration</td>
+                </tr>
+                <tr>
+                    <td>AI Models</td>
+                    <td>Gemini 3.0 Flash + GPT-4o + GPT-4o-mini</td>
+                    <td>Chat, search, compute</td>
+                </tr>
+                <tr>
+                    <td>Internet Search</td>
+                    <td>Perplexity Sonar LLM</td>
+                    <td>Real-time web search</td>
+                </tr>
+                <tr>
+                    <td>PMS</td>
+                    <td>Hostaway API</td>
+                    <td>Property & booking sync</td>
+                </tr>
+                <tr>
+                    <td>Auth</td>
+                    <td>Neon Auth (Stack Auth)</td>
+                    <td>User management</td>
+                </tr>
+                <tr>
+                    <td>Hosting</td>
+                    <td>Vercel</td>
+                    <td>Edge-optimized deployment</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="page-break"></div>
+
+        <!-- SECTION 3 -->
+        <h2 id="architecture"><span class="section-number">3</span> System Architecture</h2>
+
+        <h3>3.1 Two-Phase Architecture</h3>
+        <p>PriceOS operates in <strong>two distinct phases</strong>. This is the most important architectural concept:
+        </p>
+
+        <div class="flow-grid">
+            <div class="flow-box active">
+                <h5>⚡ Phase 1: Setup</h5>
+                <p><strong>Trigger:</strong> User clicks "Run Aria"<br>
+                    <strong>Duration:</strong> 15-30 seconds<br>
+                    <strong>Agents:</strong> 6 (Marketing) + 7 (Benchmark) + 10 (Guardrails)<br>
+                    <strong>Internet:</strong> ✅ Yes — scans the web
+                </p>
+            </div>
+            <div class="flow-box">
+                <h5>💬 Phase 2: Chat</h5>
+                <p><strong>Trigger:</strong> User sends a message<br>
+                    <strong>Duration:</strong> 5-15 seconds<br>
+                    <strong>Agents:</strong> 1 (Aria) → 2, 3, 4, 5<br>
+                    <strong>Internet:</strong> ❌ No — uses cached data
+                </p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h4>🔑 Key Insight</h4>
+            <p>Only Agents 6 and 7 have internet access. All chat-phase agents work with data cached from the last "Run
+                Aria" scan. If an event is announced between scans, agents will be blind to it until the user triggers a
+                new scan.</p>
+        </div>
+
+        <h3>3.2 Data Flow</h3>
+        <pre>
+User clicks "Run Aria"
+        │
+        ├──→ Agent 6 (Marketing) ──🌐──→ Events, Wars, Weather ──→ market_events DB
+        │
+        ├──→ Agent 7 (Benchmark) ──🌐──→ Airbnb/Booking.com ──→ benchmark_data DB
+        │
+        └──→ Agent 10 (Guardrails) ──→ Floor/Ceiling prices ──→ listings DB
+
+User sends message to Aria
+        │
+        ▼
+    chat/route.ts ──→ Loads all cached data from DB
+        │
+        └──→ Injects JSON payload (today, metrics, events, benchmark)
+             │
+             ▼
+        Agent 1 (Aria) ──→ Routes to sub-agents → Merges → Responds
+             │
+             ├──→ Agent 2 (Property Analyst) → Gaps, LOS, Seasonal
+             ├──→ Agent 3 (Booking Intel) → Velocity, Revenue
+             ├──→ Agent 4 (Market Research) → Events, News factors
+             └──→ Agent 5 (PriceGuard) → Final prices + validation
+    </pre>
+
+        <div class="page-break"></div>
+
+        <!-- SECTION 4 -->
+        <h2 id="database"><span class="section-number">4</span> Database Schema</h2>
+        <p>PriceOS uses <strong>9 PostgreSQL tables</strong> in Neon, designed for near-zero JSONB usage:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Table</th>
+                    <th>Role</th>
+                    <th>Written By</th>
+                    <th>Read By</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>listings</code></td>
+                    <td>Property registry</td>
+                    <td>Hostaway Sync + Agent 10</td>
+                    <td>All agents, UI</td>
+                </tr>
+                <tr>
+                    <td><code>inventory_master</code></td>
+                    <td>Daily price calendar</td>
+                    <td>Hostaway Sync</td>
+                    <td>Calendar UI, Chat</td>
+                </tr>
+                <tr>
+                    <td><code>reservations</code></td>
+                    <td>Guest bookings & revenue</td>
+                    <td>Hostaway Sync</td>
+                    <td>Dashboard, Agents</td>
+                </tr>
+                <tr>
+                    <td><code>market_events</code></td>
+                    <td>AI market intelligence</td>
+                    <td>Agent 6 (Marketing)</td>
+                    <td>Agent 4, Chat payload</td>
+                </tr>
+                <tr>
+                    <td><code>benchmark_data</code></td>
+                    <td>Competitor pricing</td>
+                    <td>Agent 7 (Benchmark)</td>
+                    <td>Agent 5, Chat payload</td>
+                </tr>
+                <tr>
+                    <td><code>chat_messages</code></td>
+                    <td>Conversation history</td>
+                    <td>Chat API</td>
+                    <td>Chat UI</td>
+                </tr>
+                <tr>
+                    <td><code>user_settings</code></td>
+                    <td>User configuration</td>
+                    <td>Settings UI</td>
+                    <td>Auth, Sync</td>
+                </tr>
+                <tr>
+                    <td><code>guest_summaries</code></td>
+                    <td>AI guest comms analysis</td>
+                    <td>Summary Agent</td>
+                    <td>Inbox UI</td>
+                </tr>
+                <tr>
+                    <td><code>hostaway_conversations</code></td>
+                    <td>Raw guest messages</td>
+                    <td>Hostaway Sync</td>
+                    <td>Guest Reply Agent</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="page-break"></div>
+
+        <!-- SECTION 5 -->
+        <h2 id="agents"><span class="section-number">5</span> AI Agent Architecture</h2>
+
+        <div class="agent-grid">
+            <div class="agent-card">
+                <span class="agent-num">Agent 1</span>
+                <h5>CRO Router ("Aria")</h5>
+                <div class="model">Gemini 3.0 Flash · <span class="badge blue">Chat</span></div>
+                <p>User-facing orchestrator. Routes queries, merges outputs, delivers reports.</p>
+            </div>
+            <div class="agent-card">
+                <span class="agent-num">Agent 2</span>
+                <h5>Property Analyst</h5>
+                <div class="model">GPT-4o-mini · <span class="badge blue">Chat</span></div>
+                <p>Gap detection, LOS optimization, seasonal patterns, revenue forecasts.</p>
+            </div>
+            <div class="agent-card">
+                <span class="agent-num">Agent 3</span>
+                <h5>Booking Intelligence</h5>
+                <div class="model">GPT-4o-mini · <span class="badge blue">Chat</span></div>
+                <p>Velocity analysis, revenue breakdown, channel mix, booking patterns.</p>
+            </div>
+            <div class="agent-card">
+                <span class="agent-num">Agent 4</span>
+                <h5>Market Research</h5>
+                <div class="model">GPT-4o-mini · <span class="badge blue">Chat</span></div>
+                <p>Parses pre-cached events, news, competitors into pricing factors.</p>
+            </div>
+            <div class="agent-card">
+                <span class="agent-num">Agent 5</span>
+                <h5>PriceGuard</h5>
+                <div class="model">GPT-4o-mini · <span class="badge orange">Validator</span></div>
+                <p>Final pricing engine with veto power. Crisis override capability.</p>
+            </div>
+            <div class="agent-card">
+                <span class="agent-num">Agent 6</span>
+                <h5>Marketing Intelligence</h5>
+                <div class="model">GPT-4o (Sonar) · <span class="badge green">Internet</span></div>
+                <p>7-step internet sweep: threats, events, economy, weather, viral signals.</p>
+            </div>
+            <div class="agent-card">
+                <span class="agent-num">Agent 7</span>
+                <h5>Benchmark Agent</h5>
+                <div class="model">GPT-4o (Sonar) · <span class="badge green">Internet</span></div>
+                <p>Competitor pricing from Airbnb/Booking.com with scale validation.</p>
+            </div>
+            <div class="agent-card">
+                <span class="agent-num">Agent 10</span>
+                <h5>Guardrails Agent</h5>
+                <div class="model">GPT-4o-mini · <span class="badge orange">Setup</span></div>
+                <p>Computes intelligent floor/ceiling prices from benchmark data.</p>
+            </div>
+            <div class="agent-card">
+                <span class="agent-num">Utility</span>
+                <h5>Conv. Summary Agent</h5>
+                <div class="model">GPT-4o-mini · <span class="badge blue">On-demand</span></div>
+                <p>Analyzes guest conversations for patterns, themes, action items.</p>
+            </div>
+            <div class="agent-card">
+                <span class="agent-num">Utility</span>
+                <h5>Guest Reply Agent</h5>
+                <div class="model">GPT-4o-mini · <span class="badge blue">On-demand</span></div>
+                <p>Auto-generates warm, accurate guest replies with DB lookup.</p>
+            </div>
+        </div>
+
+        <div class="page-break"></div>
+
+        <!-- SECTION 6 -->
+        <h2 id="safety"><span class="section-number">6</span> Safety & Anti-Hallucination</h2>
+        <p>PriceOS implements <strong>4 layers of protection</strong> against AI errors:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Layer</th>
+                    <th>Agent</th>
+                    <th>Protection</th>
+                    <th>Example</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="badge green">Layer 1</span></td>
+                    <td>Agent 6</td>
+                    <td>"2026 Mention Rule" — rejects events without explicit year on source</td>
+                    <td>Prevents 2025 Art Dubai dates being used for 2026</td>
+                </tr>
+                <tr>
+                    <td><span class="badge blue">Layer 2</span></td>
+                    <td>Agent 7</td>
+                    <td>Bedroom-aware rate thresholds (1BR &lt;1500, 4BR &lt;6000 AED)</td>
+                    <td>Rejects monthly rental data mistaken as nightly</td>
+                </tr>
+                <tr>
+                    <td><span class="badge orange">Layer 3</span></td>
+                    <td>Agent 5</td>
+                    <td>Geopolitical crisis override — wars cancel event premiums</td>
+                    <td>Iran tensions → drop to P25 pricing for occupancy</td>
+                </tr>
+                <tr>
+                    <td><span class="badge red">Layer 4</span></td>
+                    <td>Agent 1</td>
+                    <td>Anomaly alert — warns user if market data seems wrong</td>
+                    <td>"Market median seems wrong — using conservative pricing"</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="page-break"></div>
+
+        <!-- SECTION 7 -->
+        <h2 id="intelligence"><span class="section-number">7</span> The 7-Step Intelligence Sweep</h2>
+        <p>Agent 6 (Marketing) executes this comprehensive sweep every time "Run Aria" is triggered:</p>
+
+        <ul class="step-list">
+            <li><strong>🔴 Geopolitical Threat Scan</strong> — Travel advisories, Iran-UAE tensions, Yemen Houthi
+                attacks, flight disruptions, pandemics. Impact: -40% to -60%.</li>
+            <li><strong>📅 Calendar & Religious Dates</strong> — Ramadan phase (early/mid/late/Eid), UAE holidays,
+                school holidays. Impact: -20% to +50%.</li>
+            <li><strong>🎪 Major Events</strong> — Exhibitions, conferences, festivals, concerts, sports in date range.
+                Impact: +10% to +30%.</li>
+            <li><strong>🏘️ Neighborhood Intelligence</strong> — Landmark closures, local activities, micro-events.
+                Impact: -10%.</li>
+            <li><strong>💹 Economic & Currency Signals</strong> — INR/GBP/EUR exchange rates, oil prices, hotel
+                occupancy, tourism stats. Impact: -3% to +5%.</li>
+            <li><strong>🌡️ Weather & Environment</strong> — Heat waves, sandstorms, pleasant conditions. Impact: -40%
+                (summer).</li>
+            <li><strong>📱 Viral & Trending</strong> — Dubai trending on social media, scam warnings, new attractions.
+                Impact: ±5%.</li>
+        </ul>
+
+        <div class="page-break"></div>
+
+        <!-- SECTION 8 -->
+        <h2 id="api"><span class="section-number">8</span> API Architecture</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Route</th>
+                    <th>Method</th>
+                    <th>Purpose</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>/api/chat</code></td>
+                    <td>POST</td>
+                    <td>Send message to Aria, get AI response</td>
+                </tr>
+                <tr>
+                    <td><code>/api/market-setup</code></td>
+                    <td>POST</td>
+                    <td>Trigger Setup Phase (Agents 6, 7, 10)</td>
+                </tr>
+                <tr>
+                    <td><code>/api/calendar-metrics</code></td>
+                    <td>GET</td>
+                    <td>Occupancy, booked/available/blocked days</td>
+                </tr>
+                <tr>
+                    <td><code>/api/calendar</code></td>
+                    <td>GET</td>
+                    <td>Daily inventory with prices</td>
+                </tr>
+                <tr>
+                    <td><code>/api/listings</code></td>
+                    <td>GET</td>
+                    <td>Property list with details</td>
+                </tr>
+                <tr>
+                    <td><code>/api/benchmark</code></td>
+                    <td>GET</td>
+                    <td>Competitor benchmark data</td>
+                </tr>
+                <tr>
+                    <td><code>/api/events</code></td>
+                    <td>GET</td>
+                    <td>Market events and news</td>
+                </tr>
+                <tr>
+                    <td><code>/api/reservations</code></td>
+                    <td>GET</td>
+                    <td>Guest bookings</td>
+                </tr>
+                <tr>
+                    <td><code>/api/proposals</code></td>
+                    <td>GET/POST</td>
+                    <td>AI pricing proposals</td>
+                </tr>
+                <tr>
+                    <td><code>/api/sync/[type]</code></td>
+                    <td>POST</td>
+                    <td>Hostaway data sync</td>
+                </tr>
+                <tr>
+                    <td><code>/api/conversations</code></td>
+                    <td>GET</td>
+                    <td>Guest communication threads</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>External Integrations</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Purpose</th>
+                    <th>Method</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Lyzr Studio</td>
+                    <td>AI agent hosting & inference</td>
+                    <td>REST API</td>
+                </tr>
+                <tr>
+                    <td>Hostaway</td>
+                    <td>PMS data sync</td>
+                    <td>REST API (100 req/min)</td>
+                </tr>
+                <tr>
+                    <td>Neon</td>
+                    <td>PostgreSQL database</td>
+                    <td>Serverless WebSocket</td>
+                </tr>
+                <tr>
+                    <td>Perplexity Sonar</td>
+                    <td>Internet search</td>
+                    <td>Via Lyzr agents</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="page-break"></div>
+
+        <!-- SECTION 9 -->
+        <h2 id="frontend"><span class="section-number">9</span> Frontend Architecture</h2>
+        <h3>Page Map</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Route</th>
+                    <th>Page</th>
+                    <th>Key Components</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>/dashboard</code></td>
+                    <td>Overview</td>
+                    <td>MetricCards, OccupancyChart, RevenueChart</td>
+                </tr>
+                <tr>
+                    <td><code>/dashboard/agent-chat</code></td>
+                    <td>Aria Chat</td>
+                    <td>ChatPanel, MessageBubble, ProposalDrawer</td>
+                </tr>
+                <tr>
+                    <td><code>/dashboard/calendar</code></td>
+                    <td>Calendar</td>
+                    <td>CalendarGrid, DayCell, PriceEditor</td>
+                </tr>
+                <tr>
+                    <td><code>/dashboard/properties</code></td>
+                    <td>Properties</td>
+                    <td>PropertyCard, SyncStatusBar</td>
+                </tr>
+                <tr>
+                    <td><code>/dashboard/bookings</code></td>
+                    <td>Bookings</td>
+                    <td>BookingTable, ReservationDetail</td>
+                </tr>
+                <tr>
+                    <td><code>/dashboard/inbox</code></td>
+                    <td>Guest Inbox</td>
+                    <td>ConversationList, MessageThread</td>
+                </tr>
+                <tr>
+                    <td><code>/dashboard/finance</code></td>
+                    <td>Finance</td>
+                    <td>RevenueChart, ExpenseTable</td>
+                </tr>
+                <tr>
+                    <td><code>/dashboard/insights</code></td>
+                    <td>Intelligence</td>
+                    <td>EventTimeline, BenchmarkChart</td>
+                </tr>
+                <tr>
+                    <td><code>/dashboard/pricing</code></td>
+                    <td>Pricing</td>
+                    <td>PriceTable, ProposalReview</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="page-break"></div>
+
+        <!-- SECTION 10 -->
+        <h2 id="sync"><span class="section-number">10</span> Data Sync Pipeline</h2>
+        <pre>
+Hostaway PMS API
+        │
+        ▼
+┌───────────────────┐
+│  /api/sync/[type] │    Types: listings, calendar, reservations, conversations
+│  Sync Controller  │
+└───────────┬───────┘
+            │
+            ▼
+    1. Fetch page-by-page from Hostaway API
+    2. Transform to PriceOS schema
+    3. Upsert (INSERT ... ON CONFLICT UPDATE)
+    4. Track sync metadata (last_synced)
+    5. Handle rate limits (100 req/min)
+            │
+            ▼
+┌───────────────────────────────────────────┐
+│  Neon PostgreSQL                           │
+│  listings │ inventory_master │ reservations │
+└───────────────────────────────────────────┘
+    </pre>
+
+        <!-- SECTION 11 -->
+        <h2 id="security"><span class="section-number">11</span> Security Architecture</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Layer</th>
+                    <th>Implementation</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Authentication</td>
+                    <td>Neon Auth (Stack Auth) — JWT sessions</td>
+                </tr>
+                <tr>
+                    <td>API Protection</td>
+                    <td>Every route validates userId from session</td>
+                </tr>
+                <tr>
+                    <td>Data Isolation</td>
+                    <td>All queries filtered by userId — no cross-user leakage</td>
+                </tr>
+                <tr>
+                    <td>AI Safety</td>
+                    <td>PriceGuard has unconditional veto power</td>
+                </tr>
+                <tr>
+                    <td>Price Guardrails</td>
+                    <td>Floor/ceiling prevent catastrophic pricing</td>
+                </tr>
+                <tr>
+                    <td>Guest Privacy</td>
+                    <td>AI never exposes PII outside owner context</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="page-break"></div>
+
+        <!-- SECTION 12 -->
+        <h2 id="deployment"><span class="section-number">12</span> Deployment & Cost</h2>
+        <pre>
+┌────────────────────┐     ┌────────────────────┐
+│   Vercel Edge       │     │   Neon Serverless   │
+│   (Next.js SSR)     │────→│   (PostgreSQL)      │
+│   Auto-scaling      │     │   Auto-scaling      │
+└────────────────────┘     └────────────────────┘
+         │
+         ├──→ Lyzr Studio (AI inference)
+         ├──→ Hostaway API (PMS data)
+         └──→ Perplexity Sonar (web search)
+    </pre>
+        <table>
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Approx. Monthly (10 properties)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Vercel</td>
+                    <td>~$20/mo</td>
+                </tr>
+                <tr>
+                    <td>Neon PostgreSQL</td>
+                    <td>~$19/mo</td>
+                </tr>
+                <tr>
+                    <td>Lyzr Studio</td>
+                    <td>~$50-100/mo</td>
+                </tr>
+                <tr>
+                    <td>Hostaway API</td>
+                    <td>Included with PMS</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- SECTION 13 -->
+        <h2 id="decisions"><span class="section-number">13</span> Key Design Decisions</h2>
+
+        <div class="card">
+            <h4>Why Multi-Agent (Not Single LLM)?</h4>
+            <p>A single LLM cannot search the internet, validate prices, AND generate reports in one call. 10
+                specialized agents each have a narrow, verifiable scope — if PriceGuard rejects a price, we know exactly
+                why.</p>
+        </div>
+        <div class="card">
+            <h4>Why Two-Phase (Not Real-Time)?</h4>
+            <p>Internet searches take 15-30 seconds — too slow for real-time. Competitor prices don't change
+                minute-by-minute. Property managers want to review pricing before applying.</p>
+        </div>
+        <div class="card">
+            <h4>Why Floor/Ceiling Guardrails?</h4>
+            <p>Pricing errors are asymmetric: overpricing loses one night; underpricing creates a viral "cheap"
+                perception that's hard to undo. Guardrails create a safe zone for AI decisions.</p>
+        </div>
+
+        <div class="page-break"></div>
+
+        <!-- GLOSSARY -->
+        <h2 id="glossary"><span class="section-number">14</span> Glossary</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Term</th>
+                    <th>Definition</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>PMS</td>
+                    <td>Property Management System (Hostaway) — source of truth for bookings</td>
+                </tr>
+                <tr>
+                    <td>STR</td>
+                    <td>Short-Term Rental (Airbnb, Booking.com listings)</td>
+                </tr>
+                <tr>
+                    <td>ADR</td>
+                    <td>Average Daily Rate — total revenue ÷ booked nights</td>
+                </tr>
+                <tr>
+                    <td>LOS</td>
+                    <td>Length of Stay — min/max night requirements</td>
+                </tr>
+                <tr>
+                    <td>P50 / P75 / P90</td>
+                    <td>Percentile rates from competitor benchmark</td>
+                </tr>
+                <tr>
+                    <td>CRO</td>
+                    <td>Chief Revenue Officer — the persona Aria embodies</td>
+                </tr>
+                <tr>
+                    <td>Sonar LLM</td>
+                    <td>Perplexity's internet-connected language model</td>
+                </tr>
+                <tr>
+                    <td>Setup Phase</td>
+                    <td>Internet-connected scan triggered by "Run Aria"</td>
+                </tr>
+                <tr>
+                    <td>Chat Phase</td>
+                    <td>Conversational AI using pre-cached data</td>
+                </tr>
+                <tr>
+                    <td>PriceGuard</td>
+                    <td>Agent 5 — the final pricing validator with veto power</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <hr class="divider">
+
+        <footer>
+            <p>PriceOS — Internal Architecture Document · v2.0 · March 2026</p>
+            <p style="font-size: 11px; margin-top: 8px;">Prepared for client review. For technical questions, contact
+                the PriceOS engineering team.</p>
+        </footer>
+
+    </div>
+
+</body>
+
+</html>

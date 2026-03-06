@@ -227,7 +227,9 @@ export async function POST(req: NextRequest) {
                     description: sql`EXCLUDED.description`,
                     metadata: sql`EXCLUDED.metadata`,
                     sentiment: sql`EXCLUDED.sentiment`,
-                    demandImpact: sql`EXCLUDED.demand_impact`
+                    demandImpact: sql`EXCLUDED.demand_impact`,
+                    // ✅ Update timestamp on every upsert so chat knows data is fresh
+                    createdAt: new Date(),
                 }
             });
         }
@@ -254,12 +256,20 @@ export async function POST(req: NextRequest) {
             recommendedEvent: String(agentBench?.recommended_rates?.event_peak || Math.round(medianRate * 1.5)),
             reasoning: agentBench?.recommended_rates?.reasoning || agentMkt?.summary || "Data synthesized from market search.",
             comps: (agentBench?.comps || []).map((c: any) => ({
-                ...c,
-                avgRate: c.avg_nightly_rate || c.avgRate // Map from agent schema to UI schema
-            })).filter((c: any) => c.sourceUrl) // USER REQUEST: Only real clickable listings
+                name: c.name || "Unknown Listing",
+                source: c.source || "Airbnb",
+                sourceUrl: c.source_url || c.sourceUrl || null,  // Agent returns source_url (snake), DB expects sourceUrl (camel)
+                rating: c.rating ?? null,
+                reviews: c.reviews ?? null,
+                avgRate: c.avg_nightly_rate || c.avgRate || 0,    // Agent returns avg_nightly_rate (snake)
+                weekdayRate: c.weekday_rate || c.weekdayRate || null,
+                weekendRate: c.weekend_rate || c.weekendRate || null,
+                minRate: c.min_rate || c.minRate || null,
+                maxRate: c.max_rate || c.maxRate || null,
+            }))
         };
 
-        console.log(`📉 Benchmarking complete. Verdict: ${benchmark.verdict}. Median: ${medianRate}`);
+        console.log(`📉 Benchmarking complete. Verdict: ${benchmark.verdict}. Median: ${medianRate}. Comps: ${benchmark.comps.length} (sample URL: ${benchmark.comps[0]?.sourceUrl || 'none'})`);
 
         await db.insert(benchmarkData).values(benchmark).onConflictDoUpdate({
             target: [benchmarkData.listingId, benchmarkData.dateFrom, benchmarkData.dateTo],
@@ -274,8 +284,14 @@ export async function POST(req: NextRequest) {
                 percentile: benchmark.percentile,
                 verdict: benchmark.verdict,
                 rateTrend: benchmark.rateTrend,
+                trendPct: benchmark.trendPct,
+                recommendedWeekday: benchmark.recommendedWeekday,
+                recommendedWeekend: benchmark.recommendedWeekend,
+                recommendedEvent: benchmark.recommendedEvent,
                 reasoning: benchmark.reasoning,
-                comps: benchmark.comps
+                comps: benchmark.comps,
+                // ✅ CRITICAL: Update timestamp on every upsert so chat knows data is fresh
+                createdAt: new Date(),
             }
         });
 

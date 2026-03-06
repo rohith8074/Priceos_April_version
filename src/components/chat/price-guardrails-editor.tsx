@@ -4,8 +4,9 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { ShieldCheck, Pencil, Check, X, AlertTriangle, Loader2 } from "lucide-react";
+import { ShieldCheck, Pencil, Check, X, AlertTriangle, Loader2, Info, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface PriceGuardrailsEditorProps {
     listingId: number;
@@ -36,6 +37,7 @@ export function PriceGuardrailsEditor({
 }: PriceGuardrailsEditorProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [showReasoning, setShowReasoning] = useState(false);
     const [floor, setFloor] = useState(String(initialFloor || ""));
     const [ceiling, setCeiling] = useState(String(initialCeiling || ""));
 
@@ -101,41 +103,89 @@ export function PriceGuardrailsEditor({
     };
 
     if (!isEditing) {
+        const hasReasoning = isAiSet && (floorReasoning || ceilingReasoning);
+
         return (
-            <button
-                onClick={() => setIsEditing(true)}
-                className={cn(
-                    "group flex items-center gap-2 rounded-lg px-3 py-1.5 transition-all border",
-                    needsAttention
-                        ? "border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600"
-                        : "border-border/50 bg-muted/30 hover:bg-muted/60 text-muted-foreground hover:text-foreground",
-                    className
-                )}
-                title={isAiSet ? (floorReasoning || ceilingReasoning || "AI suggested guardrails") : "Click to edit price guardrails"}
-            >
-                {needsAttention ? (
-                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                ) : (
-                    <ShieldCheck className={cn("h-3.5 w-3.5 shrink-0", isAiSet ? "text-primary" : "text-emerald-500")} />
-                )}
-                <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest">
-                    {needsAttention ? "Set Guardrails" : "Guardrails"}
-                    {isAiSet && !needsAttention && (
-                        <span className="bg-primary/20 text-primary px-1.5 py-0.5 rounded text-[8px] flex items-center gap-1 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                            AI SET
-                        </span>
+            <div className={cn("flex flex-col gap-1", className)}>
+                <button
+                    onClick={() => setIsEditing(true)}
+                    className={cn(
+                        "group flex items-center gap-2 rounded-lg px-3 py-1.5 transition-all border",
+                        needsAttention
+                            ? "border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600"
+                            : "border-border/50 bg-muted/30 hover:bg-muted/60 text-muted-foreground hover:text-foreground",
                     )}
-                </span>
-                <span className="text-[11px] font-mono">
-                    {needsAttention
-                        ? "Not set"
-                        : `${currencyCode} ${Number(initialFloor).toLocaleString()} – ${Number(initialCeiling).toLocaleString()}`}
-                </span>
-                <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-            </button>
+                    title="Click to edit price guardrails"
+                >
+                    {needsAttention ? (
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    ) : (
+                        <ShieldCheck className={cn("h-3.5 w-3.5 shrink-0", isAiSet ? "text-primary" : "text-emerald-500")} />
+                    )}
+                    <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest">
+                        {needsAttention ? "Set Guardrails" : "Guardrails"}
+                        {isAiSet && !needsAttention && (
+                            <span className="bg-primary/20 text-primary px-1.5 py-0.5 rounded text-[8px] flex items-center gap-1 shadow-sm">
+                                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                                AI SET
+                            </span>
+                        )}
+                    </span>
+                    <span className="text-[11px] font-mono">
+                        {needsAttention
+                            ? "Not set"
+                            : `${currencyCode} ${Number(initialFloor).toLocaleString()} – ${Number(initialCeiling).toLocaleString()}`}
+                    </span>
+                    {hasReasoning && (
+                        <TooltipProvider delayDuration={200}>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <span
+                                        className="ml-1 shrink-0"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowReasoning(!showReasoning);
+                                        }}
+                                    >
+                                        <Info className="h-3.5 w-3.5 text-primary/70 hover:text-primary transition-colors" />
+                                    </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs text-xs">
+                                    <p className="font-semibold mb-1">AI Reasoning</p>
+                                    {floorReasoning && <p>📉 Floor: {floorReasoning}</p>}
+                                    {ceilingReasoning && <p className="mt-1">📈 Ceiling: {ceilingReasoning}</p>}
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    )}
+                    <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </button>
+
+                {/* Expanded reasoning panel */}
+                {hasReasoning && showReasoning && (
+                    <div className="flex flex-col gap-1.5 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-[11px] animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div className="flex items-center gap-1.5 text-primary font-semibold text-[10px] uppercase tracking-wider">
+                            <Sparkles className="h-3 w-3" />
+                            Aria&apos;s Reasoning
+                        </div>
+                        {floorReasoning && (
+                            <div className="flex gap-2">
+                                <span className="text-muted-foreground font-bold shrink-0">Floor:</span>
+                                <span className="text-foreground/80">{floorReasoning}</span>
+                            </div>
+                        )}
+                        {ceilingReasoning && (
+                            <div className="flex gap-2">
+                                <span className="text-muted-foreground font-bold shrink-0">Ceiling:</span>
+                                <span className="text-foreground/80">{ceilingReasoning}</span>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
         );
     }
+
 
     return (
         <div className={cn(

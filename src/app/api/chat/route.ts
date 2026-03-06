@@ -311,6 +311,22 @@ export async function POST(req: NextRequest) {
           negative_factors: events.filter(e => e.eventType === 'news' && e.sentiment === 'negative').map(e => e.title),
           positive_factors: events.filter(e => e.eventType === 'news' && e.sentiment === 'positive').map(e => e.title),
         },
+        // ── Available dates: PriceGuard needs these to generate per-date proposals ──
+        available_dates: rawInventory
+          .filter((inv: any) => inv.status !== 'blocked' && inv.status !== 'booked')
+          .map((inv: any) => ({
+            date: inv.date,
+            current_price: Number(inv.currentPrice || listing?.price || 0),
+            status: inv.status || 'available',
+            min_stay: inv.minStay || 1,
+          })),
+        // ── All dates with status for classification ──
+        date_classifications: rawInventory.map((inv: any) => ({
+          date: inv.date,
+          status: inv.status || 'available',
+          current_price: Number(inv.currentPrice || listing?.price || 0),
+          is_weekend: [5, 6].includes(new Date(inv.date).getDay()), // Fri=5, Sat=6
+        })),
         recent_reservations: resRows.map(r => ({
           guestName: r.guestName || "Guest",
           startDate: r.startDate,

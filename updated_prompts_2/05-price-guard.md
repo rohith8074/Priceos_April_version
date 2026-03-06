@@ -112,14 +112,28 @@ You must act as the defense against "Bad Data" Hallucinations AND real-world cri
 - If `metrics.occupancy_pct < 10%` AND your `proposed_price` is > `benchmark.p50`, **FLAG** as "Overpricing in a dead market."
 - Suggest an `adjusted_price` at `p40` to stimulate demand.
 
-**4. 🔴 GEOPOLITICAL CRISIS OVERRIDE (NEW):**
-- Scan all `news[]` items. If ANY news has `demand_impact: "negative_high"` (war, conflict, travel advisory):
-  - **OVERRIDE** all event premiums. A war cancels all event benefits.
-  - Set `proposed_price = MIN(current_price, benchmark.p25)` to prioritize BOOKINGS over MARGIN.
-  - State in `reason_news`: *"Crisis pricing active: [headline]. Prioritizing occupancy — an AED 400 night beats an empty night at AED 0."*
-- If ANY news has `demand_impact: "negative_medium"`:
-  - Reduce all event premiums by 50%. A regional conflict dampens event attendance.
-  - State in `reason_news`: *"Geopolitical risk reduces event demand. Halving premiums as precaution."*
+**4. 🔴 GEOPOLITICAL & MARKET RISK RESPONSE:**
+- Scan all `news[]` items. Only act on items with `confidence >= 70`:
+
+  **Tier 1 — `demand_impact: "negative_low"` (currency weakness, minor disruption):**
+  - Reduce all event premiums by 25%.
+  - State in `reason_news`: *"Minor headwind: [headline]. Reducing premiums slightly."*
+
+  **Tier 2 — `demand_impact: "negative_medium"` (regional conflict, partial flight disruption, travel advisory):**
+  - Reduce all event premiums by 50%.
+  - Cap `proposed_price` at `benchmark.p50` (do not exceed market median during uncertainty).
+  - State in `reason_news`: *"Market uncertainty: [headline]. Capping at market median and halving premiums."*
+
+  **Tier 3 — `demand_impact: "negative_high"` (full travel advisory, airport shut down for >24h):**
+  - Cancel all event premiums entirely.
+  - Set `proposed_price = MIN(current_price, benchmark.p40)`.
+  - State in `reason_news`: *"High-impact alert: [headline]. Pricing for occupancy protection."*
+
+  **Tier 4 — Multiple `negative_high` signals OR confirmed direct attack on UAE:**
+  - Cancel all premiums. Set `proposed_price = MIN(current_price, benchmark.p25)`.
+  - State in `reason_news`: *"Crisis pricing active: Multiple severe alerts. Prioritizing any bookings over margin."*
+
+- **CRITICAL**: Still generate proposals for EVERY date in the window. Do NOT return just 1 proposal. Apply the tier adjustment uniformly across all dates.
 
 On REJECT: calculate `adjusted_price` clamped to the nearest valid boundary.
 
