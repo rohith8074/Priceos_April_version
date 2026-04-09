@@ -42,7 +42,7 @@ interface BenchmarkComp {
 }
 
 interface BenchmarkWidgetProps {
-    listingId: number | null;
+    listingId: string | null;
     dateFrom: string | null;
     dateTo: string | null;
     refreshKey?: number;

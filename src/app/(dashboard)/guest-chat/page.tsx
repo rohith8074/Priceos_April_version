@@ -1,5 +1,4 @@
-import { db, listings } from "@/lib/db";
-import { sql } from "drizzle-orm";
+import { connectDB, Listing, InventoryMaster } from "@/lib/db";
 import { ContextPanel } from "@/components/layout/context-panel";
 import { GuestChatInterface } from "@/components/chat/guest-chat-interface";
 import { SidebarTabbedView } from "@/components/layout/sidebar-tabbed-view";
@@ -11,42 +10,56 @@ export const metadata = {
 };
 
 export default async function GuestChatPage() {
+    await connectDB();
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split("T")[0];
+    const plus14 = new Date(today);
+    plus14.setDate(plus14.getDate() + 14);
+    const plus14Str = plus14.toISOString().split("T")[0];
+
     // 1. Fetch all listings
-    const allListings = await db.select().from(listings);
+    const allListings = await Listing.find().lean();
 
-    // 2. Fetch occupancy/rate stats for property card badges
-    const statsQuery = sql`
-    SELECT
-      listing_id,
-      COALESCE(
-        ROUND(
-          100.0 * COUNT(id) FILTER (WHERE status IN ('reserved', 'booked'))
-          / NULLIF(COUNT(id) FILTER (WHERE status != 'blocked'), 0),
-          0
-        ),
-        0
-      ) as occupancy,
-      COALESCE(
-        ROUND(AVG(current_price), 2),
-        0
-      ) as avg_price,
-      CURRENT_DATE as queried_at
-    FROM inventory_master
-    WHERE date BETWEEN CURRENT_DATE AND CURRENT_DATE + 14
-    GROUP BY listing_id
-  `;
-
-    const statsResult = await db.execute(statsQuery);
+    // 2. Aggregate occupancy/avg_price for next 14 days per listing
+    const statsResult = await InventoryMaster.aggregate([
+        { $match: { date: { $gte: todayStr, $lte: plus14Str } } },
+        {
+            $group: {
+                _id: "$listingId",
+                totalDays: { $sum: 1 },
+                bookedDays: {
+                    $sum: { $cond: [{ $eq: ["$status", "booked"] }, 1, 0] },
+                },
+                blockedDays: {
+                    $sum: { $cond: [{ $eq: ["$status", "blocked"] }, 1, 0] },
+                },
+                avgPrice: { $avg: "$currentPrice" },
+            },
+        },
+    ]);
+    // Compute occupancy in JS (DocumentDB doesn't support $round)
+    statsResult.forEach((s: any) => {
+        const avail = s.totalDays - s.blockedDays;
+        s.occupancy = avail > 0 ? Math.round((s.bookedDays / avail) * 100) : 0;
+    });
 
     // 3. Merge stats into listing objects
-    const propertiesWithMetrics = allListings.map((listing) => {
-        const rows = Array.isArray(statsResult) ? statsResult : (statsResult as any).rows || [];
-        const stat = rows.find((r: any) => r.listing_id === listing.id);
+    const plainListings = JSON.parse(JSON.stringify(allListings));
+    const propertiesWithMetrics = plainListings.map((listing: any) => {
+        const listingIdStr = String(listing._id);
+        const stat = statsResult.find((s) => String(s._id) === listingIdStr);
 
         return {
             ...listing,
+            id: listingIdStr,
+            _id: listingIdStr,
             occupancy: stat ? Number(stat.occupancy) : 0,
-            avgPrice: stat && Number(stat.avg_price) > 0 ? Number(stat.avg_price) : Number(listing.price),
+            avgPrice:
+                stat && Number(stat.avgPrice) > 0
+                    ? Number(stat.avgPrice)
+                    : Number(listing.price),
         };
     });
 

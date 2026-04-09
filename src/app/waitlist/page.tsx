@@ -4,55 +4,33 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, Clock, Mail, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { authClient } from "@/lib/auth/client";
-
 export default function WaitlistPage() {
     const router = useRouter();
     const [userEmail, setUserEmail] = useState("");
 
     useEffect(() => {
         async function loadUser() {
-            const res = await authClient.getSession();
-            if (!res?.data?.user) {
+            // Check approval via our JWT-based endpoint
+            const checkRes = await fetch("/api/auth/check-approval");
+            if (!checkRes.ok) {
                 router.push("/login");
                 return;
             }
-            setUserEmail(res.data.user.email || "");
-
-            // If they're already approved, redirect them into the app
-            const checkRes = await fetch("/api/auth/check-approval");
-            if (checkRes.ok) {
-                const { approved } = await checkRes.json();
-                if (approved) {
-                    router.push("/dashboard");
-                }
+            const { approved, email } = await checkRes.json();
+            if (email) setUserEmail(email);
+            if (approved) {
+                router.push("/dashboard");
             }
         }
         loadUser();
     }, [router]);
 
     const handleSignOut = async () => {
-        // VERSION: 2.2 - Sign out Fix
-        // 1. Await the server-side session revocation
         try {
-            await authClient.signOut();
+            await fetch("/api/auth/logout", { method: "POST" });
         } catch { }
 
         // 2. Clear auth cookies
-        const cookiesToClear = [
-            'priceos-session',
-            '__Secure-neon-auth.session_token',
-            '__Secure-neon-auth.local.session_data',
-            'neon-auth.session_token',
-            'better-auth.session_token',
-        ];
-        cookiesToClear.forEach(name => {
-            document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-            document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; secure; samesite=lax`;
-            document.cookie = `${name}=; path=/; domain=${window.location.hostname}; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-        });
-
-        // 3. Redirect with signedout flag
         window.location.href = '/login?signedout=true';
     };
 

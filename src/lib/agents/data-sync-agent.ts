@@ -1,14 +1,12 @@
 import { createHostawayClient } from "../hostaway/client";
-import { db, listings, inventoryMaster, reservations } from "@/lib/db";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { connectDB, Listing, InventoryMaster, Reservation } from "@/lib/db";
 import { addDays, format } from "date-fns";
-import type { HostawayListing, HostawayCalendarDay, HostawayReservation } from "../hostaway/types";
+import mongoose from "mongoose";
 
-const STALE_THRESHOLD_MS = 6 * 60 * 60 * 1000; // 6 hours
-const CALENDAR_DAYS = 90; // Sync 90-day window
+const CALENDAR_DAYS = 90;
 
 export interface SyncResult {
-  listingId: number;
+  listingId: string;
   listingsSynced: number;
   calendarDaysSynced: number;
   reservationsSynced: number;
@@ -18,7 +16,7 @@ export interface SyncResult {
 
 /**
  * Data Sync Agent
- * Responsible for syncing HostAway data to database cache
+ * Syncs HostAway data to MongoDB cache
  */
 export class DataSyncAgent {
   private hostawayApiKey: string;
@@ -27,69 +25,41 @@ export class DataSyncAgent {
     this.hostawayApiKey = hostawayApiKey;
   }
 
-  /**
-   * Check if cached data is stale
-   */
-  async isCacheStale(listingId: number): Promise<boolean> {
-    // Without syncedAt on listings, we always consider data potentially stale
-    // In production, consider using a separate sync_metadata table
-    const listing = await db
-      .select()
-      .from(listings)
-      .where(eq(listings.id, listingId))
-      .limit(1);
-
-    if (!listing.length) {
-      return true; // No listing found
-    }
-
-    // For now, always return false (data is considered fresh after initial sync)
-    // TODO: Implement sync tracking via separate metadata table
+  async isCacheStale(_listingId: mongoose.Types.ObjectId): Promise<boolean> {
     return false;
   }
 
-  /**
-   * Sync a single property from HostAway
-   */
-  async syncProperty(listingId: number): Promise<SyncResult> {
+  async syncProperty(listingId: mongoose.Types.ObjectId): Promise<SyncResult> {
     const client = createHostawayClient(this.hostawayApiKey);
     const errors: string[] = [];
     const syncedAt = new Date();
 
     try {
-      // Get listing from database to find hostawayId
-      const [dbListing] = await db
-        .select()
-        .from(listings)
-        .where(eq(listings.id, listingId))
-        .limit(1);
+      await connectDB();
 
+      const dbListing = await Listing.findById(listingId).lean();
       if (!dbListing?.hostawayId) {
         throw new Error(`Listing ${listingId} has no hostawayId`);
       }
 
       const hostawayId = parseInt(dbListing.hostawayId);
 
-      // Fetch listing details
       const hostawayListing = await client.getListing(hostawayId);
 
-      // Update listing in database
-      await db
-        .update(listings)
-        .set({
+      await Listing.findByIdAndUpdate(listingId, {
+        $set: {
           name: hostawayListing.name,
           city: hostawayListing.city,
           countryCode: hostawayListing.countryCode,
           bedroomsNumber: hostawayListing.bedroomsNumber,
           bathroomsNumber: hostawayListing.bathroomsNumber,
-          price: hostawayListing.price.toString(),
+          price: hostawayListing.price,
           currencyCode: hostawayListing.currencyCode,
           personCapacity: hostawayListing.personCapacity,
           amenities: hostawayListing.amenities || [],
-        })
-        .where(eq(listings.id, listingId));
+        },
+      });
 
-      // Fetch and sync calendar (90-day window)
       const startDate = new Date();
       const endDate = addDays(startDate, CALENDAR_DAYS);
 
@@ -99,69 +69,60 @@ export class DataSyncAgent {
         format(endDate, "yyyy-MM-dd")
       );
 
-      // Delete old calendar data for this range
-      await db
-        .delete(inventoryMaster)
-        .where(
-          and(
-            eq(inventoryMaster.listingId, listingId),
-            gte(inventoryMaster.date, format(startDate, "yyyy-MM-dd")),
-            lte(inventoryMaster.date, format(endDate, "yyyy-MM-dd"))
-          )
-        );
-
-      // Insert new calendar data
       if (calendarData.length > 0) {
-        await db.insert(inventoryMaster).values(
-          calendarData.map((day) => ({
-            listingId,
-            date: day.date,
-            status: day.status,
-            currentPrice: day.price.toString(),
-            minStay: day.minimumStay || 1,
-            maxStay: day.maximumStay || 30,
-          }))
-        );
+        const bulkOps = calendarData.map((day) => ({
+          updateOne: {
+            filter: { listingId, date: day.date },
+            update: {
+              $set: {
+                orgId: dbListing.orgId,
+                listingId,
+                date: day.date,
+                status: day.status as "available" | "booked" | "blocked" | "pending",
+                currentPrice: day.price,
+                minStay: day.minimumStay || 1,
+                maxStay: day.maximumStay || 30,
+              },
+            },
+            upsert: true,
+          },
+        }));
+        await InventoryMaster.bulkWrite(bulkOps);
       }
 
-      // Fetch and sync reservations (next 90 days)
       const reservationsData = await client.getReservations(
         hostawayId,
         format(startDate, "yyyy-MM-dd"),
         format(endDate, "yyyy-MM-dd")
       );
 
-      // Upsert reservations (direct columns, no JSON)
       for (const reservation of reservationsData) {
-        const existing = await db.select().from(reservations).where(and(eq(reservations.guestName, reservation.guestName), eq(reservations.startDate, reservation.arrivalDate))).limit(1);
-        if (existing.length > 0) {
-          await db.update(reservations).set({
-            endDate: reservation.departureDate,
-            totalPrice: String(reservation.totalPrice),
-            pricePerNight: String(reservation.nightlyRate),
-            channelName: reservation.channelName,
-            reservationStatus: this.mapReservationStatus(reservation.status),
-            guestName: reservation.guestName || null,
-            guestEmail: reservation.guestEmail || null,
-          }).where(eq(reservations.id, existing[0].id));
-        } else {
-          await db.insert(reservations).values({
+        await Reservation.findOneAndUpdate(
+          {
             listingId,
-            startDate: reservation.arrivalDate,
-            endDate: reservation.departureDate,
-            guestName: reservation.guestName || null,
-            guestEmail: reservation.guestEmail || null,
-            totalPrice: String(reservation.totalPrice),
-            pricePerNight: String(reservation.nightlyRate),
-            channelName: reservation.channelName,
-            reservationStatus: this.mapReservationStatus(reservation.status),
-            createdAt: syncedAt,
-          });
-        }
+            checkIn: reservation.arrivalDate,
+            guestName: reservation.guestName,
+          },
+          {
+            $set: {
+              orgId: dbListing.orgId,
+              listingId,
+              guestName: reservation.guestName || "Guest",
+              guestEmail: reservation.guestEmail,
+              checkIn: reservation.arrivalDate,
+              checkOut: reservation.departureDate,
+              nights: reservation.nights || 1,
+              totalPrice: reservation.totalPrice,
+              channelName: reservation.channelName,
+              status: this.mapReservationStatus(reservation.status),
+            },
+          },
+          { upsert: true }
+        );
       }
 
       return {
-        listingId,
+        listingId: listingId.toString(),
         listingsSynced: 1,
         calendarDaysSynced: calendarData.length,
         reservationsSynced: reservationsData.length,
@@ -171,7 +132,7 @@ export class DataSyncAgent {
     } catch (error) {
       errors.push((error as Error).message);
       return {
-        listingId,
+        listingId: listingId.toString(),
         listingsSynced: 0,
         calendarDaysSynced: 0,
         reservationsSynced: 0,
@@ -181,16 +142,13 @@ export class DataSyncAgent {
     }
   }
 
-  /**
-   * Sync all properties for a user
-   */
   async syncAllProperties(): Promise<SyncResult[]> {
-    const allListings = await db.select().from(listings);
+    await connectDB();
+    const allListings = await Listing.find({ isActive: true }).lean();
     const results: SyncResult[] = [];
 
-    // Sync properties in parallel (with rate limiting consideration)
     const syncPromises = allListings.map((listing) =>
-      this.syncProperty(listing.id)
+      this.syncProperty(listing._id as mongoose.Types.ObjectId)
     );
 
     const syncResults = await Promise.allSettled(syncPromises);
@@ -206,54 +164,46 @@ export class DataSyncAgent {
     return results;
   }
 
-  /**
-   * Initial import from HostAway (first-time setup)
-   */
-  async initialImport(): Promise<{ success: boolean; listingsImported: number; error?: string }> {
+  async initialImport(orgId: mongoose.Types.ObjectId): Promise<{
+    success: boolean;
+    listingsImported: number;
+    error?: string;
+  }> {
     try {
+      await connectDB();
       const client = createHostawayClient(this.hostawayApiKey);
       const hostawayListings = await client.getListings();
 
       let importedCount = 0;
 
       for (const hostawayListing of hostawayListings) {
-        // Check if listing already exists
-        const existing = await db
-          .select()
-          .from(listings)
-          .where(eq(listings.hostawayId, hostawayListing.id.toString()))
-          .limit(1);
+        const existing = await Listing.findOne({
+          hostawayId: hostawayListing.id.toString(),
+        });
 
-        if (existing.length === 0) {
-          // Insert new listing
-          const [inserted] = await db
-            .insert(listings)
-            .values({
-              hostawayId: hostawayListing.id.toString(),
-              name: hostawayListing.name,
-              city: hostawayListing.city,
-              countryCode: hostawayListing.countryCode,
-              area: hostawayListing.address || "N/A",
-              bedroomsNumber: hostawayListing.bedroomsNumber,
-              bathroomsNumber: hostawayListing.bathroomsNumber,
-              propertyTypeId: hostawayListing.propertyTypeId,
-              price: hostawayListing.price.toString(),
-              currencyCode: hostawayListing.currencyCode,
-              personCapacity: hostawayListing.personCapacity,
-              amenities: hostawayListing.amenities || [],
-            })
-            .returning();
+        if (!existing) {
+          const inserted = await Listing.create({
+            orgId,
+            hostawayId: hostawayListing.id.toString(),
+            name: hostawayListing.name,
+            city: hostawayListing.city,
+            countryCode: hostawayListing.countryCode,
+            area: hostawayListing.address || "N/A",
+            bedroomsNumber: hostawayListing.bedroomsNumber,
+            bathroomsNumber: hostawayListing.bathroomsNumber,
+            propertyTypeId: hostawayListing.propertyTypeId,
+            price: hostawayListing.price,
+            currencyCode: hostawayListing.currencyCode,
+            personCapacity: hostawayListing.personCapacity,
+            amenities: hostawayListing.amenities || [],
+          });
 
-          // Sync calendar and reservations for new listing
-          await this.syncProperty(inserted.id);
+          await this.syncProperty(inserted._id as mongoose.Types.ObjectId);
           importedCount++;
         }
       }
 
-      return {
-        success: true,
-        listingsImported: importedCount,
-      };
+      return { success: true, listingsImported: importedCount };
     } catch (error) {
       return {
         success: false,
@@ -263,12 +213,7 @@ export class DataSyncAgent {
     }
   }
 
-  /**
-   * Map HostAway reservation status to internal status
-   */
-  private mapReservationStatus(
-    status: string
-  ): "confirmed" | "pending" | "cancelled" {
+  private mapReservationStatus(status: string): "confirmed" | "pending" | "cancelled" {
     switch (status) {
       case "new":
       case "modified":
@@ -283,9 +228,6 @@ export class DataSyncAgent {
   }
 }
 
-/**
- * Create a Data Sync Agent instance
- */
 export function createDataSyncAgent(hostawayApiKey: string): DataSyncAgent {
   return new DataSyncAgent(hostawayApiKey);
 }

@@ -38,7 +38,7 @@ export class MockPMSClient implements PMSClient {
     Map<string, { date: string; price: number }>
   > = new Map();
   private blockOverrides: Map<string, Map<string, { blocked: boolean; reason?: string }>> = new Map();
-  private listingOverrides: Map<number, Partial<Listing>> = new Map();
+  private listingOverrides: Map<number | string, Partial<Listing>> = new Map();
 
   async listListings(): Promise<Listing[]> {
     // Simulate network delay

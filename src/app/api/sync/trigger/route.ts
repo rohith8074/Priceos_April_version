@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { createPMSClient } from "@/lib/pms";
-import { db } from "@/lib/db";
-import { listings, reservations } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
-import { syncListingsToDb, syncReservationsToDb, syncCalendarToDb } from "@/lib/sync-server-utils";
+import { connectDB, Listing, Reservation } from "@/lib/db";
+import { syncListingsToDb, syncReservationsToDb, syncCalendarToDb, syncConversationsToDb } from "@/lib/sync-server-utils";
+import mongoose from "mongoose";
 
 // Global sync status tracker
 declare global {
@@ -20,25 +19,26 @@ async function performBackgroundSync() {
         console.log("🚀 Starting Hostaway Synchronization (BACKGROUND)...");
         console.log("------------------------------------------");
 
+        await connectDB();
+
         // 1. Fetch & Sync Listings
         globalThis.syncStatus.message = 'Syncing listings...';
         const hListings = await client.listListings();
-        const existingListings = await db.select({ id: listings.id }).from(listings);
-        const existingListingIds = new Set(existingListings.map(l => l.id));
+        const existingCount = await Listing.countDocuments();
 
         console.log(`📥 Step 1: Fetched ${hListings.length} total listings from Hostaway.`);
 
-        await syncListingsToDb(hListings);
+        await syncListingsToDb(hListings.map(l => ({ ...l, id: Number(l.id) })));
 
-        // Map Hostaway IDs -> Internal Neon Database IDs
-        const dbListings = await db.select({ id: listings.id, hostawayId: listings.hostawayId }).from(listings);
-        const hostawayToInternalIdMap = new Map(dbListings.map(l => [Number(l.hostawayId), l.id]));
+        // Map Hostaway IDs -> Internal MongoDB ObjectIds
+        const dbListings = await Listing.find({}, { hostawayId: 1 }).lean();
+        const hostawayToInternalIdMap = new Map<number, mongoose.Types.ObjectId>(
+            dbListings
+                .filter(l => l.hostawayId)
+                .map(l => [Number(l.hostawayId), l._id as mongoose.Types.ObjectId])
+        );
 
-        let newListingCount = 0;
-        dbListings.forEach(l => {
-            if (!existingListingIds.has(l.id)) newListingCount++;
-        });
-
+        const newListingCount = (await Listing.countDocuments()) - existingCount;
         console.log(`✅ Step 1 Complete: ${dbListings.length} listings in DB (${newListingCount} new).`);
 
         // 2. Fetch & Sync Calendars (for the next 90 days)
@@ -53,12 +53,12 @@ async function performBackgroundSync() {
 
         for (let i = 0; i < hListings.length; i++) {
             const hl = hListings[i];
-            const internalId = hostawayToInternalIdMap.get(hl.id);
+            const internalId = hostawayToInternalIdMap.get(Number(hl.id));
             if (internalId) {
                 try {
                     globalThis.syncStatus.message = `Syncing calendar ${i + 1}/${hListings.length}...`;
                     console.log(`   [${i + 1}/${hListings.length}] Syncing calendar for ${hl.name} (${hl.id})...`);
-                    await syncCalendarToDb(client, [internalId], startDate, endDate, hl.id);
+                    await syncCalendarToDb(client, [internalId], startDate, endDate, Number(hl.id));
                     calendarsSynced++;
                 } catch (calErr: any) {
                     console.error(`   ❌ Failed calendar for ${hl.id}:`, calErr.message);
@@ -75,31 +75,26 @@ async function performBackgroundSync() {
         const hReservations = await client.getReservations({ limit: 1000 } as any);
         console.log(`📥 Fetched ${hReservations.length} reservations from Hostaway.`);
 
-        const existingRes = await db.select({ id: reservations.id }).from(reservations);
-        const existingResIds = new Set(existingRes.map(r => r.id));
+        const existingResCount = await Reservation.countDocuments();
 
-        const mappedReservations = hReservations.map(r => {
-            const internalListingId = hostawayToInternalIdMap.get(r.listingMapId);
-            return {
-                ...r,
-                listingMapId: internalListingId || r.listingMapId,
-            };
-        }).filter(r => hostawayToInternalIdMap.has(r.listingMapId));
+        const mappedReservations = hReservations
+            .map(r => {
+                const internalListingId = hostawayToInternalIdMap.get(Number(r.listingMapId));
+                if (!internalListingId) return null;
+                return { ...r, listingMapId: internalListingId };
+            })
+            .filter((r): r is NonNullable<typeof r> => r !== null);
 
-        await syncReservationsToDb(mappedReservations as any, new Date());
+        if (mappedReservations.length > 0) {
+            await syncReservationsToDb(mappedReservations as any, new Date());
+        }
 
-        const finalDbReservations = await db.select({ id: reservations.id }).from(reservations);
-        let newReservationCount = 0;
-        finalDbReservations.forEach(r => {
-            if (!existingResIds.has(r.id)) newReservationCount++;
-        });
-
-        console.log(`✅ Step 3 Complete: ${finalDbReservations.length} reservations in DB (${newReservationCount} new).`);
+        const newReservationCount = (await Reservation.countDocuments()) - existingResCount;
+        console.log(`✅ Step 3 Complete: Reservations synced (${newReservationCount} new).`);
 
         // 4. Fetch & Sync Conversations
         globalThis.syncStatus.message = 'Syncing conversations...';
         console.log("📥 Step 4: Fetching Conversations...");
-        const { syncConversationsToDb } = await import("@/lib/sync-server-utils");
         const convStats = await syncConversationsToDb(hostawayToInternalIdMap);
         console.log(`✅ Step 4 Complete: Synced ${convStats.synced} conversations (${convStats.errors} errors).`);
 
@@ -115,7 +110,7 @@ async function performBackgroundSync() {
     }
 }
 
-export async function POST(req: Request) {
+export async function POST() {
     // Prevent duplicate syncs
     if (globalThis.syncStatus?.status === 'syncing') {
         return NextResponse.json({

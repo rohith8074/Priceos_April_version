@@ -1,18 +1,9 @@
-import { db } from "@/lib/db";
-import { listings } from "@/lib/db/schema";
+import { connectDB, Listing } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api/response";
 import { getPropertiesSchema, formatZodErrors } from "@/lib/validators";
 import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/api/rate-limit";
-import { ilike, sql } from "drizzle-orm";
 
-/**
- * GET /api/v1/properties
- * 
- * Returns a list of all properties (listings).
- * Supports searching and status filtering.
- */
 export async function GET(request: Request) {
-    // ── Rate Limiting ──
     const ip = getClientIp(request);
     const rateCheck = checkRateLimit(`properties-list:${ip}`, RATE_LIMITS.standard);
     if (!rateCheck.allowed) {
@@ -29,22 +20,33 @@ export async function GET(request: Request) {
         return apiError("VALIDATION_ERROR", "Invalid query parameters", 400, formatZodErrors(validation.error));
     }
 
-    const { search, status } = validation.data;
+    const { search } = validation.data;
 
     try {
-        let query = db.select().from(listings);
+        await connectDB();
 
-        // Apply basic search filter if provided
+        const filter: Record<string, unknown> = { isActive: true };
         if (search) {
-            query = query.where(ilike(listings.name, `%${search}%`)) as any;
+            filter.name = { $regex: search, $options: "i" };
         }
 
-        const results = await query.orderBy(listings.name);
+        const results = await Listing.find(filter).sort({ name: 1 }).lean();
 
-        return apiSuccess({
-            properties: results,
-            count: results.length,
-        });
+        const properties = results.map(l => ({
+            id: l._id.toString(),
+            name: l.name,
+            area: l.area,
+            bedroomsNumber: l.bedroomsNumber,
+            bathroomsNumber: l.bathroomsNumber,
+            price: l.price,
+            currencyCode: l.currencyCode,
+            personCapacity: l.personCapacity,
+            priceFloor: l.priceFloor,
+            priceCeiling: l.priceCeiling,
+            isActive: l.isActive,
+        }));
+
+        return apiSuccess({ properties, count: properties.length });
     } catch (error) {
         console.error("❌ [v1/properties GET] Error:", error);
         return apiError("INTERNAL_ERROR", "Failed to load properties", 500);

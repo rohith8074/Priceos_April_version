@@ -1,44 +1,48 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db, reservations } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { connectDB, Reservation } from "@/lib/db";
+import { getSession } from "@/lib/auth/server";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    const session = await getSession();
+    await connectDB();
+
     const { searchParams } = new URL(req.url);
-    const context = searchParams.get("context") as "portfolio" | "property";
+    const context = searchParams.get("context");
     const propertyId = searchParams.get("propertyId");
+    const status = searchParams.get("status");
 
-    if (!context) {
-      return NextResponse.json(
-        { error: "Missing context parameter" },
-        { status: 400 }
-      );
-    }
+    const query: Record<string, unknown> = {};
+    if (session?.orgId) query.orgId = session.orgId;
+    if (context === "property" && propertyId) query.listingId = propertyId;
+    if (status) query.status = status;
 
-    if (context === "portfolio") {
-      const allReservations = await db.select().from(reservations);
-      return NextResponse.json({ reservations: allReservations });
-    } else {
-      if (!propertyId) {
-        return NextResponse.json(
-          { error: "Missing propertyId for property context" },
-          { status: 400 }
-        );
-      }
+    const reservations = await Reservation.find(query)
+      .sort({ checkIn: -1 })
+      .limit(500)
+      .lean();
 
-      const listingId = parseInt(propertyId);
-      const propertyReservations = await db
-        .select()
-        .from(reservations)
-        .where(eq(reservations.listingId, listingId));
-
-      return NextResponse.json({ reservations: propertyReservations });
-    }
+    return NextResponse.json({ success: true, reservations });
   } catch (error) {
-    console.error("Failed to fetch reservations:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("[Reservations GET]", error);
+    return NextResponse.json({ error: "Failed to fetch reservations" }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await connectDB();
+    const body = await req.json();
+
+    const reservation = await Reservation.create({ ...body, orgId: session.orgId });
+    return NextResponse.json({ success: true, reservation }, { status: 201 });
+  } catch (error) {
+    console.error("[Reservations POST]", error);
+    return NextResponse.json({ error: "Failed to create reservation" }, { status: 500 });
   }
 }

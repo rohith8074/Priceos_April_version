@@ -1,41 +1,179 @@
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Sparkles, TrendingUp, Building2, ShieldCheck, ArrowLeft } from "lucide-react";
+import { Sparkles, TrendingUp, Building2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
-import { SignInForm, SignUpForm, NeonAuthUIProvider, authLocalization } from "@neondatabase/auth/react/ui";
-import { authClient } from "@/lib/auth/client";
+import { Suspense, useState } from "react";
+
+// ── Sign In Form ──────────────────────────────────────────────────────────────
+
+function SignInForm() {
+    const router = useRouter();
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [error, setError] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        setError(null);
+        setLoading(true);
+        try {
+            const res = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                const errMsg =
+                    typeof data.error === "string"
+                        ? data.error
+                        : data.error?.message || "Invalid email or password";
+                setError(errMsg);
+                setLoading(false);
+                return;
+            }
+            router.push("/dashboard");
+            router.refresh();
+        } catch {
+            setError("Network error. Please try again.");
+            setLoading(false);
+        }
+    }
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <label className="form-label">Email</label>
+                <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoComplete="email"
+                    placeholder="you@company.com"
+                    className="form-input"
+                />
+            </div>
+            <div>
+                <label className="form-label">Password</label>
+                <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    className="form-input"
+                />
+                <div className="mt-1 text-right">
+                    <Link href="/forgot-password" className="text-xs" style={{ color: "rgba(255,255,255,0.55)" }}>
+                        Forgot password?
+                    </Link>
+                </div>
+            </div>
+            {error && <p className="text-sm text-red-400">{typeof error === "object" ? (error as any).message || JSON.stringify(error) : String(error)}</p>}
+            <button type="submit" disabled={loading} className="form-submit-btn">
+                {loading ? "Signing in…" : "Sign In"}
+            </button>
+        </form>
+    );
+}
+
+// ── Sign Up Form ──────────────────────────────────────────────────────────────
+
+function SignUpForm() {
+    const router = useRouter();
+    const [name, setName] = useState("");
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [error, setError] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        setError(null);
+        setLoading(true);
+        try {
+            const res = await fetch("/api/auth/register", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, email, password }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                const errMsg =
+                    typeof data.error === "string"
+                        ? data.error
+                        : data.error?.message || "Registration failed";
+                setError(errMsg);
+                setLoading(false);
+                return;
+            }
+            router.push("/dashboard");
+            router.refresh();
+        } catch {
+            setError("Network error. Please try again.");
+            setLoading(false);
+        }
+    }
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+                <label className="form-label">Full Name</label>
+                <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    autoComplete="name"
+                    placeholder="Your name"
+                    className="form-input"
+                />
+            </div>
+            <div>
+                <label className="form-label">Email</label>
+                <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoComplete="email"
+                    placeholder="you@company.com"
+                    className="form-input"
+                />
+            </div>
+            <div>
+                <label className="form-label">Password</label>
+                <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete="new-password"
+                    placeholder="••••••••"
+                    minLength={8}
+                    className="form-input"
+                />
+            </div>
+            {error && <p className="text-sm text-red-400">{typeof error === "object" ? (error as any).message || JSON.stringify(error) : String(error)}</p>}
+            <button type="submit" disabled={loading} className="form-submit-btn">
+                {loading ? "Creating account…" : "Create Account"}
+            </button>
+        </form>
+    );
+}
+
+// ── Main Login Content ────────────────────────────────────────────────────────
 
 function LoginContent() {
     const searchParams = useSearchParams();
-    const router = useRouter();
     const defaultTab = searchParams.get('tab') === 'signup' ? 'signup' : 'signin';
     const [activeTab, setActiveTab] = useState<'signin' | 'signup'>(defaultTab);
-
-    // If the user was just signed out, don't auto-redirect back to dashboard
-    const justSignedOut = searchParams.get('signedout') === 'true';
-
-    // Poll for authenticated session — redirects once sign-in completes
-    // Skip polling if user just signed out to prevent redirect loop
-    useEffect(() => {
-        if (justSignedOut) return; // Don't poll after sign-out
-
-        const interval = setInterval(async () => {
-            try {
-                const res = await authClient.getSession();
-                if (res?.data?.session) {
-                    clearInterval(interval);
-                    router.push('/dashboard');
-                    router.refresh();
-                }
-            } catch { }
-        }, 1500);
-        return () => clearInterval(interval);
-    }, [router, justSignedOut]);
 
     return (
         <div className="min-h-screen grid lg:grid-cols-2 overflow-hidden bg-[#0a0a0b]">
@@ -114,43 +252,40 @@ function LoginContent() {
                         <p className="text-sm text-white/40">Secure administrative access for property operators.</p>
                     </div>
 
-                    <NeonAuthUIProvider authClient={authClient}>
-                        <Card className="bg-white/[0.03] backdrop-blur-3xl border-white/5 shadow-2xl relative overflow-hidden group neon-auth-ui p-0">
-                            {/* Top accent line */}
-                            <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-amber-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+                    <Card className="bg-white/[0.03] backdrop-blur-3xl border-white/5 shadow-2xl relative overflow-hidden group p-0">
+                        {/* Top accent line */}
+                        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-amber-500/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
 
-                            <Tabs
-                                value={activeTab}
-                                onValueChange={(value) => setActiveTab(value as 'signin' | 'signup')}
-                                className="w-full"
-                            >
-                                <TabsList className="grid w-full grid-cols-2 bg-transparent border-b border-white/10 rounded-none h-14">
-                                    <TabsTrigger
-                                        value="signin"
-                                        className="rounded-none data-[state=active]:bg-white/5 data-[state=active]:text-amber-500 border-b-2 border-transparent data-[state=active]:border-amber-500 text-white/50"
-                                    >
-                                        Sign In
-                                    </TabsTrigger>
-                                    <TabsTrigger
-                                        value="signup"
-                                        className="rounded-none data-[state=active]:bg-white/5 data-[state=active]:text-amber-500 border-b-2 border-transparent data-[state=active]:border-amber-500 text-white/50"
-                                    >
-                                        Sign Up
-                                    </TabsTrigger>
-                                </TabsList>
+                        <Tabs
+                            value={activeTab}
+                            onValueChange={(value) => setActiveTab(value as 'signin' | 'signup')}
+                            className="w-full"
+                        >
+                            <TabsList className="grid w-full grid-cols-2 bg-transparent border-b border-white/10 rounded-none h-14">
+                                <TabsTrigger
+                                    value="signin"
+                                    className="rounded-none data-[state=active]:bg-white/5 data-[state=active]:text-amber-500 border-b-2 border-transparent data-[state=active]:border-amber-500 text-white/50"
+                                >
+                                    Sign In
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="signup"
+                                    className="rounded-none data-[state=active]:bg-white/5 data-[state=active]:text-amber-500 border-b-2 border-transparent data-[state=active]:border-amber-500 text-white/50"
+                                >
+                                    Sign Up
+                                </TabsTrigger>
+                            </TabsList>
 
-                                <div className="p-6">
-                                    <TabsContent value="signin" className="mt-0">
-                                        <SignInForm localization={authLocalization} />
-                                    </TabsContent>
-
-                                    <TabsContent value="signup" className="mt-0">
-                                        <SignUpForm localization={authLocalization} />
-                                    </TabsContent>
-                                </div>
-                            </Tabs>
-                        </Card>
-                    </NeonAuthUIProvider>
+                            <div className="p-6">
+                                <TabsContent value="signin" className="mt-0">
+                                    <SignInForm />
+                                </TabsContent>
+                                <TabsContent value="signup" className="mt-0">
+                                    <SignUpForm />
+                                </TabsContent>
+                            </div>
+                        </Tabs>
+                    </Card>
 
                     <p className="text-center text-[10px] text-white/20 px-8 uppercase tracking-widest leading-relaxed">
                         By accessing this system you agree to our
@@ -162,60 +297,39 @@ function LoginContent() {
             </div>
 
             <style jsx global>{`
-        /* Overriding Neon UI component colors to match our dark emerald/amber theme */
-        .neon-auth-ui {
-          --neon-primary: #f59e0b;
-          --neon-primary-foreground: #000;
-          --neon-background: transparent;
-          --neon-card: transparent;
-          --neon-border: rgba(255, 255, 255, 0.05);
-          --neon-input: rgba(255, 255, 255, 0.03);
-          --neon-foreground: #ffffff;
-          --neon-muted: rgba(255, 255, 255, 0.4);
+        form label.form-label {
+          display: block;
+          color: rgba(255, 255, 255, 0.75) !important;
+          font-weight: 600 !important;
+          font-size: 0.8rem !important;
+          margin-bottom: 0.25rem;
         }
-        
-        /* Deep custom styling for Neon Auth inputs */
-        form input {
+
+        input.form-input {
+          width: 100%;
           background-color: rgba(255, 255, 255, 0.03) !important;
           border: 1px solid rgba(255, 255, 255, 0.05) !important;
           color: white !important;
           border-radius: 8px !important;
           height: 48px !important;
+          padding: 0 12px;
+          font-size: 0.875rem;
           transition: all 0.2s ease !important;
+          outline: none;
         }
 
-        form input:focus {
+        input.form-input:focus {
           border-color: #f59e0b !important;
           background-color: rgba(255, 255, 255, 0.05) !important;
           box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.1) !important;
         }
 
-        form input::placeholder {
+        input.form-input::placeholder {
           color: rgba(255, 255, 255, 0.3) !important;
         }
 
-        /* Labels: Email, Password etc */
-        form label {
-          color: rgba(255, 255, 255, 0.75) !important;
-          font-weight: 600 !important;
-          font-size: 0.8rem !important;
-        }
-
-        /* Forgot password / helper links */
-        form a {
-          color: rgba(255, 255, 255, 0.55) !important;
-        }
-
-        form a:hover {
-          color: #f59e0b !important;
-        }
-
-        /* Descriptive text inside the form */
-        form p, form span {
-          color: rgba(255, 255, 255, 0.5) !important;
-        }
-
-        form button[type="submit"] {
+        button.form-submit-btn {
+          width: 100%;
           background: linear-gradient(135deg, #f59e0b 0%, #ea580c 100%) !important;
           font-weight: 800 !important;
           text-transform: uppercase !important;
@@ -225,11 +339,19 @@ function LoginContent() {
           box-shadow: 0 10px 20px -10px rgba(245, 158, 11, 0.5) !important;
           transition: all 0.3s ease !important;
           color: #000 !important;
+          border: none;
+          cursor: pointer;
+          font-size: 0.875rem;
         }
 
-        form button[type="submit"]:hover {
+        button.form-submit-btn:hover:not(:disabled) {
           transform: translateY(-2px) !important;
           box-shadow: 0 15px 30px -10px rgba(245, 158, 11, 0.6) !important;
+        }
+
+        button.form-submit-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
       `}</style>
         </div>

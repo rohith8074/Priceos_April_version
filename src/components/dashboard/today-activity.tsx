@@ -10,10 +10,10 @@ interface TodayActivityProps {
 }
 
 function getPropertyName(
-  listingMapId: number,
+  listingMapId: number | string,
   properties: Listing[]
 ): string {
-  return properties.find((p) => p.id === listingMapId)?.name ?? `#${listingMapId}`;
+  return properties.find((p) => String(p.id) === String(listingMapId))?.name ?? `#${listingMapId}`;
 }
 
 export function TodayActivity({

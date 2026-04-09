@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { hostawayConversations, mockHostawayReplies } from "@/lib/db/schema";
-import { eq, and, lte, gte } from "drizzle-orm";
+import { connectDB, HostawayConversation } from "@/lib/db";
+import mongoose from "mongoose";
 
 /**
  * GET /api/hostaway/conversations/cached
- * 
- * Returns previously synced conversations from our Neon DB.
+ *
+ * Returns previously synced conversations from MongoDB.
  * No Hostaway API calls — purely reads from our cache.
- * 
+ *
  * Query params: listingId, from, to
  */
 export async function GET(request: Request) {
@@ -22,20 +21,27 @@ export async function GET(request: Request) {
     }
 
     try {
-        const rows = await db.select().from(hostawayConversations).where(
-            and(
-                eq(hostawayConversations.listingId, parseInt(listingId)),
-                lte(hostawayConversations.dateFrom, dateTo),
-                gte(hostawayConversations.dateTo, dateFrom)
-            )
-        );
+        await connectDB();
+
+        let listingObjectId: mongoose.Types.ObjectId;
+        try {
+            listingObjectId = new mongoose.Types.ObjectId(listingId);
+        } catch {
+            return NextResponse.json({ error: "Invalid listingId" }, { status: 400 });
+        }
+
+        const rows = await HostawayConversation.find({
+            listingId: listingObjectId,
+            dateFrom: { $lte: dateTo },
+            dateTo: { $gte: dateFrom },
+        }).lean();
 
         if (rows.length === 0) {
             return NextResponse.json({ success: true, conversations: [] });
         }
 
-        // Deduplicate rows by hostawayConversationId
-        const uniqueRowsMap = new Map();
+        // Deduplicate by hostawayConversationId
+        const uniqueRowsMap = new Map<string, typeof rows[0]>();
         for (const row of rows) {
             if (!uniqueRowsMap.has(row.hostawayConversationId)) {
                 uniqueRowsMap.set(row.hostawayConversationId, row);
@@ -43,34 +49,23 @@ export async function GET(request: Request) {
         }
         const uniqueRows = Array.from(uniqueRowsMap.values());
 
-        // Merge with shadow replies from our DB
-        const uiConversations = await Promise.all(uniqueRows.map(async (conv) => {
+        const uiConversations = uniqueRows.map((conv) => {
             const dbMessages = conv.messages as { sender: string; text: string; timestamp: string }[];
 
-            // Get shadow admin replies for this conversation
-            const shadowReplies = await db.select().from(mockHostawayReplies).where(
-                eq(mockHostawayReplies.conversationId, conv.hostawayConversationId)
-            );
-
-            // Merge all messages and sort by timestamp
-            const allMessages = [
-                ...dbMessages.map((m, idx) => ({
+            const allMessages = dbMessages
+                .map((m, idx) => ({
                     id: `${conv.hostawayConversationId}_${idx}`,
                     sender: m.sender as "guest" | "admin",
                     text: m.text,
                     time: m.timestamp
-                        ? new Date(m.timestamp).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+                        ? new Date(m.timestamp).toLocaleTimeString("en-US", {
+                              hour: "numeric",
+                              minute: "2-digit",
+                          })
                         : "",
                     _ts: m.timestamp ? new Date(m.timestamp).getTime() : idx,
-                })),
-                ...shadowReplies.map((r, idx) => ({
-                    id: `shadow_${r.id}_${idx}`,
-                    sender: "admin" as const,
-                    text: r.text,
-                    time: r.createdAt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
-                    _ts: r.createdAt.getTime(),
-                })),
-            ].sort((a, b) => a._ts - b._ts);
+                }))
+                .sort((a, b) => a._ts - b._ts);
 
             const lastMsg = allMessages[allMessages.length - 1];
 
@@ -79,9 +74,9 @@ export async function GET(request: Request) {
                 guestName: conv.guestName,
                 lastMessage: lastMsg?.text || "No messages",
                 status: lastMsg?.sender === "guest" ? "needs_reply" : "resolved",
-                messages: allMessages.map(({ _ts, ...rest }) => rest), // Remove _ts helper
+                messages: allMessages.map(({ _ts, ...rest }) => rest),
             };
-        }));
+        });
 
         return NextResponse.json({
             success: true,

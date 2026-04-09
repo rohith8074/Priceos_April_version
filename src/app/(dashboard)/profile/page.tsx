@@ -8,8 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { User, Mail, Shield, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { authClient } from "@/lib/auth/client";
-
 export default function ProfilePage() {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
@@ -22,27 +20,7 @@ export default function ProfilePage() {
     const [email, setEmail] = useState("");
 
     useEffect(() => {
-        async function loadSession() {
-            try {
-                const res = await authClient.getSession();
-                if (res?.data?.user) {
-                    const u = res.data.user;
-                    setUser({
-                        id: u.id,
-                        name: u.name || u.email,
-                        email: u.email,
-                    });
-                }
-            } catch (e) {
-                console.error("Failed to load session", e);
-            }
-            setIsSessionPending(false);
-        }
-        loadSession();
-    }, []);
-
-    useEffect(() => {
-        async function fetchSettings() {
+        async function loadProfile() {
             try {
                 const res = await fetch("/api/user/settings");
                 if (res.ok) {
@@ -50,19 +28,17 @@ export default function ProfilePage() {
                     setSettings(data);
                     setFullName(data.fullName || "");
                     setEmail(data.email || "");
+                    setUser({ id: data.userId, name: data.fullName, email: data.email });
                 }
-            } catch (err) {
-                console.error("Failed to fetch settings", err);
+            } catch (e) {
+                console.error("Failed to load profile", e);
             } finally {
+                setIsSessionPending(false);
                 setIsSettingsLoading(false);
             }
         }
-        if (user) {
-            fetchSettings();
-        } else if (!isSessionPending) {
-            setIsSettingsLoading(false);
-        }
-    }, [user, isSessionPending]);
+        loadProfile();
+    }, []);
 
     const handleSave = async () => {
         setIsSaving(true);

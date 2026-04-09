@@ -1,6 +1,15 @@
+/**
+ * MongoDB-backed PMS Client
+ * Replaces the old Drizzle/Neon implementation.
+ *
+ * IMPORTANT: This client is READ-ONLY with regard to Hostaway.
+ * It reads data synced from Hostaway into MongoDB.
+ * Calendar writes update local MongoDB only — never POST to Hostaway.
+ */
+
 import { PMSClient } from "./types";
 import {
-  Listing,
+  Listing as ListingType,
   CalendarDay,
   Reservation,
   CalendarInterval,
@@ -8,139 +17,106 @@ import {
   VerificationResult,
   ReservationFilters,
 } from "@/types/hostaway";
-import { db } from "@/lib/db";
-import {
-  listings,
-  inventoryMaster,
-  reservations,
-  type ListingRow,
-  type ReservationRow,
-  type InventoryMasterRow,
-} from "@/lib/db";
-import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { connectDB, Listing, InventoryMaster, Reservation as ReservationModel } from "@/lib/db";
 import { format, eachDayOfInterval, parseISO } from "date-fns";
 
-// --- Row mappers (Drizzle numeric columns return strings) ---
-
-function mapListingRow(row: ListingRow): Listing {
+function mapListing(row: Record<string, unknown>): ListingType {
+  const r = row as Record<string, unknown>;
   return {
-    id: row.id,
-    name: row.name,
-    city: row.city,
-    countryCode: row.countryCode,
-    area: row.area,
-    bedroomsNumber: row.bedroomsNumber,
-    bathroomsNumber: row.bathroomsNumber,
-    propertyTypeId: row.propertyTypeId ?? undefined,
-    price: parseFloat(row.price),
-    priceFloor: parseFloat(row.priceFloor),
-    priceCeiling: parseFloat(row.priceCeiling),
-    currencyCode: row.currencyCode as "AED" | "USD",
-    personCapacity: row.personCapacity ?? undefined,
-    amenities: (row.amenities as string[]) ?? [],
+    id: String(r._id || r.id),
+    name: r.name as string,
+    city: (r.city as string) || "",
+    countryCode: (r.countryCode as string) || "",
+    area: (r.area as string) || "",
+    bedroomsNumber: (r.bedroomsNumber as number) || 0,
+    bathroomsNumber: (r.bathroomsNumber as number) || 1,
+    propertyTypeId: (r.propertyTypeId as number) ?? undefined,
+    price: Number(r.price),
+    priceFloor: Number(r.priceFloor),
+    priceCeiling: Number(r.priceCeiling),
+    currencyCode: ((r.currencyCode as string) || "AED") as "AED" | "USD",
+    personCapacity: (r.personCapacity as number) ?? undefined,
+    amenities: ((r.amenities as string[]) ?? []),
   };
 }
 
-function mapCalendarDayRow(row: InventoryMasterRow): CalendarDay {
+function mapCalendarDay(row: Record<string, unknown>): CalendarDay {
   return {
-    date: row.date,
-    status: row.status as CalendarDay["status"],
-    price: parseFloat(row.currentPrice),
-    minimumStay: row.minStay ?? 1,
-    maximumStay: row.maxStay ?? 30,
+    date: row.date as string,
+    status: (row.status as CalendarDay["status"]) || "available",
+    price: Number(row.currentPrice),
+    minimumStay: (row.minStay as number) ?? 1,
+    maximumStay: (row.maxStay as number) ?? 30,
   };
 }
 
-function mapReservationRow(row: ReservationRow): Reservation {
+function mapReservation(row: Record<string, unknown>): Reservation {
   return {
-    id: row.id,
-    listingMapId: row.listingId,
-    guestName: row.guestName || "Unknown",
-    guestEmail: row.guestEmail || undefined,
-    channelName: (row.channelName as Reservation["channelName"]) || "Other",
-    arrivalDate: row.startDate,
-    departureDate: row.endDate,
-    nights: Math.floor((new Date(row.endDate).getTime() - new Date(row.startDate).getTime()) / (1000 * 3600 * 24)),
-    totalPrice: parseFloat(row.totalPrice || "0"),
-    pricePerNight: parseFloat(row.pricePerNight || "0"),
-    status: (row.reservationStatus as Reservation["status"]) || "confirmed",
-    createdAt: row.createdAt.toISOString(),
+    id: String(row._id || row.id),
+    listingMapId: String(row.listingId),
+    guestName: (row.guestName as string) || "Unknown",
+    guestEmail: (row.guestEmail as string) ?? undefined,
+    channelName: ((row.channelName as string) || "Other") as Reservation["channelName"],
+    arrivalDate: row.checkIn as string,
+    departureDate: row.checkOut as string,
+    nights: (row.nights as number) || 1,
+    totalPrice: Number(row.totalPrice || 0),
+    pricePerNight: Number(row.totalPrice || 0) / ((row.nights as number) || 1),
+    status: ((row.status as string) || "confirmed") as Reservation["status"],
+    createdAt: new Date(row.createdAt as string).toISOString(),
     checkInTime: undefined,
     checkOutTime: undefined,
   };
 }
 
-// --- DbPMSClient ---
-
 export class DbPMSClient implements PMSClient {
-  // --- Listings ---
+  private mode = "db" as const;
+  getMode() { return this.mode; }
 
-  async listListings(): Promise<Listing[]> {
-    const rows = await db.select().from(listings);
-    return rows.map(mapListingRow);
+  async listListings(): Promise<ListingType[]> {
+    await connectDB();
+    const rows = await Listing.find({ isActive: true }).lean();
+    return (rows as unknown as Record<string, unknown>[]).map(mapListing);
   }
 
-  async getListing(id: string | number): Promise<Listing> {
-    const numId = typeof id === "string" ? parseInt(id) : id;
-    const rows = await db
-      .select()
-      .from(listings)
-      .where(eq(listings.id, numId));
-    if (rows.length === 0) throw new Error(`Listing ${id} not found`);
-    return mapListingRow(rows[0]);
+  async getListing(id: string | number): Promise<ListingType> {
+    await connectDB();
+    const row = await Listing.findById(String(id)).lean();
+    if (!row) throw new Error(`Listing ${id} not found`);
+    return mapListing(row as unknown as Record<string, unknown>);
   }
 
-  async updateListing(
-    id: string | number,
-    updates: Partial<Listing>
-  ): Promise<Listing> {
-    const numId = typeof id === "string" ? parseInt(id) : id;
-    const setValues: Record<string, unknown> = {};
-    if (updates.name !== undefined) setValues.name = updates.name;
-    if (updates.price !== undefined) setValues.price = String(updates.price);
-    if (updates.bedroomsNumber !== undefined)
-      setValues.bedroomsNumber = updates.bedroomsNumber;
-    if (updates.bathroomsNumber !== undefined)
-      setValues.bathroomsNumber = updates.bathroomsNumber;
-    if (updates.personCapacity !== undefined)
-      setValues.personCapacity = updates.personCapacity;
-    if (updates.amenities !== undefined) setValues.amenities = updates.amenities;
+  async updateListing(id: string | number, updates: Partial<ListingType>): Promise<ListingType> {
+    await connectDB();
+    const allowed: Record<string, unknown> = {};
+    if (updates.name !== undefined) allowed.name = updates.name;
+    if (updates.price !== undefined) allowed.price = updates.price;
+    if (updates.bedroomsNumber !== undefined) allowed.bedroomsNumber = updates.bedroomsNumber;
+    if (updates.bathroomsNumber !== undefined) allowed.bathroomsNumber = updates.bathroomsNumber;
+    if (updates.personCapacity !== undefined) allowed.personCapacity = updates.personCapacity;
+    if (updates.amenities !== undefined) allowed.amenities = updates.amenities;
 
-    if (Object.keys(setValues).length > 0) {
-      await db.update(listings).set(setValues).where(eq(listings.id, numId));
+    if (Object.keys(allowed).length > 0) {
+      await Listing.findByIdAndUpdate(String(id), { $set: allowed });
     }
-    return this.getListing(numId);
+    return this.getListing(id);
   }
 
-  // --- Calendar ---
-
-  async getCalendar(
-    id: string | number,
-    startDate: Date,
-    endDate: Date
-  ): Promise<CalendarDay[]> {
-    const numId = typeof id === "string" ? parseInt(id) : id;
+  async getCalendar(id: string | number, startDate: Date, endDate: Date): Promise<CalendarDay[]> {
+    await connectDB();
     const startStr = format(startDate, "yyyy-MM-dd");
     const endStr = format(endDate, "yyyy-MM-dd");
 
-    const rows = await db
-      .select()
-      .from(inventoryMaster)
-      .where(
-        and(
-          eq(inventoryMaster.listingId, numId),
-          gte(inventoryMaster.date, startStr),
-          lte(inventoryMaster.date, endStr)
-        )
-      );
-    return rows.map(mapCalendarDayRow);
+    const rows = await InventoryMaster.find({
+      listingId: String(id),
+      date: { $gte: startStr, $lte: endStr },
+    }).lean();
+
+    return rows.map((r) => mapCalendarDay(r as unknown as Record<string, unknown>));
   }
 
-  async updateCalendar(
-    id: string | number,
-    intervals: CalendarInterval[]
-  ): Promise<UpdateResult> {
-    const numId = typeof id === "string" ? parseInt(id) : id;
+  async updateCalendar(id: string | number, intervals: CalendarInterval[]): Promise<UpdateResult> {
+    await connectDB();
     let updatedCount = 0;
 
     for (const interval of intervals) {
@@ -150,181 +126,96 @@ export class DbPMSClient implements PMSClient {
       });
       for (const day of days) {
         const dateStr = format(day, "yyyy-MM-dd");
-        await db
-          .update(inventoryMaster)
-          .set({ currentPrice: String(interval.price) })
-          .where(
-            and(
-              eq(inventoryMaster.listingId, numId),
-              eq(inventoryMaster.date, dateStr)
-            )
-          );
+        // Local update only — never POST to Hostaway
+        await InventoryMaster.findOneAndUpdate(
+          { listingId: String(id), date: dateStr },
+          { $set: { currentPrice: interval.price } }
+        );
         updatedCount++;
       }
     }
-
     return { success: true, updatedCount };
   }
 
-  async verifyCalendar(
-    id: string | number,
-    dates: string[]
-  ): Promise<VerificationResult> {
-    const numId = typeof id === "string" ? parseInt(id) : id;
-    let matchedDates = 0;
-    for (const dateStr of dates) {
-      const rows = await db
-        .select()
-        .from(inventoryMaster)
-        .where(
-          and(
-            eq(inventoryMaster.listingId, numId),
-            eq(inventoryMaster.date, dateStr)
-          )
-        );
-      if (rows.length > 0) matchedDates++;
-    }
-    return {
-      matches: matchedDates === dates.length,
-      totalDates: dates.length,
-      matchedDates,
-    };
+  async verifyCalendar(id: string | number, dates: string[]): Promise<VerificationResult> {
+    await connectDB();
+    const found = await InventoryMaster.find({
+      listingId: String(id),
+      date: { $in: dates },
+    }).countDocuments();
+    return { matches: found === dates.length, totalDates: dates.length, matchedDates: found };
   }
 
-  async blockDates(
-    id: string | number,
-    startDate: string,
-    endDate: string,
-    reason: "owner_stay" | "maintenance" | "other"
-  ): Promise<UpdateResult> {
-    const numId = typeof id === "string" ? parseInt(id) : id;
-    const days = eachDayOfInterval({
-      start: parseISO(startDate),
-      end: parseISO(endDate),
-    });
+  async blockDates(id: string | number, startDate: string, endDate: string): Promise<UpdateResult> {
+    await connectDB();
+    const days = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
     let updatedCount = 0;
     for (const day of days) {
       const dateStr = format(day, "yyyy-MM-dd");
-      await db
-        .update(inventoryMaster)
-        .set({ status: "blocked", currentPrice: "0" })
-        .where(
-          and(
-            eq(inventoryMaster.listingId, numId),
-            eq(inventoryMaster.date, dateStr)
-          )
-        );
+      await InventoryMaster.findOneAndUpdate(
+        { listingId: String(id), date: dateStr },
+        { $set: { status: "blocked", currentPrice: 0 } }
+      );
       updatedCount++;
     }
     return { success: true, updatedCount };
   }
 
-  async unblockDates(
-    id: string | number,
-    startDate: string,
-    endDate: string
-  ): Promise<UpdateResult> {
-    const numId = typeof id === "string" ? parseInt(id) : id;
-    const days = eachDayOfInterval({
-      start: parseISO(startDate),
-      end: parseISO(endDate),
-    });
+  async unblockDates(id: string | number, startDate: string, endDate: string): Promise<UpdateResult> {
+    await connectDB();
+    const days = eachDayOfInterval({ start: parseISO(startDate), end: parseISO(endDate) });
     let updatedCount = 0;
     for (const day of days) {
       const dateStr = format(day, "yyyy-MM-dd");
-      await db
-        .update(inventoryMaster)
-        .set({ status: "available" })
-        .where(
-          and(
-            eq(inventoryMaster.listingId, numId),
-            eq(inventoryMaster.date, dateStr)
-          )
-        );
+      await InventoryMaster.findOneAndUpdate(
+        { listingId: String(id), date: dateStr },
+        { $set: { status: "available" } }
+      );
       updatedCount++;
     }
     return { success: true, updatedCount };
   }
-
-  // --- Reservations ---
 
   async getReservations(filters?: ReservationFilters): Promise<Reservation[]> {
-    const conditions: any[] = [];
+    await connectDB();
+    const query: Record<string, unknown> = {};
+    if (filters?.listingMapId) query.listingId = String(filters.listingMapId);
+    if (filters?.startDate) query.checkIn = { $gte: format(filters.startDate, "yyyy-MM-dd") };
+    if (filters?.endDate) query.checkOut = { $lte: format(filters.endDate, "yyyy-MM-dd") };
+    if (filters?.status) query.status = filters.status;
 
-    if (filters?.listingMapId) {
-      conditions.push(eq(reservations.listingId, filters.listingMapId));
-    }
-    if (filters?.startDate) {
-      conditions.push(
-        gte(reservations.startDate, format(filters.startDate, "yyyy-MM-dd"))
-      );
-    }
-    if (filters?.endDate) {
-      conditions.push(
-        lte(reservations.endDate, format(filters.endDate, "yyyy-MM-dd"))
-      );
-    }
+    let q = ReservationModel.find(query).sort({ checkIn: -1 });
+    if (filters?.limit) q = q.limit(filters.limit);
 
-    let query = db.select().from(reservations);
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions)) as typeof query;
-    }
+    const rows = await q.lean();
+    let result = rows.map((r) => mapReservation(r as unknown as Record<string, unknown>));
 
-    const rows = await query;
-    let result = rows.map(mapReservationRow);
-
-    if (filters?.channelName) {
-      result = result.filter(r => r.channelName === filters.channelName);
-    }
-    if (filters?.status) {
-      result = result.filter(r => r.status === filters.status);
-    }
-
+    if (filters?.channelName) result = result.filter((r) => r.channelName === filters.channelName);
     if (filters?.offset) result = result.slice(filters.offset);
-    if (filters?.limit) result = result.slice(0, filters.limit);
 
     return result;
   }
 
   async getReservation(id: string | number): Promise<Reservation> {
-    const numId = typeof id === "string" ? parseInt(id) : id;
-    const rows = await db
-      .select()
-      .from(reservations)
-      .where(eq(reservations.id, numId));
-    if (rows.length === 0) throw new Error(`Reservation ${id} not found`);
-    return mapReservationRow(rows[0]);
+    await connectDB();
+    const row = await ReservationModel.findById(String(id)).lean();
+    if (!row) throw new Error(`Reservation ${id} not found`);
+    return mapReservation(row as unknown as Record<string, unknown>);
   }
 
-  async createReservation(
-    reservation: Omit<Reservation, "id" | "createdAt" | "pricePerNight">
-  ): Promise<Reservation> {
-    const pricePerNight =
-      reservation.nights > 0
-        ? Math.round(reservation.totalPrice / reservation.nights)
-        : 0;
-
-    const [inserted] = await db
-      .insert(reservations)
-      .values({
-        listingId: reservation.listingMapId,
-        startDate: reservation.arrivalDate,
-        endDate: reservation.departureDate,
-        guestName: reservation.guestName,
-        channelName: reservation.channelName,
-        reservationStatus: reservation.status,
-        totalPrice: String(reservation.totalPrice),
-        pricePerNight: String(pricePerNight),
-        channelCommission: String(reservation.channelCommission || 0),
-        cleaningFee: String(reservation.cleaningFee || 0),
-      })
-      .returning();
-    return mapReservationRow(inserted);
-  }
-
-  // --- Utility ---
-
-  getMode(): "mock" | "live" {
-    return "mock";
+  async createReservation(reservation: Omit<Reservation, "id" | "createdAt" | "pricePerNight">): Promise<Reservation> {
+    await connectDB();
+    const doc = await ReservationModel.create({
+      listingId: String(reservation.listingMapId),
+      guestName: reservation.guestName,
+      guestEmail: reservation.guestEmail,
+      checkIn: reservation.arrivalDate,
+      checkOut: reservation.departureDate,
+      nights: reservation.nights,
+      totalPrice: reservation.totalPrice,
+      channelName: reservation.channelName,
+      status: reservation.status || "confirmed",
+    });
+    return mapReservation(doc.toObject() as unknown as Record<string, unknown>);
   }
 }

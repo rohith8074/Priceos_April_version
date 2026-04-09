@@ -15,7 +15,7 @@ export interface HostawayResponse<T> {
 }
 
 export interface Listing {
-  id: number;
+  id: number | string; // number for Hostaway API; string ObjectId for MongoDB
   name: string;
   city: string;
   countryCode: string;
@@ -47,8 +47,8 @@ export interface CalendarDay {
 }
 
 export interface Reservation {
-  id: number;
-  listingMapId: number;
+  id: number | string;
+  listingMapId: number | string;
   guestName: string;
   guestEmail?: string;
   channelName: "Airbnb" | "Booking.com" | "Direct" | "Other";

@@ -6,7 +6,7 @@
 export interface AgentCacheContext {
   context: {
     type: "portfolio" | "property";
-    propertyId?: number;
+    propertyId?: string;
     propertyName?: string;
   };
   data: {

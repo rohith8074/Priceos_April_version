@@ -13,8 +13,20 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, Loader2, Sparkles, AlertTriangle, ExternalLink, ChevronDown, RefreshCw } from "lucide-react";
-import { MarketEventRow } from "@/lib/db/schema";
 import { useContextStore } from "@/stores/context-store";
+
+interface MarketEventRow {
+    _id: string;
+    name: string;
+    startDate: string;
+    endDate: string;
+    impactLevel: "high" | "medium" | "low";
+    upliftPct: number;
+    description?: string;
+    source?: string;
+    area?: string;
+    isActive: boolean;
+}
 import { cn } from "@/lib/utils";
 
 export function MarketEventsTable() {
@@ -176,13 +188,8 @@ export function MarketEventsTable() {
                                 const end = new Date(ev.endDate);
                                 const isSingleDay = ev.startDate === ev.endDate;
 
-                                const isEvent = ev.eventType === 'event';
-                                const isHoliday = ev.eventType === 'holiday';
-                                const isDailyEvent = ev.eventType === 'daily_event';
-                                const isNews = ev.eventType === 'news';
-
                                 return (
-                                    <TableRow key={ev.id} className="hover:bg-muted/30 group transition-colors">
+                                    <TableRow key={ev._id} className="hover:bg-muted/30 group transition-colors">
                                         <TableCell className="pl-6 align-top pt-4">
                                             <div className="flex flex-col gap-1">
                                                 <span className="text-sm font-medium whitespace-nowrap">
@@ -207,7 +214,7 @@ export function MarketEventsTable() {
                                                     >
                                                         <div className="flex items-center gap-2">
                                                             <span className="text-sm font-bold text-foreground group-hover/link:text-primary transition-colors">
-                                                                {ev.title}
+                                                                {ev.name}
                                                             </span>
                                                             <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover/link:opacity-100 transition-all" />
                                                         </div>
@@ -219,7 +226,7 @@ export function MarketEventsTable() {
                                                     <>
                                                         <div className="flex items-center gap-2">
                                                             <span className="text-sm font-bold text-foreground">
-                                                                {ev.title}
+                                                                {ev.name}
                                                             </span>
                                                         </div>
                                                         <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 group-hover:line-clamp-none transition-all">
@@ -228,13 +235,10 @@ export function MarketEventsTable() {
                                                     </>
                                                 )}
 
-
-
                                                 <div className="flex flex-wrap gap-2 mt-1.5">
-                                                    {isEvent && <Badge variant="outline" className="text-[9px] bg-blue-500/5 text-blue-500 border-blue-500/20">Event</Badge>}
-                                                    {isHoliday && <Badge variant="outline" className="text-[9px] bg-purple-500/5 text-purple-500 border-purple-500/20">Holiday</Badge>}
-                                                    {isDailyEvent && <Badge variant="outline" className="text-[9px] bg-amber-500/5 text-amber-500 border-amber-500/20">Daily Show</Badge>}
-                                                    {isNews && <Badge variant="outline" className="text-[9px] bg-red-500/5 text-red-500 border-red-500/20">Market News</Badge>}
+                                                    {ev.area && (
+                                                        <Badge variant="outline" className="text-[9px] bg-blue-500/5 text-blue-500 border-blue-500/20">{ev.area}</Badge>
+                                                    )}
                                                     {ev.source && ev.source.startsWith('http') && (
                                                         <Badge variant="outline" className="text-[9px] bg-emerald-500/5 text-emerald-600 border-emerald-500/20 flex items-center gap-1">
                                                             <div className="h-1 w-1 bg-emerald-500 rounded-full animate-pulse" />
@@ -247,28 +251,15 @@ export function MarketEventsTable() {
 
                                         <TableCell className="align-top pt-4">
                                             <div className="flex flex-col gap-2">
-                                                {getImpactBadge(ev.expectedImpact || 'medium')}
-                                                {ev.confidence ? (
-                                                    <div className="flex items-center gap-1.5 border-t border-muted pt-1">
-                                                        <div className="h-1.5 w-16 bg-muted rounded-full overflow-hidden">
-                                                            <div
-                                                                className="h-full bg-primary/40 rounded-full"
-                                                                style={{ width: `${ev.confidence}%` }}
-                                                            />
-                                                        </div>
-                                                        <span className="text-[9px] font-mono text-muted-foreground">
-                                                            {ev.confidence}%
-                                                        </span>
-                                                    </div>
-                                                ) : null}
+                                                {getImpactBadge(ev.impactLevel || 'medium')}
                                             </div>
                                         </TableCell>
 
                                         <TableCell className="text-right pr-6 align-top pt-4">
-                                            {ev.suggestedPremium && Number(ev.suggestedPremium) > 0 ? (
+                                            {ev.upliftPct > 0 ? (
                                                 <div className="inline-flex flex-col items-end">
                                                     <span className="text-sm font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded flex items-center gap-1">
-                                                        +{Math.round(Number(ev.suggestedPremium))}%
+                                                        +{Math.round(ev.upliftPct)}%
                                                     </span>
                                                     <span className="text-[9px] uppercase tracking-wider text-muted-foreground mt-1">
                                                         Target Lift

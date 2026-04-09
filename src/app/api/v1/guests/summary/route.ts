@@ -1,19 +1,11 @@
-import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { guestSummaries, hostawayConversations, mockHostawayReplies, listings } from "@/lib/db/schema";
-import { eq, and, lte, gte } from "drizzle-orm";
+import { connectDB, GuestSummary, HostawayConversation, Listing } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api/response";
 import { getSummarySchema, generateSummarySchema, formatZodErrors } from "@/lib/validators";
 import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/api/rate-limit";
+import { getSession } from "@/lib/auth/server";
+import mongoose from "mongoose";
 
-/**
- * GET /api/v1/guests/summary?listingId=X&from=YYYY-MM-DD&to=YYYY-MM-DD
- * 
- * Returns a cached AI summary for a listing + date range.
- * Does NOT generate a new one — use POST for that.
- */
 export async function GET(request: Request) {
-    // ── Rate Limiting ──
     const ip = getClientIp(request);
     const rateCheck = checkRateLimit(`guests-summary-get:${ip}`, RATE_LIMITS.standard);
     if (!rateCheck.allowed) {
@@ -35,16 +27,17 @@ export async function GET(request: Request) {
     const { listingId, from: dateFrom, to: dateTo } = validation.data;
 
     try {
-        const cached = await db.select().from(guestSummaries).where(
-            and(
-                eq(guestSummaries.listingId, parseInt(listingId)),
-                eq(guestSummaries.dateFrom, dateFrom),
-                eq(guestSummaries.dateTo, dateTo)
-            )
-        ).limit(1);
+        await connectDB();
 
-        if (cached.length > 0) {
-            return apiSuccess({ summary: cached[0], cached: true });
+        const listingObjectId = new mongoose.Types.ObjectId(String(listingId));
+        const cached = await GuestSummary.findOne({
+            listingId: listingObjectId,
+            dateFrom,
+            dateTo,
+        }).lean();
+
+        if (cached) {
+            return apiSuccess({ summary: cached, cached: true });
         }
 
         return apiSuccess({ summary: null, cached: false });
@@ -54,19 +47,7 @@ export async function GET(request: Request) {
     }
 }
 
-/**
- * POST /api/v1/guests/summary
- * 
- * Generates an AI summary from stored conversations using Lyzr,
- * then caches it in guest_summaries table.
- * 
- * Uses Map-Reduce pattern for large conversation sets (>15 threads).
- * 
- * Request Body:
- *   { listingId: number, dateFrom: "YYYY-MM-DD", dateTo: "YYYY-MM-DD" }
- */
 export async function POST(request: Request) {
-    // ── Rate Limiting (AI tier) ──
     const ip = getClientIp(request);
     const rateCheck = checkRateLimit(`guests-summary-post:${ip}`, RATE_LIMITS.ai);
     if (!rateCheck.allowed) {
@@ -81,7 +62,6 @@ export async function POST(request: Request) {
     }
 
     const validation = generateSummarySchema.safeParse(body);
-
     if (!validation.success) {
         return apiError("VALIDATION_ERROR", "Invalid request body", 400, formatZodErrors(validation.error));
     }
@@ -89,16 +69,22 @@ export async function POST(request: Request) {
     const { listingId, dateFrom, dateTo } = validation.data;
 
     try {
-        // ── Step 1: Load cached conversations ──
-        const conversations = await db.select().from(hostawayConversations).where(
-            and(
-                eq(hostawayConversations.listingId, listingId),
-                lte(hostawayConversations.dateFrom, dateTo),
-                gte(hostawayConversations.dateTo, dateFrom)
-            )
-        );
+        await connectDB();
 
-        const uniqueConversationsMap = new Map();
+        const session = await getSession();
+        const orgId = session?.orgId
+            ? new mongoose.Types.ObjectId(session.orgId)
+            : new mongoose.Types.ObjectId();
+
+        const listingObjectId = new mongoose.Types.ObjectId(String(listingId));
+
+        const conversations = await HostawayConversation.find({
+            listingId: listingObjectId,
+            dateFrom: { $lte: dateTo },
+            dateTo: { $gte: dateFrom },
+        }).lean();
+
+        const uniqueConversationsMap = new Map<string, typeof conversations[0]>();
         for (const conv of conversations) {
             if (!uniqueConversationsMap.has(conv.hostawayConversationId)) {
                 uniqueConversationsMap.set(conv.hostawayConversationId, conv);
@@ -107,42 +93,17 @@ export async function POST(request: Request) {
         const uniqueConversations = Array.from(uniqueConversationsMap.values());
 
         if (uniqueConversations.length === 0) {
-            return apiError(
-                "NOT_FOUND",
-                "No conversations found. Please sync conversations first.",
-                404
-            );
+            return apiError("NOT_FOUND", "No conversations found. Please sync conversations first.", 404);
         }
 
-        // ── Step 2: Merge with shadow admin replies ──
-        const enrichedConversations = await Promise.all(
-            uniqueConversations.map(async (conv) => {
-                const shadowReplies = await db.select().from(mockHostawayReplies).where(
-                    eq(mockHostawayReplies.conversationId, conv.hostawayConversationId)
-                );
+        const enrichedConversations = uniqueConversations.map((conv) => ({
+            id: conv.hostawayConversationId,
+            guestName: conv.guestName,
+            messages: conv.messages as { sender: string; text: string; timestamp: string }[],
+        }));
 
-                const allMessages = [
-                    ...(conv.messages as { sender: string; text: string; timestamp: string }[]),
-                    ...shadowReplies.map(r => ({
-                        sender: "admin" as const,
-                        text: r.text,
-                        timestamp: r.createdAt.toISOString(),
-                    }))
-                ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const listing = await Listing.findById(listingObjectId).select("name").lean();
 
-                return {
-                    id: conv.hostawayConversationId,
-                    guestName: conv.guestName,
-                    messages: allMessages,
-                };
-            })
-        );
-
-        // ── Step 3: Get property name ──
-        const [listing] = await db.select({ name: listings.name }).from(listings)
-            .where(eq(listings.id, listingId)).limit(1);
-
-        // ── Step 4: Build prompt and call Lyzr agent (map-reduce for large sets) ──
         const CHUNK_SIZE = 15;
         const chunks: typeof enrichedConversations[] = [];
         for (let i = 0; i < enrichedConversations.length; i += CHUNK_SIZE) {
@@ -212,7 +173,6 @@ Respond in this exact JSON format:
                     if (jsonMatch) summaryData = JSON.parse(jsonMatch[0]);
                 }
             } else {
-                // Map-Reduce for large conversation sets
                 const chunkSummaries: string[] = [];
 
                 for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
@@ -223,7 +183,7 @@ Respond in this exact JSON format:
                         return `--- ${conv.guestName} ---\n${msgText}`;
                     }).join("\n\n");
 
-                    const mapPrompt = `Analyze these ${chunk.length} guest conversations for "${listing?.name || "Property"}". 
+                    const mapPrompt = `Analyze these ${chunk.length} guest conversations for "${listing?.name || "Property"}".
 For each, provide: guest name, one-line summary, sentiment (positive/neutral/negative), needs reply (yes/no).
 Also list any recurring themes and action items you notice.
 
@@ -271,7 +231,6 @@ Respond in this exact JSON format:
             console.warn("⚠️  [v1/guests/summary] Lyzr agent failed, generating local fallback...", agentErr);
         }
 
-        // ── Step 5: Local fallback if AI fails ──
         if (!summaryData) {
             const needsReply = enrichedConversations.filter(c => {
                 const lastMsg = c.messages[c.messages.length - 1];
@@ -297,7 +256,8 @@ Respond in this exact JSON format:
                 bulletPoints: enrichedConversations.map(c => {
                     const lastGuestMsg = [...c.messages].reverse().find(m => m.sender === "guest");
                     const lastAdminMsg = [...c.messages].reverse().find(m => m.sender === "admin");
-                    const resolved = lastAdminMsg && c.messages.indexOf(lastAdminMsg) > c.messages.indexOf(lastGuestMsg!);
+                    const resolved = lastAdminMsg && lastGuestMsg &&
+                        c.messages.indexOf(lastAdminMsg) > c.messages.indexOf(lastGuestMsg);
                     return `${c.guestName}: "${lastGuestMsg?.text || "No message"}" — ${resolved ? "Resolved" : "NEEDS REPLY"}`;
                 }),
                 totalConversations: enrichedConversations.length,
@@ -305,26 +265,25 @@ Respond in this exact JSON format:
             };
         }
 
-        // ── Step 6: Save to database (upsert) ──
-        await db.delete(guestSummaries).where(
-            and(
-                eq(guestSummaries.listingId, listingId),
-                eq(guestSummaries.dateFrom, dateFrom),
-                eq(guestSummaries.dateTo, dateTo)
-            )
+        // Upsert summary
+        await GuestSummary.findOneAndUpdate(
+            { listingId: listingObjectId, dateFrom, dateTo },
+            {
+                $set: {
+                    orgId,
+                    listingId: listingObjectId,
+                    dateFrom,
+                    dateTo,
+                    sentiment: summaryData.sentiment,
+                    themes: summaryData.themes,
+                    actionItems: summaryData.actionItems,
+                    bulletPoints: summaryData.bulletPoints,
+                    totalConversations: summaryData.totalConversations,
+                    needsReplyCount: summaryData.needsReplyCount,
+                },
+            },
+            { upsert: true, new: true }
         );
-
-        await db.insert(guestSummaries).values({
-            listingId,
-            dateFrom,
-            dateTo,
-            sentiment: summaryData.sentiment,
-            themes: summaryData.themes,
-            actionItems: summaryData.actionItems,
-            bulletPoints: summaryData.bulletPoints,
-            totalConversations: summaryData.totalConversations,
-            needsReplyCount: summaryData.needsReplyCount,
-        });
 
         return apiSuccess(
             { summary: summaryData, cached: false },

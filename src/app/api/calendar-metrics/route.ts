@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { inventoryMaster, listings, reservations } from "@/lib/db/schema";
-import { eq, and, gte, lte, sql, count, avg } from "drizzle-orm";
+import { connectDB, InventoryMaster, Listing, Reservation } from "@/lib/db";
+import mongoose from "mongoose";
 
 export async function GET(req: NextRequest) {
     try {
@@ -17,85 +16,82 @@ export async function GET(req: NextRequest) {
             );
         }
 
-        const lid = parseInt(listingId, 10);
+        await connectDB();
 
-        // Query inventory_master for the date range
-        const metrics = await db
-            .select({
-                totalDays: count(),
-                bookedDays: sql<number>`COUNT(CASE WHEN ${inventoryMaster.status} IN ('reserved', 'booked') THEN 1 END)`,
-                availableDays: sql<number>`COUNT(CASE WHEN ${inventoryMaster.status} = 'available' THEN 1 END)`,
-                blockedDays: sql<number>`COUNT(CASE WHEN ${inventoryMaster.status} = 'blocked' THEN 1 END)`,
-                avgPrice: avg(inventoryMaster.currentPrice),
-            })
-            .from(inventoryMaster)
-            .where(
-                and(
-                    eq(inventoryMaster.listingId, lid),
-                    gte(inventoryMaster.date, from),
-                    lte(inventoryMaster.date, to)
-                )
-            );
+        const lid = new mongoose.Types.ObjectId(listingId);
 
-        const result = metrics[0];
-        const totalDays = Number(result?.totalDays || 0);
-        const bookedDays = Number(result?.bookedDays || 0);
-        const availableDays = Number(result?.availableDays || 0);
-        const blockedDays = Number(result?.blockedDays || 0);
-        let avgPriceVal = result?.avgPrice ? parseFloat(String(result.avgPrice)) : 0;
+        // Aggregate metrics from InventoryMaster
+        const [agg] = await InventoryMaster.aggregate([
+            { $match: { listingId: lid, date: { $gte: from, $lte: to } } },
+            {
+                $group: {
+                    _id: null,
+                    totalDays: { $sum: 1 },
+                    bookedDays: {
+                        $sum: { $cond: [{ $eq: ["$status", "booked"] }, 1, 0] },
+                    },
+                    availableDays: {
+                        $sum: { $cond: [{ $eq: ["$status", "available"] }, 1, 0] },
+                    },
+                    blockedDays: {
+                        $sum: { $cond: [{ $eq: ["$status", "blocked"] }, 1, 0] },
+                    },
+                    avgPrice: { $avg: "$currentPrice" },
+                },
+            },
+        ]);
 
-        // If there's no data in inventory_master for this period, fallback to the base price from listings
+        let totalDays = Number(agg?.totalDays || 0);
+        let bookedDays = Number(agg?.bookedDays || 0);
+        let availableDays = Number(agg?.availableDays || 0);
+        let blockedDays = Number(agg?.blockedDays || 0);
+        let avgPriceVal = agg?.avgPrice ? Number(agg.avgPrice) : 0;
+
+        // Fallback to listing base price if no inventory data
         if (avgPriceVal === 0) {
-            const prop = await db.select({ price: listings.price }).from(listings).where(eq(listings.id, lid));
-            if (prop.length > 0) {
-                avgPriceVal = parseFloat(String(prop[0].price));
-            }
+            const prop = await Listing.findById(lid).select("price").lean();
+            if (prop) avgPriceVal = Number(prop.price);
         }
 
-        // Occupancy = booked / (total - blocked) * 100
-        // If all days are blocked, occupancy is 0
         const bookableDays = totalDays - blockedDays;
-        const occupancy = bookableDays > 0
-            ? Math.round((bookedDays / bookableDays) * 100)
-            : 0;
+        const occupancy =
+            bookableDays > 0 ? Math.round((bookedDays / bookableDays) * 100) : 0;
 
-        const calendarDays = await db
-            .select({
-                date: inventoryMaster.date,
-                status: inventoryMaster.status,
-                price: inventoryMaster.currentPrice,
-            })
-            .from(inventoryMaster)
-            .where(
-                and(
-                    eq(inventoryMaster.listingId, lid),
-                    gte(inventoryMaster.date, from),
-                    lte(inventoryMaster.date, to)
-                )
-            )
-            .orderBy(inventoryMaster.date);
+        // Calendar days
+        const calendarDocs = await InventoryMaster.find({
+            listingId: lid,
+            date: { $gte: from, $lte: to },
+        })
+            .sort({ date: 1 })
+            .select("date status currentPrice")
+            .lean();
 
-        const reservationsResp = await db
-            .select({
-                guestName: reservations.guestName,
-                startDate: reservations.startDate,
-                endDate: reservations.endDate,
-                totalPrice: reservations.totalPrice,
-                pricePerNight: reservations.pricePerNight,
-                channelName: reservations.channelName,
-                reservationStatus: reservations.reservationStatus,
-            })
-            .from(reservations)
-            .where(
-                and(
-                    eq(reservations.listingId, lid),
-                    lte(reservations.startDate, to),
-                    gte(reservations.endDate, from)
-                )
-            );
+        const calendarDays = calendarDocs.map((d) => ({
+            date: d.date,
+            status: d.status,
+            price: Number(d.currentPrice),
+        }));
+
+        // Reservations overlapping the range
+        const resDocs = await Reservation.find({
+            listingId: lid,
+            checkIn: { $lte: to },
+            checkOut: { $gte: from },
+        }).lean();
+
+        const reservations = resDocs.map((r) => ({
+            guestName: r.guestName,
+            startDate: r.checkIn,
+            endDate: r.checkOut,
+            totalPrice: r.totalPrice,
+            pricePerNight:
+                r.nights > 0 ? Math.round(r.totalPrice / r.nights) : r.totalPrice,
+            channelName: r.channelName,
+            reservationStatus: r.status,
+        }));
 
         return NextResponse.json({
-            listingId: lid,
+            listingId,
             dateRange: { from, to },
             totalDays,
             bookedDays,
@@ -105,7 +101,7 @@ export async function GET(req: NextRequest) {
             occupancy,
             avgPrice: Math.round(avgPriceVal * 100) / 100,
             calendarDays,
-            reservations: reservationsResp,
+            reservations,
         });
     } catch (error) {
         console.error("Calendar Metrics Error:", error);

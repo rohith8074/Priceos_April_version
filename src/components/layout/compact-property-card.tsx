@@ -2,10 +2,10 @@
 
 import { Building2, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ListingRow } from "@/lib/db";
+import type { PropertyListing } from "@/types";
 
 interface Props {
-  property: ListingRow;
+  property: PropertyListing;
   isActive: boolean;
   onClick: () => void;
   occupancy?: number;

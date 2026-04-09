@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { chatMessages } from "@/lib/db/schema";
-import { eq, isNull, asc, and } from "drizzle-orm";
+import { connectDB, ChatMessage } from "@/lib/db";
+import mongoose from "mongoose";
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
@@ -9,32 +8,29 @@ export async function GET(req: NextRequest) {
     const sessionId = searchParams.get("sessionId");
 
     try {
-        let history;
+        await connectDB();
+
+        const query: Record<string, unknown> = {};
+
         if (propertyId && propertyId !== "null") {
-            const conditions = [eq(chatMessages.listingId, Number(propertyId))];
-            // When a sessionId is provided, only load messages for that exact session
-            // (session includes the date range, so different dates = different session = empty chat)
+            query["context.propertyId"] = new mongoose.Types.ObjectId(propertyId);
             if (sessionId) {
-                conditions.push(eq(chatMessages.sessionId, sessionId));
+                query.sessionId = sessionId;
             }
-            history = await db.select()
-                .from(chatMessages)
-                .where(and(...conditions))
-                .orderBy(asc(chatMessages.createdAt));
         } else {
-            history = await db.select()
-                .from(chatMessages)
-                .where(isNull(chatMessages.listingId))
-                .orderBy(asc(chatMessages.createdAt));
+            query["context.type"] = "portfolio";
         }
 
-        // Map to the frontend Message format
-        const messages = history.map((msg: any) => ({
-            id: msg.id.toString(),
+        const history = await ChatMessage.find(query)
+            .sort({ createdAt: 1 })
+            .lean();
+
+        const messages = history.map((msg) => ({
+            id: msg._id.toString(),
             role: msg.role,
             content: msg.content,
-            proposals: msg.structured?.proposals || undefined, // need to check exact path
-            proposalStatus: msg.structured?.proposals ? "pending" : undefined,
+            proposals: (msg.metadata as any)?.proposals || undefined,
+            proposalStatus: (msg.metadata as any)?.proposals ? "pending" : undefined,
         }));
 
         return NextResponse.json({ messages, rawHistory: history });

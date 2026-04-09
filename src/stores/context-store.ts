@@ -6,7 +6,7 @@ import { addDays } from "date-fns";
 interface ContextStore {
   // Current context
   contextType: "portfolio" | "property";
-  propertyId: number | null;
+  propertyId: string | null;
   propertyName: string | null;
 
   // Date Range
@@ -14,7 +14,7 @@ interface ContextStore {
 
   // Actions
   setPortfolioContext: () => void;
-  setPropertyContext: (id: number, name: string) => void;
+  setPropertyContext: (id: string, name: string) => void;
   setDateRange: (range: DateRange | undefined) => void;
 
   // UI State
@@ -95,7 +95,7 @@ export const useContextStore = create<ContextStore>()(
         }),
 
       // Switch to specific property
-      setPropertyContext: (id: number, name: string) =>
+      setPropertyContext: (id: string, name: string) =>
         set({
           contextType: "property",
           propertyId: id,

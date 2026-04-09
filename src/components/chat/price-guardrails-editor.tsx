@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface PriceGuardrailsEditorProps {
-    listingId: number;
+    listingId: string;
     initialFloor: number;
     initialCeiling: number;
     guardrailsSource?: string;

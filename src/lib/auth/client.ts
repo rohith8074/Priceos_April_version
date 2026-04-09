@@ -1,5 +1,7 @@
-'use client';
+"use client";
 
-import { createAuthClient } from '@neondatabase/auth/next';
-
-export const authClient = createAuthClient();
+// JWT auth is server-side only via httpOnly cookie.
+// This client stub keeps any imports from breaking.
+export const authClient = {
+  getSession: async () => ({ data: null, error: null }),
+};

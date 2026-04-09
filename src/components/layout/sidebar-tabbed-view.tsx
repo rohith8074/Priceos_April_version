@@ -253,9 +253,9 @@ export function SidebarTabbedView() {
                                                     {/* Sentiment Badge */}
                                                     <div className="flex items-center justify-between">
                                                         <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Overall Sentiment</span>
-                                                        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border shadow-sm ${conversationSummary.sentiment === 'Positive' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                                                            conversationSummary.sentiment === 'Needs Attention' ? 'bg-rose-50 border-rose-200 text-rose-700' :
-                                                                'bg-amber-50 border-amber-200 text-amber-700'
+                                                        <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border shadow-sm ${conversationSummary.sentiment === 'Positive' ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400' :
+                                                            conversationSummary.sentiment === 'Needs Attention' ? 'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-400' :
+                                                                'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-500/10 dark:border-amber-500/20 dark:text-amber-400'
                                                             }`}>
                                                             {conversationSummary.sentiment === 'Positive' && <CheckCircle2 className="h-3.5 w-3.5" />}
                                                             {conversationSummary.sentiment === 'Needs Attention' && <AlertCircle className="h-3.5 w-3.5" />}
@@ -271,9 +271,9 @@ export function SidebarTabbedView() {
                                                                 <span className="text-lg font-black">{conversationSummary.totalConversations || 0}</span>
                                                                 <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Conversations</p>
                                                             </div>
-                                                            <div className="flex-1 bg-amber-50 rounded-lg p-3 border border-amber-200 text-center">
-                                                                <span className="text-lg font-black text-amber-600">{conversationSummary.needsReplyCount || 0}</span>
-                                                                <p className="text-[9px] font-bold uppercase tracking-widest text-amber-600/70 mt-0.5">Needs Reply</p>
+                                                            <div className="flex-1 bg-amber-50 dark:bg-amber-500/5 rounded-lg p-3 border border-amber-200 dark:border-amber-500/20 text-center">
+                                                                <span className="text-lg font-black text-amber-600 dark:text-amber-400">{conversationSummary.needsReplyCount || 0}</span>
+                                                                <p className="text-[9px] font-bold uppercase tracking-widest text-amber-600/70 dark:text-amber-400/70 mt-0.5">Needs Reply</p>
                                                             </div>
                                                         </div>
                                                     )}
@@ -344,7 +344,7 @@ export function SidebarTabbedView() {
                             <MarketEventsTable />
                             <div className="px-3 pb-3">
                                 <BenchmarkWidget
-                                    listingId={propertyId ? Number(propertyId) : null}
+                                    listingId={propertyId ?? null}
                                     dateFrom={dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : null}
                                     dateTo={dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : null}
                                     refreshKey={marketRefreshTrigger}

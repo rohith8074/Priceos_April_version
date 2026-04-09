@@ -12,7 +12,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { authClient } from "@/lib/auth/client";
 import { useState, useEffect } from "react";
 
 export function Header() {
@@ -21,35 +20,20 @@ export function Header() {
   const [userInitial, setUserInitial] = useState("U");
 
   useEffect(() => {
-    async function loadSession() {
-      try {
-        const res = await authClient.getSession();
-        if (res?.data?.user) {
-          const u = res.data.user;
-          setUserInitial((u.name?.[0] || u.email?.[0] || "U").toUpperCase());
-        }
-      } catch { }
-    }
-    loadSession();
+    fetch("/api/user/settings")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data) return;
+        const name = data.fullName || data.email || "U";
+        setUserInitial(name[0].toUpperCase());
+      })
+      .catch(() => {});
   }, []);
 
   const handleSignOut = async () => {
-    // VERSION: 2.2 - Sign out Fix
     try {
-      await authClient.signOut();
+      await fetch("/api/auth/logout", { method: "POST" });
     } catch { }
-    const cookiesToClear = [
-      'priceos-session',
-      '__Secure-neon-auth.session_token',
-      '__Secure-neon-auth.local.session_data',
-      'neon-auth.session_token',
-      'better-auth.session_token',
-    ];
-    cookiesToClear.forEach(name => {
-      document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-      document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; secure; samesite=lax`;
-      document.cookie = `${name}=; path=/; domain=${window.location.hostname}; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-    });
     window.location.href = '/login?signedout=true';
   };
 

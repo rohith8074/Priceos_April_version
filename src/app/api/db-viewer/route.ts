@@ -1,87 +1,82 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { listings, inventoryMaster, reservations, marketEvents, chatMessages, userSettings, guestSummaries, mockHostawayReplies, hostawayConversations, benchmarkData } from "@/lib/db/schema";
-import { sql, desc, count } from "drizzle-orm";
+import {
+    connectDB,
+    Listing,
+    InventoryMaster,
+    Reservation,
+    MarketEvent,
+    ChatMessage,
+    GuestSummary,
+    HostawayConversation,
+    BenchmarkData,
+} from "@/lib/db";
 
 export async function GET() {
     try {
-        // Table counts
-        const [listingsCount] = await db.select({ count: count() }).from(listings);
-        const [inventoryCount] = await db.select({ count: count() }).from(inventoryMaster);
-        const [reservationsCount] = await db.select({ count: count() }).from(reservations);
-        const [marketEventsCount] = await db.select({ count: count() }).from(marketEvents);
-        const [chatMessagesCount] = await db.select({ count: count() }).from(chatMessages);
-        const [userSettingsCount] = await db.select({ count: count() }).from(userSettings);
-        const [guestSummariesCount] = await db.select({ count: count() }).from(guestSummaries);
-        const [mockRepliesCount] = await db.select({ count: count() }).from(mockHostawayReplies);
-        const [hwConversationsCount] = await db.select({ count: count() }).from(hostawayConversations);
-        const [benchmarkCount] = await db.select({ count: count() }).from(benchmarkData);
+        await connectDB();
 
-        // All data
-        const listingsData = await db.select().from(listings);
-        const inventoryData = await db
-            .select()
-            .from(inventoryMaster)
-            .orderBy(desc(inventoryMaster.date));
-        const reservationsData = await db
-            .select()
-            .from(reservations)
-            .orderBy(desc(reservations.startDate));
-        const marketEventsData = await db
-            .select()
-            .from(marketEvents)
-            .orderBy(desc(marketEvents.startDate));
+        const [
+            listingsCount,
+            inventoryCount,
+            reservationsCount,
+            marketEventsCount,
+            chatMessagesCount,
+            guestSummariesCount,
+            hwConversationsCount,
+            benchmarkCount,
+        ] = await Promise.all([
+            Listing.countDocuments(),
+            InventoryMaster.countDocuments(),
+            Reservation.countDocuments(),
+            MarketEvent.countDocuments(),
+            ChatMessage.countDocuments(),
+            GuestSummary.countDocuments(),
+            HostawayConversation.countDocuments(),
+            BenchmarkData.countDocuments(),
+        ]);
 
-        const chatMessagesData = await db
-            .select()
-            .from(chatMessages)
-            .orderBy(desc(chatMessages.createdAt));
+        const [
+            listingsData,
+            inventoryData,
+            reservationsData,
+            marketEventsData,
+            chatMessagesData,
+            guestSummariesData,
+            hwConversationsData,
+            benchmarkDataRows,
+        ] = await Promise.all([
+            Listing.find().lean(),
+            InventoryMaster.find().sort({ date: -1 }).lean(),
+            Reservation.find().sort({ checkIn: -1 }).lean(),
+            MarketEvent.find().sort({ startDate: -1 }).lean(),
+            ChatMessage.find().sort({ createdAt: -1 }).lean(),
+            GuestSummary.find().sort({ createdAt: -1 }).lean(),
+            HostawayConversation.find().sort({ syncedAt: -1 }).lean(),
+            BenchmarkData.find().sort({ createdAt: -1 }).lean(),
+        ]);
 
-        const userSettingsData = await db.select().from(userSettings);
-
-        const guestSummariesData = await db.select().from(guestSummaries)
-            .orderBy(desc(guestSummaries.createdAt));
-
-        const mockRepliesData = await db.select().from(mockHostawayReplies)
-            .orderBy(desc(mockHostawayReplies.createdAt));
-
-        const hwConversationsData = await db.select().from(hostawayConversations)
-            .orderBy(desc(hostawayConversations.syncedAt));
-
-        const benchmarkDataRows = await db.select().from(benchmarkData)
-            .orderBy(desc(benchmarkData.createdAt));
-
-        // Date ranges
-        const [calendarRange] = await db
-            .select({
-                min: sql<string>`MIN(date)`,
-                max: sql<string>`MAX(date)`,
-            })
-            .from(inventoryMaster);
-
-        const [reservationRange] = await db
-            .select({
-                min: sql<string>`MIN(start_date)`,
-                max: sql<string>`MAX(start_date)`,
-            })
-            .from(reservations);
+        // Date ranges from inventory
+        const inventoryDates = await InventoryMaster.aggregate([
+            { $group: { _id: null, min: { $min: "$date" }, max: { $max: "$date" } } },
+        ]);
+        const reservationDates = await Reservation.aggregate([
+            { $group: { _id: null, min: { $min: "$checkIn" }, max: { $max: "$checkIn" } } },
+        ]);
 
         return NextResponse.json({
             summary: {
-                listings: listingsCount.count,
-                inventory_master: inventoryCount.count,
-                reservations: reservationsCount.count,
-                market_events: marketEventsCount.count,
-                chat_messages: chatMessagesCount.count,
-                user_settings: userSettingsCount.count,
-                guest_summaries: guestSummariesCount.count,
-                mock_hostaway_replies: mockRepliesCount.count,
-                hostaway_conversations: hwConversationsCount.count,
-                benchmark_data: benchmarkCount.count,
+                listings: listingsCount,
+                inventory_master: inventoryCount,
+                reservations: reservationsCount,
+                market_events: marketEventsCount,
+                chat_messages: chatMessagesCount,
+                guest_summaries: guestSummariesCount,
+                hostaway_conversations: hwConversationsCount,
+                benchmark_data: benchmarkCount,
             },
             date_ranges: {
-                calendar: calendarRange,
-                reservations: reservationRange,
+                calendar: inventoryDates[0] || { min: null, max: null },
+                reservations: reservationDates[0] || { min: null, max: null },
             },
             data: {
                 listings: listingsData,
@@ -89,9 +84,7 @@ export async function GET() {
                 reservations: reservationsData,
                 market_events: marketEventsData,
                 chat_messages: chatMessagesData,
-                user_settings: userSettingsData,
                 guest_summaries: guestSummariesData,
-                mock_hostaway_replies: mockRepliesData,
                 hostaway_conversations: hwConversationsData,
                 benchmark_data: benchmarkDataRows,
             },

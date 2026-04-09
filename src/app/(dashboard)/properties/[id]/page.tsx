@@ -24,8 +24,8 @@ export default async function PropertyDetailPage({ params }: Props) {
 
   const [calendar, reservations] =
     await Promise.all([
-      pms.getCalendar(property.id, today, endDate90),
-      pms.getReservations({ listingMapId: property.id }),
+      pms.getCalendar(Number(property.id), today, endDate90),
+      pms.getReservations({ listingMapId: Number(property.id) }),
     ]);
 
   return (

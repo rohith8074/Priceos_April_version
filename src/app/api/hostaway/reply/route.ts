@@ -1,33 +1,39 @@
 import { NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
-
-const sql = neon(process.env.DATABASE_URL!);
+import { connectDB, HostawayConversation } from "@/lib/db";
+import { getSession } from "@/lib/auth/server";
 
 export async function POST(request: Request) {
-    console.log("🚀 [Shadow DB] Intercepting Hostaway Reply Request...");
-    try {
-        const body = await request.json();
-        const conversationId = String(body.conversationId || "");
-        const text = String(body.text || "");
+  try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        if (!conversationId || !text) {
-            console.error("❌ [Shadow DB] Missing conversationId or text");
-            return NextResponse.json({ error: "conversationId and text are required" }, { status: 400 });
-        }
+    const body = await request.json();
+    const conversationId = String(body.conversationId || "");
+    const text = String(body.text || "");
 
-        console.log(`📥 [Shadow DB] Saving simulated admin reply for conversation: ${conversationId}`);
-
-        // Use direct SQL to avoid any Drizzle mapping issues
-        await sql`
-            INSERT INTO mock_hostaway_replies (conversation_id, text)
-            VALUES (${conversationId}, ${text})
-        `;
-
-        console.log("✅ [Shadow DB] Reply safely saved to 'mock_hostaway_replies'.");
-
-        return NextResponse.json({ success: true, message: "Shadow reply saved" });
-    } catch (error: any) {
-        console.error("❌ [Shadow DB] Error saving mock reply:", error);
-        return NextResponse.json({ error: error.message || "Failed to save mock reply" }, { status: 500 });
+    if (!conversationId || !text) {
+      return NextResponse.json({ error: "conversationId and text are required" }, { status: 400 });
     }
+
+    await connectDB();
+    await HostawayConversation.findOneAndUpdate(
+      { hostawayId: Number(conversationId) },
+      {
+        $push: {
+          messages: {
+            hostawayMessageId: null,
+            authorType: "host",
+            authorName: session.email,
+            body: text,
+            sentAt: new Date().toISOString(),
+          },
+        },
+      }
+    );
+
+    return NextResponse.json({ success: true, message: "Reply saved" });
+  } catch (error: any) {
+    console.error("[hostaway/reply] Error:", error);
+    return NextResponse.json({ error: error.message || "Failed to save reply" }, { status: 500 });
+  }
 }

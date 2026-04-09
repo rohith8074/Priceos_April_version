@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:seed": "npx tsx src/lib/db/seed.ts"
+    "db:seed": "tsx src/lib/db/seed/run.ts",
+    "db:seed:markets": "tsx -e \"require(\"./src/lib/db/seed/run\")\""
   },
   "dependencies": {
     "@neondatabase/auth": "^0.2.0-beta.1",
@@ -39,6 +40,7 @@
     "drizzle-orm": "^0.45.1",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.563.0",
+    "mongoose": "^9.4.1",
     "next": "16.1.6",
     "next-themes": "^0.4.6",
     "playwright": "^1.58.2",

@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth/server'
-import { db } from '@/lib/db'
-import { userSettings } from '@/lib/db'
-import { eq } from 'drizzle-orm'
+import { getSession } from '@/lib/auth/server'
 
 const LYZR_UPLOAD_URL = 'https://agent-prod.studio.lyzr.ai/v3/assets/upload'
 
 export async function POST(request: NextRequest) {
   try {
-    // Get authenticated user
-    const { data: session, error } = await auth.getSession()
-
-    if (!session?.user?.id) {
+    const session = await getSession()
+    if (!session) {
       return NextResponse.json(
         {
           success: false,
@@ -28,14 +23,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Fetch user's API key from database
-    const settings = await db
-      .select()
-      .from(userSettings)
-      .where(eq(userSettings.userId, session.user.id))
-      .limit(1)
-
-    if (settings.length === 0 || !settings[0].lyzrApiKey) {
+    const LYZR_API_KEY = process.env.LYZR_API_KEY
+    if (!LYZR_API_KEY) {
       return NextResponse.json(
         {
           success: false,
@@ -44,15 +33,13 @@ export async function POST(request: NextRequest) {
           total_files: 0,
           successful_uploads: 0,
           failed_uploads: 0,
-          message: 'LYZR_API_KEY not configured. Please add your API key in Settings.',
+          message: 'LYZR_API_KEY not configured.',
           timestamp: new Date().toISOString(),
-          error: 'LYZR_API_KEY not configured. Please add your API key in Settings.',
+          error: 'LYZR_API_KEY not configured.',
         },
         { status: 500 }
       )
     }
-
-    const LYZR_API_KEY = settings[0].lyzrApiKey
 
     const formData = await request.formData()
     const files = formData.getAll('files')
@@ -74,7 +61,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Forward the request to Lyzr API
     const uploadFormData = new FormData()
     for (const file of files) {
       if (file instanceof File) {
@@ -84,9 +70,7 @@ export async function POST(request: NextRequest) {
 
     const response = await fetch(LYZR_UPLOAD_URL, {
       method: 'POST',
-      headers: {
-        'x-api-key': LYZR_API_KEY,
-      },
+      headers: { 'x-api-key': LYZR_API_KEY },
       body: uploadFormData,
     })
 

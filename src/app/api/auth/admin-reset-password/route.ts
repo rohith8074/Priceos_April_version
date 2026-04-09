@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
+import { connectDB, Organization } from "@/lib/db";
+import bcrypt from "bcryptjs";
 
 export const dynamic = 'force-dynamic';
 
-const NEON_AUTH_BASE_URL = process.env.NEON_AUTH_BASE_URL!;
-const NEON_AUTH_ORIGIN = (() => {
-    try { return new URL(NEON_AUTH_BASE_URL).origin; } catch { return ''; }
-})();
-
-const sql = neon(process.env.DATABASE_URL!);
-
 /**
  * POST /api/auth/admin-reset-password
+ * Directly resets a user's password by email (admin only, no token needed)
  */
 export async function POST(req: NextRequest) {
     try {
@@ -21,88 +16,37 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Email and new password are required" }, { status: 400 });
         }
 
-        const baseUrl = NEON_AUTH_BASE_URL.endsWith('/') ? NEON_AUTH_BASE_URL : `${NEON_AUTH_BASE_URL}/`;
-        const startTime = new Date();
+        await connectDB();
 
-        // Step 1: Request password reset
-        console.log(`[admin-reset-password] Requesting reset for ${email}...`);
-        const resetReqRes = await fetch(new URL('request-password-reset', baseUrl).toString(), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Origin': NEON_AUTH_ORIGIN,
-            },
-            body: JSON.stringify({ email }),
-        });
-
-        if (!resetReqRes.ok) {
-            const errText = await resetReqRes.text();
-            console.error('[admin-reset-password] Request failed:', resetReqRes.status, errText);
-            return NextResponse.json({ error: `Auth request failed: ${errText}` }, { status: resetReqRes.status });
+        const org = await Organization.findOne({ email: email.trim().toLowerCase() });
+        if (!org) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
 
-        // Step 2: Poll for the SPECIFIC new token created after startTime
-        let token = null;
-        console.log(`[admin-reset-password] Polling for token created after ${startTime.toISOString()}...`);
+        const passwordHash = await bcrypt.hash(newPassword, 10);
+        await Organization.findByIdAndUpdate(org._id, { $set: { passwordHash } });
 
-        for (let i = 0; i < 6; i++) {
-            await new Promise(r => setTimeout(r, 600));
-            const rows = await sql`
-                SELECT "identifier", "value" FROM neon_auth.verification 
-                WHERE identifier LIKE 'reset-password:%'
-                AND "createdAt" >= ${startTime}
-                ORDER BY "createdAt" DESC LIMIT 1
-            `;
-            if (rows.length > 0) {
-                // The token is the part after the colon in 'reset-password:TOKEN'
-                const fullIdentifier = rows[0].identifier;
-                token = fullIdentifier.split(':')[1];
-                console.log(`[admin-reset-password] Found token in identifier suffix.`);
-                break;
-            }
-        }
-
-        if (!token) {
-            return NextResponse.json({ error: "Reset token not found in database. Please try again." }, { status: 500 });
-        }
-
-        // Step 3: Reset password
-        const resetRes = await fetch(new URL('reset-password', baseUrl).toString(), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Origin': NEON_AUTH_ORIGIN,
-            },
-            body: JSON.stringify({ token, newPassword }),
-        });
-
-        if (resetRes.ok) {
-            return NextResponse.json({ success: true, message: "Password updated successfully" });
-        }
-
-        const resetErr = await resetRes.text();
-        console.error('[admin-reset-password] Reset API failed:', resetRes.status, resetErr);
-
-        // Return the actual error from Neon Auth so we can see it in the UI
-        return NextResponse.json({
-            error: `Auth Backend Error: ${resetErr}`,
-            tokenPreview: token.substring(0, 5) + '...'
-        }, { status: 500 });
-
+        return NextResponse.json({ success: true, message: "Password updated successfully" });
     } catch (error: any) {
-        console.error("[admin-reset-password] Catch Error:", error);
+        console.error("[admin-reset-password] Error:", error);
         return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
     }
 }
 
+/**
+ * GET /api/auth/admin-reset-password?email=xxx
+ * Check if a user with the given email exists
+ */
 export async function GET(req: NextRequest) {
     const email = req.nextUrl.searchParams.get("email");
     if (!email) return NextResponse.json({ exists: false }, { status: 400 });
+
     try {
-        const { db, userSettings } = await import("@/lib/db");
-        const { eq } = await import("drizzle-orm");
-        const user = await db.query.userSettings.findFirst({ where: eq(userSettings.email, email) });
-        return NextResponse.json({ exists: !!user, name: user?.fullName || null });
+        await connectDB();
+        const org = await Organization.findOne({ email: email.trim().toLowerCase() })
+            .select("fullName name")
+            .lean();
+        return NextResponse.json({ exists: !!org, name: org?.fullName || org?.name || null });
     } catch {
         return NextResponse.json({ exists: false }, { status: 500 });
     }

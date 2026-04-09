@@ -69,7 +69,7 @@ function MarkdownMessage({ content, isUser }: { content: string; isUser: boolean
 }
 
 import { useContextStore } from "@/stores/context-store";
-import type { ListingRow } from "@/lib/db";
+import type { PropertyWithMetrics } from "@/types";
 import { DateRangePicker } from "./date-range-picker";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -85,11 +85,6 @@ interface Message {
   content: string;
   proposals?: any[];
   proposalStatus?: "pending" | "saved" | "rejected";
-}
-
-interface PropertyWithMetrics extends ListingRow {
-  occupancy?: number;
-  avgPrice?: number | string;
 }
 
 interface Props {
@@ -126,7 +121,7 @@ export function UnifiedChatInterface({ properties }: Props) {
   const generateSessionId = () => `session-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
   // Session is keyed to property + date range so each Market Analysis run gets an isolated chat
-  const buildSessionId = (pid: number | undefined, from: string, to: string) =>
+  const buildSessionId = (pid: string | undefined, from: string, to: string) =>
     pid ? `property-${pid}-${from}-${to}` : generateSessionId();
 
   const [sessionId, setSessionId] = useState<string>(() =>

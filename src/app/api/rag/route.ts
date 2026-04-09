@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth/server'
-import { db } from '@/lib/db'
-import { userSettings } from '@/lib/db'
-import { eq } from 'drizzle-orm'
+import { getSession } from '@/lib/auth/server'
 
 const LYZR_RAG_BASE_URL = 'https://rag-prod.studio.lyzr.ai/v3'
 
@@ -12,6 +9,10 @@ const FILE_TYPE_MAP: Record<string, 'pdf' | 'docx' | 'txt'> = {
   'text/plain': 'txt',
 }
 
+function getLyzrApiKey(): string | null {
+  return process.env.LYZR_API_KEY || null;
+}
+
 // GET - List documents in a knowledge base
 export async function GET(request: NextRequest) {
   try {
@@ -19,95 +20,49 @@ export async function GET(request: NextRequest) {
     const ragId = searchParams.get('ragId')
 
     if (!ragId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'ragId is required',
-        },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: 'ragId is required' }, { status: 400 })
     }
 
-    // Get authenticated user
-    const { data: session, error } = await auth.getSession()
-
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unauthorized',
-        },
-        { status: 401 }
-      )
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch user's API key from database
-    const settings = await db
-      .select()
-      .from(userSettings)
-      .where(eq(userSettings.userId, session.user.id))
-      .limit(1)
-
-    if (settings.length === 0 || !settings[0].lyzrApiKey) {
+    const LYZR_API_KEY = getLyzrApiKey()
+    if (!LYZR_API_KEY) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'LYZR_API_KEY not configured. Please add your API key in Settings.',
-        },
+        { success: false, error: 'LYZR_API_KEY not configured.' },
         { status: 500 }
       )
     }
 
-    const LYZR_API_KEY = settings[0].lyzrApiKey
-
     const response = await fetch(`${LYZR_RAG_BASE_URL}/rag/documents/${encodeURIComponent(ragId)}/`, {
       method: 'GET',
-      headers: {
-        'accept': 'application/json',
-        'x-api-key': LYZR_API_KEY,
-      },
+      headers: { 'accept': 'application/json', 'x-api-key': LYZR_API_KEY },
     })
 
     if (response.ok) {
       const data = await response.json()
-      // Response is array of file paths like ["storage/voicestream-dev-guide.pdf"]
       const filePaths = Array.isArray(data) ? data : (data.documents || data.data || [])
 
       const documents = filePaths.map((filePath: string) => {
         const fileName = filePath.split('/').pop() || filePath
         const ext = fileName.split('.').pop()?.toLowerCase() || ''
         const fileType = ext === 'pdf' ? 'pdf' : ext === 'docx' ? 'docx' : ext === 'txt' ? 'txt' : 'unknown'
-
-        return {
-          fileName,
-          fileType,
-          status: 'active',
-        }
+        return { fileName, fileType, status: 'active' }
       })
 
-      return NextResponse.json({
-        success: true,
-        documents,
-        ragId,
-        timestamp: new Date().toISOString(),
-      })
+      return NextResponse.json({ success: true, documents, ragId, timestamp: new Date().toISOString() })
     } else {
       const errorText = await response.text()
       return NextResponse.json(
-        {
-          success: false,
-          error: `Failed to get documents: ${response.status}`,
-          details: errorText,
-        },
+        { success: false, error: `Failed to get documents: ${response.status}`, details: errorText },
         { status: response.status }
       )
     }
   } catch (error) {
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Server error',
-      },
+      { success: false, error: error instanceof Error ? error.message : 'Server error' },
       { status: 500 }
     )
   }
@@ -116,64 +71,35 @@ export async function GET(request: NextRequest) {
 // POST - Upload and train a document
 export async function POST(request: NextRequest) {
   try {
-    // Get authenticated user
-    const { data: session, error } = await auth.getSession()
-
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unauthorized',
-        },
-        { status: 401 }
-      )
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch user's API key from database
-    const settings = await db
-      .select()
-      .from(userSettings)
-      .where(eq(userSettings.userId, session.user.id))
-      .limit(1)
-
-    if (settings.length === 0 || !settings[0].lyzrApiKey) {
+    const LYZR_API_KEY = getLyzrApiKey()
+    if (!LYZR_API_KEY) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'LYZR_API_KEY not configured. Please add your API key in Settings.',
-        },
+        { success: false, error: 'LYZR_API_KEY not configured.' },
         { status: 500 }
       )
     }
-
-    const LYZR_API_KEY = settings[0].lyzrApiKey
 
     const formData = await request.formData()
     const ragId = formData.get('ragId') as string
     const file = formData.get('file') as File
 
     if (!ragId || !file) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'ragId and file are required',
-        },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: 'ragId and file are required' }, { status: 400 })
     }
 
     const fileType = FILE_TYPE_MAP[file.type]
     if (!fileType) {
       return NextResponse.json(
-        {
-          success: false,
-          error: `Unsupported file type: ${file.type}. Supported: PDF, DOCX, TXT`,
-        },
+        { success: false, error: `Unsupported file type: ${file.type}. Supported: PDF, DOCX, TXT` },
         { status: 400 }
       )
     }
 
-    // Direct upload and train in one step
     const trainFormData = new FormData()
     trainFormData.append('file', file, file.name)
     trainFormData.append('data_parser', 'llmsherpa')
@@ -185,10 +111,7 @@ export async function POST(request: NextRequest) {
       `${LYZR_RAG_BASE_URL}/train/${fileType}/?rag_id=${encodeURIComponent(ragId)}`,
       {
         method: 'POST',
-        headers: {
-          'x-api-key': LYZR_API_KEY,
-          'accept': 'application/json',
-        },
+        headers: { 'x-api-key': LYZR_API_KEY, 'accept': 'application/json' },
         body: trainFormData,
       }
     )
@@ -196,11 +119,7 @@ export async function POST(request: NextRequest) {
     if (!trainResponse.ok) {
       const errorText = await trainResponse.text()
       return NextResponse.json(
-        {
-          success: false,
-          error: `Failed to train document: ${trainResponse.status}`,
-          details: errorText,
-        },
+        { success: false, error: `Failed to train document: ${trainResponse.status}`, details: errorText },
         { status: trainResponse.status }
       )
     }
@@ -218,10 +137,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Server error',
-      },
+      { success: false, error: error instanceof Error ? error.message : 'Server error' },
       { status: 500 }
     )
   }
@@ -230,70 +146,38 @@ export async function POST(request: NextRequest) {
 // PATCH - Crawl a website and add content to knowledge base
 export async function PATCH(request: NextRequest) {
   try {
-    // Get authenticated user
-    const { data: session, error } = await auth.getSession()
-
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unauthorized',
-        },
-        { status: 401 }
-      )
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch user's API key from database
-    const settings = await db
-      .select()
-      .from(userSettings)
-      .where(eq(userSettings.userId, session.user.id))
-      .limit(1)
-
-    if (settings.length === 0 || !settings[0].lyzrApiKey) {
+    const LYZR_API_KEY = getLyzrApiKey()
+    if (!LYZR_API_KEY) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'LYZR_API_KEY not configured. Please add your API key in Settings.',
-        },
+        { success: false, error: 'LYZR_API_KEY not configured.' },
         { status: 500 }
       )
     }
-
-    const LYZR_API_KEY = settings[0].lyzrApiKey
 
     const body = await request.json()
     const { ragId, url } = body
 
     if (!ragId || !url) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'ragId and url are required',
-        },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: 'ragId and url are required' }, { status: 400 })
     }
 
     const LYZR_AGENT_BASE_URL = process.env.NEXT_PUBLIC_BASE_API_URL || 'https://agent-prod.studio.lyzr.ai'
 
     const response = await fetch(`${LYZR_AGENT_BASE_URL}/api/v1/rag/crawl`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': LYZR_API_KEY,
-      },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': LYZR_API_KEY },
       body: JSON.stringify({ url, rag_id: ragId }),
     })
 
     if (!response.ok) {
       const errorText = await response.text()
       return NextResponse.json(
-        {
-          success: false,
-          error: `Failed to crawl website: ${response.status}`,
-          details: errorText,
-        },
+        { success: false, error: `Failed to crawl website: ${response.status}`, details: errorText },
         { status: response.status }
       )
     }
@@ -307,10 +191,7 @@ export async function PATCH(request: NextRequest) {
     })
   } catch (error) {
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Server error',
-      },
+      { success: false, error: error instanceof Error ? error.message : 'Server error' },
       { status: 500 }
     )
   }
@@ -319,47 +200,25 @@ export async function PATCH(request: NextRequest) {
 // DELETE - Remove documents from knowledge base
 export async function DELETE(request: NextRequest) {
   try {
-    // Get authenticated user
-    const { data: session, error } = await auth.getSession()
-
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unauthorized',
-        },
-        { status: 401 }
-      )
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch user's API key from database
-    const settings = await db
-      .select()
-      .from(userSettings)
-      .where(eq(userSettings.userId, session.user.id))
-      .limit(1)
-
-    if (settings.length === 0 || !settings[0].lyzrApiKey) {
+    const LYZR_API_KEY = getLyzrApiKey()
+    if (!LYZR_API_KEY) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'LYZR_API_KEY not configured. Please add your API key in Settings.',
-        },
+        { success: false, error: 'LYZR_API_KEY not configured.' },
         { status: 500 }
       )
     }
-
-    const LYZR_API_KEY = settings[0].lyzrApiKey
 
     const body = await request.json()
     const { ragId, documentNames } = body
 
     if (!ragId || !documentNames || !Array.isArray(documentNames)) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'ragId and documentNames array are required',
-        },
+        { success: false, error: 'ragId and documentNames array are required' },
         { status: 400 }
       )
     }
@@ -385,20 +244,13 @@ export async function DELETE(request: NextRequest) {
     } else {
       const errorText = await response.text()
       return NextResponse.json(
-        {
-          success: false,
-          error: `Failed to delete documents: ${response.status}`,
-          details: errorText,
-        },
+        { success: false, error: `Failed to delete documents: ${response.status}`, details: errorText },
         { status: response.status }
       )
     }
   } catch (error) {
     return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Server error',
-      },
+      { success: false, error: error instanceof Error ? error.message : 'Server error' },
       { status: 500 }
     )
   }

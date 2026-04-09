@@ -1,75 +1,94 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createPMSClient } from "@/lib/pms";
-import { db } from "@/lib/db";
-import { listings } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { connectDB, Listing } from "@/lib/db";
+import { getSession } from "@/lib/auth/server";
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  const body = await request.json();
-  const pms = createPMSClient();
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const updated = await pms.updateListing(id, body);
-    return NextResponse.json(updated);
-  } catch {
-    return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+    const { id } = await params;
+    await connectDB();
+    const session = await getSession();
+
+    const query: Record<string, unknown> = { _id: id };
+    if (session?.orgId) query.orgId = session.orgId;
+
+    const listing = await Listing.findOne(query).lean();
+    if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+
+    return NextResponse.json({ success: true, listing });
+  } catch (error) {
+    console.error("[Listings GET/:id]", error);
+    return NextResponse.json({ error: "Failed to fetch listing" }, { status: 500 });
   }
 }
 
-/**
- * PATCH /api/listings/[id]
- * Updates price guardrails (floor and ceiling) directly in Neon DB.
- * Body: { priceFloor: number, priceCeiling: number }
- */
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const listingId = parseInt(id, 10);
-    if (isNaN(listingId)) {
-      return NextResponse.json({ error: "Invalid listing ID" }, { status: 400 });
-    }
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await request.json();
-    const { priceFloor, priceCeiling } = body;
+    await connectDB();
+    const body = await req.json();
 
-    // Validate
-    if (priceFloor === undefined || priceCeiling === undefined) {
-      return NextResponse.json({ error: "priceFloor and priceCeiling are required" }, { status: 400 });
-    }
-    const floor = Number(priceFloor);
-    const ceiling = Number(priceCeiling);
-    if (isNaN(floor) || isNaN(ceiling) || floor < 0 || ceiling < 0) {
-      return NextResponse.json({ error: "Floor and ceiling must be non-negative numbers" }, { status: 400 });
-    }
-    if (ceiling > 0 && ceiling < floor) {
-      return NextResponse.json({ error: "Ceiling price must be greater than floor price" }, { status: 400 });
-    }
+    const listing = await Listing.findOneAndUpdate(
+      { _id: id, orgId: session.orgId },
+      { $set: body },
+      { new: true }
+    ).lean();
 
-    console.log(`💰 [Listings PATCH] Updating guardrails for listing #${listingId}: floor=${floor}, ceiling=${ceiling}`);
-
-    const updated = await db
-      .update(listings)
-      .set({
-        priceFloor: String(floor),
-        priceCeiling: String(ceiling),
-      })
-      .where(eq(listings.id, listingId))
-      .returning({ id: listings.id, priceFloor: listings.priceFloor, priceCeiling: listings.priceCeiling, name: listings.name });
-
-    if (updated.length === 0) {
-      return NextResponse.json({ error: "Listing not found" }, { status: 404 });
-    }
-
-    console.log(`✅ [Listings PATCH] Updated: ${updated[0].name} → floor: ${floor}, ceiling: ${ceiling}`);
-    return NextResponse.json({ success: true, listing: updated[0] });
+    if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+    return NextResponse.json({ success: true, listing });
   } catch (error) {
-    console.error("[Listings PATCH] Error:", error);
-    return NextResponse.json({ error: "Failed to update price guardrails" }, { status: 500 });
+    console.error("[Listings PUT/:id]", error);
+    return NextResponse.json({ error: "Failed to update listing" }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await connectDB();
+    const body = await req.json();
+
+    // PATCH is for partial updates — typically price guardrails
+    const { priceFloor, priceCeiling, ...rest } = body;
+    const updates: Record<string, unknown> = { ...rest };
+    if (priceFloor !== undefined) updates.priceFloor = Number(priceFloor);
+    if (priceCeiling !== undefined) updates.priceCeiling = Number(priceCeiling);
+
+    const listing = await Listing.findOneAndUpdate(
+      { _id: id, orgId: session.orgId },
+      { $set: updates },
+      { new: true }
+    ).lean();
+
+    if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+    return NextResponse.json({ success: true, listing });
+  } catch (error) {
+    console.error("[Listings PATCH/:id]", error);
+    return NextResponse.json({ error: "Failed to update listing" }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await connectDB();
+    const result = await Listing.findOneAndUpdate(
+      { _id: id, orgId: session.orgId },
+      { $set: { isActive: false } }
+    );
+
+    if (!result) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("[Listings DELETE/:id]", error);
+    return NextResponse.json({ error: "Failed to delete listing" }, { status: 500 });
   }
 }

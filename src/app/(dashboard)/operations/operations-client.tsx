@@ -14,8 +14,8 @@ import {
 } from "lucide-react";
 
 export type CleaningTask = {
-    id: number;
-    listingId: number | null;
+    id: string;
+    listingId: string | null;
     propertyName: string;
     startDate: string;
     endDate: string;
@@ -26,14 +26,14 @@ export type CleaningTask = {
 
 export function OperationsClient({ reservations }: { reservations: CleaningTask[] }) {
     const [tasks, setTasks] = useState<CleaningTask[]>(reservations);
-    const [assignedTasks, setAssignedTasks] = useState<Set<number>>(new Set());
+    const [assignedTasks, setAssignedTasks] = useState<Set<string>>(new Set());
 
-    const handleAssignCleaner = (id: number) => {
+    const handleAssignCleaner = (id: string) => {
         setAssignedTasks(prev => new Set(prev).add(id));
         toast.success("SMS checklist dispatched to Cleaning Crew!");
     };
 
-    const getStatus = (dateStr: string, id: number) => {
+    const getStatus = (dateStr: string, id: string) => {
         if (assignedTasks.has(id)) return { label: "Dispatched", color: "text-emerald-500 border-emerald-500/20 bg-emerald-500/5", icon: CheckSquare };
         const date = parseISO(dateStr);
         if (isPast(date) && !isToday(date)) return { label: "Needs Review", color: "text-rose-500 border-rose-500/20 bg-rose-500/5", icon: AlertCircle };

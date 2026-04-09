@@ -1,25 +1,26 @@
-import { db } from "@/lib/db";
-import { chatMessages, inventoryMaster, reservations, marketEvents, benchmarkData, guestSummaries, listings } from "@/lib/db/schema";
-import { and, eq, lte, gte, avg, sql } from "drizzle-orm";
+import {
+    connectDB,
+    ChatMessage,
+    InventoryMaster,
+    Reservation,
+    MarketEvent,
+    BenchmarkData,
+    Listing,
+} from "@/lib/db";
+import { getSession } from "@/lib/auth/server";
 import { apiSuccess, apiError } from "@/lib/api/response";
 import { chatRequestSchema, formatZodErrors } from "@/lib/validators";
 import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/api/rate-limit";
 import { CRO_ROUTER_AGENT_ID } from "@/lib/agents/constants";
+import mongoose from "mongoose";
 
 const LYZR_API_URL = process.env.LYZR_API_URL || "https://agent-prod.studio.lyzr.ai/v3/inference/chat/";
 const LYZR_API_KEY = process.env.LYZR_API_KEY!;
 const AGENT_ID = process.env.AGENT_ID || CRO_ROUTER_AGENT_ID;
 
-/**
- * POST /api/v1/ai/chat
- * 
- * Unified v1 chat API with data injection and guardrails.
- */
 export async function POST(req: Request) {
-    const startTime = performance.now();
     const ip = getClientIp(req);
 
-    // ── Rate Limiting (AI Tier) ──
     const rateCheck = checkRateLimit(`ai-chat:${ip}`, RATE_LIMITS.ai);
     if (!rateCheck.allowed) {
         return apiError("RATE_LIMITED", `AI chat limit reached. Try again in ${Math.ceil(rateCheck.resetMs / 1000)}s.`, 429);
@@ -39,7 +40,13 @@ export async function POST(req: Request) {
             return apiError("CONFIG_ERROR", "LYZR_API_KEY not configured", 500);
         }
 
-        // Build session ID
+        await connectDB();
+
+        const session = await getSession();
+        const orgId = session?.orgId
+            ? new mongoose.Types.ObjectId(session.orgId)
+            : new mongoose.Types.ObjectId();
+
         const lyzrSessionId = sessionId || (
             context.type === "portfolio"
                 ? "portfolio-session"
@@ -49,51 +56,43 @@ export async function POST(req: Request) {
         const isSystemMsg = message.startsWith("[SYSTEM]");
 
         // Check if data injection is needed
-        const prevDataMsgs = await db.select({ id: chatMessages.id })
-            .from(chatMessages)
-            .where(and(
-                eq(chatMessages.sessionId, lyzrSessionId),
-                eq(chatMessages.role, "user"),
-                sql`${chatMessages.content} NOT LIKE '[SYSTEM]%'`
-            ))
-            .limit(1);
+        const prevDataMsgs = await ChatMessage.find({
+            orgId,
+            sessionId: lyzrSessionId,
+            role: "user",
+            content: { $not: /^\[SYSTEM\]/ },
+        }).limit(1).lean();
 
         const needsDataInjection = prevDataMsgs.length === 0 && !isSystemMsg;
 
         let propertyDataPayload: any = null;
 
         if (needsDataInjection && context.type === "property" && context.propertyId) {
-            const pid = context.propertyId;
+            const pid = new mongoose.Types.ObjectId(String(context.propertyId));
             const dateFrom = dateRange?.from || '1970-01-01';
             const dateTo = dateRange?.to || '9999-12-31';
 
-            const [
-                listingRows,
-                events,
-                benchmarkRows,
-                calMetrics,
-                resRows,
-                guestSumRows,
-                inventoryRows,
-            ] = await Promise.all([
-                db.select().from(listings).where(eq(listings.id, pid)).limit(1),
-                db.select().from(marketEvents).where(and(eq(marketEvents.listingId, pid), gte(marketEvents.endDate, dateFrom), lte(marketEvents.startDate, dateTo))).limit(50),
-                db.select().from(benchmarkData).where(and(eq(benchmarkData.listingId, pid), gte(benchmarkData.dateTo, dateFrom), lte(benchmarkData.dateFrom, dateTo))).limit(1),
-                db.select({
-                    totalDays: sql<number>`COUNT(*)`,
-                    bookedDays: sql<number>`COUNT(CASE WHEN ${inventoryMaster.status} IN ('reserved','booked') THEN 1 END)`,
-                    availableDays: sql<number>`COUNT(CASE WHEN ${inventoryMaster.status} = 'available' THEN 1 END)`,
-                    blockedDays: sql<number>`COUNT(CASE WHEN ${inventoryMaster.status} = 'blocked' THEN 1 END)`,
-                    avgPrice: avg(inventoryMaster.currentPrice),
-                }).from(inventoryMaster).where(and(eq(inventoryMaster.listingId, pid), gte(inventoryMaster.date, dateFrom), lte(inventoryMaster.date, dateTo))),
-                db.select().from(reservations).where(and(eq(reservations.listingId, pid), lte(reservations.startDate, dateTo), gte(reservations.endDate, dateFrom))),
-                db.select().from(guestSummaries).where(and(eq(guestSummaries.listingId, pid), gte(guestSummaries.dateTo, dateFrom), lte(guestSummaries.dateFrom, dateTo))).limit(1),
-                db.select().from(inventoryMaster).where(and(eq(inventoryMaster.listingId, pid), gte(inventoryMaster.date, dateFrom), lte(inventoryMaster.date, dateTo))).orderBy(inventoryMaster.date),
+            const [listing, , benchmarkDoc] = await Promise.all([
+                Listing.findById(pid).lean(),
+                MarketEvent.find({ listingId: pid, endDate: { $gte: dateFrom }, startDate: { $lte: dateTo } }).limit(50).lean(),
+                BenchmarkData.findOne({ listingId: pid, dateTo: { $gte: dateFrom }, dateFrom: { $lte: dateTo } }).lean(),
+                Reservation.find({ listingId: pid, checkOut: { $gte: dateFrom }, checkIn: { $lte: dateTo } }).lean(),
+                InventoryMaster.find({ listingId: pid, date: { $gte: dateFrom, $lte: dateTo } }).lean(),
             ]);
 
-            const listing = listingRows[0];
-            const benchmark = benchmarkRows[0] || null;
-            const calResult = calMetrics[0];
+            const [calResult] = await InventoryMaster.aggregate([
+                { $match: { listingId: pid, date: { $gte: dateFrom, $lte: dateTo } } },
+                {
+                    $group: {
+                        _id: null,
+                        totalDays: { $sum: 1 },
+                        bookedDays: { $sum: { $cond: [{ $in: ["$status", ["booked", "reserved"]] }, 1, 0] } },
+                        availableDays: { $sum: { $cond: [{ $eq: ["$status", "available"] }, 1, 0] } },
+                        blockedDays: { $sum: { $cond: [{ $eq: ["$status", "blocked"] }, 1, 0] } },
+                        avgPrice: { $avg: "$currentPrice" },
+                    },
+                },
+            ]);
 
             const uiMetrics = context.metrics;
             const totalDays = uiMetrics?.totalDays ?? Number(calResult?.totalDays || 0);
@@ -107,7 +106,7 @@ export async function POST(req: Request) {
                 today: new Date().toISOString().split('T')[0],
                 analysis_window: { from: dateFrom, to: dateTo },
                 property: {
-                    listingId: Number(pid),
+                    listingId: pid.toString(),
                     name: listing?.name || context.propertyName || "Property",
                     bedrooms: listing?.bedroomsNumber || 1,
                     current_price: Number(listing?.price || 0),
@@ -119,18 +118,25 @@ export async function POST(req: Request) {
                     booked_nights: bookedDays,
                     avg_nightly_rate: avgCalPrice,
                 },
-                benchmark: benchmark ? { verdict: benchmark.verdict, percentile: benchmark.percentile, p50: Number(benchmark.p50Rate) } : null,
+                benchmark: benchmarkDoc
+                    ? { verdict: benchmarkDoc.verdict, percentile: benchmarkDoc.percentile, p50: benchmarkDoc.p50Rate }
+                    : null,
             };
         }
 
-        // Save user message to DB
-        await db.insert(chatMessages).values({
-            userId: "user-1", // Should ideally come from JWT token in future
+        // Save user message
+        await ChatMessage.create({
+            orgId,
             sessionId: lyzrSessionId,
             role: "user",
             content: message,
-            listingId: context.propertyId || null,
-            structured: { context, dateRange },
+            context: {
+                type: context.type,
+                propertyId: context.propertyId
+                    ? new mongoose.Types.ObjectId(String(context.propertyId))
+                    : undefined,
+            },
+            metadata: { context, dateRange },
         });
 
         let anchoredMessage = message;
@@ -164,20 +170,22 @@ export async function POST(req: Request) {
             proposals = enforceGuardrails(proposals, floorPrice, ceilingPrice);
         }
 
-        // Save assistant reply to DB
-        await db.insert(chatMessages).values({
-            userId: "user-1",
+        // Save assistant reply
+        await ChatMessage.create({
+            orgId,
             sessionId: lyzrSessionId,
             role: "assistant",
             content: agentReply,
-            listingId: context.propertyId || null,
-            structured: { context, dateRange, proposals },
+            context: {
+                type: context.type,
+                propertyId: context.propertyId
+                    ? new mongoose.Types.ObjectId(String(context.propertyId))
+                    : undefined,
+            },
+            metadata: { context, dateRange, proposals },
         });
 
-        return apiSuccess({
-            message: agentReply,
-            proposals,
-        });
+        return apiSuccess({ message: agentReply, proposals });
 
     } catch (error: any) {
         console.error("❌ [v1/ai/chat POST] Error:", error);
@@ -191,7 +199,7 @@ function extractAgentMessage(response: any): { text: string; parsedJson: any | n
         rawStr = response.response?.message || response.response?.result?.message || JSON.stringify(rawStr);
     }
 
-    let cleanStr = rawStr.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+    const cleanStr = rawStr.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
     try {
         const jsonMatch = cleanStr.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
@@ -199,7 +207,7 @@ function extractAgentMessage(response: any): { text: string; parsedJson: any | n
             return { text: parsed.chat_response || parsed.summary || rawStr, parsedJson: parsed };
         }
         return { text: rawStr, parsedJson: null };
-    } catch (e) {
+    } catch {
         return { text: rawStr, parsedJson: null };
     }
 }

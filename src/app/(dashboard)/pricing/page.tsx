@@ -1,62 +1,60 @@
-import { db } from "@/lib/db";
-import { inventoryMaster, listings } from "@/lib/db/schema";
-import { eq, gte, and } from "drizzle-orm";
-import { PricingClient } from "./pricing-client";
+import { connectDB, InventoryMaster, Listing } from "@/lib/db";
+import { PricingPageTabs } from "./pricing-page-tabs";
 import { format } from "date-fns";
+import mongoose from "mongoose";
 
 export const dynamic = "force-dynamic";
 
 export default async function PricingPage() {
-  const today = format(new Date(), "yyyy-MM-dd");
+    await connectDB();
 
-  // Fetch all price records from today onwards
-  const rawRows = await db
-    .select({
-      id: inventoryMaster.id,
-      listingId: inventoryMaster.listingId,
-      date: inventoryMaster.date,
-      currentPrice: inventoryMaster.currentPrice,
-      proposedPrice: inventoryMaster.proposedPrice,
-      changePct: inventoryMaster.changePct,
-      reasoning: inventoryMaster.reasoning,
-      listingName: listings.name,
+    const today = format(new Date(), "yyyy-MM-dd");
+
+    // Fetch pending proposals from today onwards
+    const rawDocs = await InventoryMaster.find({
+        date: { $gte: today },
+        proposalStatus: "pending",
     })
-    .from(inventoryMaster)
-    .innerJoin(listings, eq(inventoryMaster.listingId, listings.id))
-    .where(
-      and(
-        gte(inventoryMaster.date, today),
-        eq(inventoryMaster.proposalStatus, "pending")
-      )
-    )
-    .orderBy(inventoryMaster.date);
+        .sort({ date: 1 })
+        .lean();
 
-  const pendingRows = rawRows.map(row => {
-    const current = parseFloat(row.currentPrice || "0");
-    const proposed = parseFloat(row.proposedPrice || "0");
+    // Build listing name map
+    const listingIds = [...new Set(rawDocs.map((r) => r.listingId.toString()))];
+    const listingDocs = await Listing.find({
+        _id: { $in: listingIds.map((id) => new mongoose.Types.ObjectId(id)) },
+    })
+        .select("name")
+        .lean();
 
-    let changePct = row.changePct;
-    if (current > 0 && proposed > 0) {
-      // Recalculate to ensure accuracy and avoid AI hallucination mismatches
-      changePct = Math.round(((proposed - current) / current) * 100);
-    }
+    const listingNameMap = new Map(
+        listingDocs.map((l) => [l._id.toString(), l.name])
+    );
 
-    return {
-      ...row,
-      changePct
-    };
-  });
+    const pendingRows = rawDocs.map((row) => {
+        const current = Number(row.currentPrice || 0);
+        const proposed = Number(row.proposedPrice || 0);
 
-  return (
-    <div className="flex-1 flex flex-col p-8 bg-muted/5 h-full overflow-hidden">
-      <div className="mb-8 shrink-0">
-        <h1 className="text-3xl font-bold mb-2">Pricing Command Center</h1>
-        <p className="text-muted-foreground text-sm max-w-2xl">
-          Review and approve pending price changes proposed by the AI engines. These changes will be synced to your Property Management System (PMS) upon approval.
-        </p>
-      </div>
+        let changePct = row.changePct ?? null;
+        if (current > 0 && proposed > 0) {
+            changePct = Math.round(((proposed - current) / current) * 100);
+        }
 
-      <PricingClient initialProposals={pendingRows} />
-    </div>
-  );
+        return {
+            id: row._id.toString(),
+            listingId: row.listingId.toString(),
+            date: row.date,
+            currentPrice: String(current),
+            proposedPrice: proposed > 0 ? String(proposed) : null,
+            changePct,
+            reasoning: row.reasoning ?? null,
+            listingName:
+                listingNameMap.get(row.listingId.toString()) || "Unknown Property",
+        };
+    });
+
+    return (
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+            <PricingPageTabs initialProposals={pendingRows} />
+        </div>
+    );
 }

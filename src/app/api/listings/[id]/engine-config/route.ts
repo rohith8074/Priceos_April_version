@@ -1,25 +1,20 @@
-import { db } from "@/lib/db";
-import { listings } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { connectDB, Listing } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
 
 export async function GET(
     req: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { id: idStr } = await params;
-        const id = parseInt(idStr);
-        const result = await db
-            .select()
-            .from(listings)
-            .where(eq(listings.id, id));
+        const { id } = await params;
+        await connectDB();
 
-        if (result.length === 0) {
+        const l = await Listing.findById(new mongoose.Types.ObjectId(id)).lean();
+        if (!l) {
             return NextResponse.json({ error: "Listing not found" }, { status: 404 });
         }
 
-        const l = result[0];
         const config = {
             priceFloor: l.priceFloor,
             priceCeiling: l.priceCeiling,
@@ -59,48 +54,27 @@ export async function PATCH(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { id: idStr } = await params;
-        const id = parseInt(idStr);
-        const body = await req.json();
+        const { id } = await params;
+        await connectDB();
 
-        // Whitelist valid update fields
-        const updateFields: any = {};
+        const body = await req.json();
         const allowed = [
-            "priceFloor",
-            "priceCeiling",
-            "lastMinuteEnabled",
-            "lastMinuteDaysOut",
-            "lastMinuteDiscountPct",
-            "lastMinuteMinStay",
-            "farOutEnabled",
-            "farOutDaysOut",
-            "farOutMarkupPct",
-            "farOutMinStay",
-            "dowPricingEnabled",
-            "dowDays",
-            "dowPriceAdjPct",
-            "dowMinStay",
-            "gapPreventionEnabled",
-            "minFragmentThreshold",
-            "gapFillEnabled",
-            "gapFillLengthMin",
-            "gapFillLengthMax",
-            "gapFillDiscountPct",
-            "gapFillOverrideCico",
-            "allowedCheckinDays",
-            "allowedCheckoutDays",
-            "lowestMinStayAllowed",
-            "defaultMaxStay",
+            "priceFloor", "priceCeiling",
+            "lastMinuteEnabled", "lastMinuteDaysOut", "lastMinuteDiscountPct", "lastMinuteMinStay",
+            "farOutEnabled", "farOutDaysOut", "farOutMarkupPct", "farOutMinStay",
+            "dowPricingEnabled", "dowDays", "dowPriceAdjPct", "dowMinStay",
+            "gapPreventionEnabled", "minFragmentThreshold",
+            "gapFillEnabled", "gapFillLengthMin", "gapFillLengthMax", "gapFillDiscountPct", "gapFillOverrideCico",
+            "allowedCheckinDays", "allowedCheckoutDays",
+            "lowestMinStayAllowed", "defaultMaxStay",
         ];
 
+        const updateFields: Record<string, unknown> = {};
         for (const key of allowed) {
-            if (body[key] !== undefined) {
-                updateFields[key] = body[key];
-            }
+            if (body[key] !== undefined) updateFields[key] = body[key];
         }
 
-        await db.update(listings).set(updateFields).where(eq(listings.id, id));
-
+        await Listing.findByIdAndUpdate(new mongoose.Types.ObjectId(id), { $set: updateFields });
         return NextResponse.json({ success: true });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });

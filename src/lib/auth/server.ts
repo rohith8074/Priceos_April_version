@@ -1,7 +1,45 @@
-import { createNeonAuth } from '@neondatabase/auth/next/server';
+import { cookies } from "next/headers";
+import { verifyAccessToken } from "./jwt";
 
-// Server auth instance with explicit configuration
-export const auth = createNeonAuth({
-  baseUrl: process.env.NEON_AUTH_BASE_URL!,
-  cookies: { secret: process.env.NEON_AUTH_COOKIE_SECRET! },
-});
+export const COOKIE_NAME = "priceos-session";
+
+export interface SessionPayload {
+  userId: string; // Organization._id as string
+  orgId: string;  // same as userId
+  email: string;
+  role: string;
+}
+
+/**
+ * Get the current session from the httpOnly cookie.
+ * Returns null if no valid session exists.
+ */
+export async function getSession(): Promise<SessionPayload | null> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(COOKIE_NAME)?.value;
+    if (!token) return null;
+    const payload = verifyAccessToken(token) as unknown as SessionPayload;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Require a valid session. Throws if not authenticated.
+ * Catch "UNAUTHORIZED" in route handlers to return 401.
+ */
+export async function requireSession(): Promise<SessionPayload> {
+  const session = await getSession();
+  if (!session) throw new Error("UNAUTHORIZED");
+  return session;
+}
+
+/** @deprecated Legacy export — kept so old code using `auth.getSession()` doesn't crash */
+export const auth = {
+  getSession: async () => {
+    const session = await getSession();
+    return { data: session ? { user: { id: session.userId } } : null, error: null };
+  },
+};

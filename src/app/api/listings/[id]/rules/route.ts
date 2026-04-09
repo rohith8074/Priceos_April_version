@@ -1,75 +1,68 @@
-import { db } from "@/lib/db";
-import { pricingRules } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { connectDB, PricingRule } from "@/lib/db";
+import { getSession } from "@/lib/auth/server";
 import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
 
 export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id: idStr } = await params;
-    const id = parseInt(idStr);
-    const result = await db
-      .select()
-      .from(pricingRules)
-      .where(eq(pricingRules.listingId, id));
-
-    return NextResponse.json(result);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+    try {
+        const { id } = await params;
+        await connectDB();
+        const rules = await PricingRule.find({
+            listingId: new mongoose.Types.ObjectId(id),
+        }).lean();
+        return NextResponse.json(rules);
+    } catch (error: any) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 }
 
 export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id: idStr } = await params;
-    const id = parseInt(idStr);
-    const body = await req.json();
+    try {
+        const { id } = await params;
+        await connectDB();
+        const session = await getSession();
+        const orgId = session?.orgId
+            ? new mongoose.Types.ObjectId(session.orgId)
+            : new mongoose.Types.ObjectId();
 
-    const [rule] = await db
-      .insert(pricingRules)
-      .values({
-        ...body,
-        listingId: id,
-      })
-      .returning();
-
-    return NextResponse.json(rule);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+        const body = await req.json();
+        const rule = await PricingRule.create({
+            ...body,
+            orgId,
+            listingId: new mongoose.Types.ObjectId(id),
+        });
+        return NextResponse.json(rule);
+    } catch (error: any) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 }
 
 export async function DELETE(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+    req: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id: idStr } = await params;
-  // We need a rule ID to delete. It can be passed in the URL?
-  // Usually /api/listings/[id]/rules?ruleId=123
-  const { searchParams } = new URL(req.url);
-  const ruleId = parseInt(searchParams.get("ruleId") || "");
+    const { id } = await params;
+    const { searchParams } = new URL(req.url);
+    const ruleId = searchParams.get("ruleId");
 
-  if (!ruleId) {
-    return NextResponse.json({ error: "Missing ruleId" }, { status: 400 });
-  }
+    if (!ruleId) {
+        return NextResponse.json({ error: "Missing ruleId" }, { status: 400 });
+    }
 
-  try {
-    await db
-      .delete(pricingRules)
-      .where(
-        and(
-          eq(pricingRules.id, ruleId),
-          eq(pricingRules.listingId, parseInt(idStr))
-        )
-      );
-
-    return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+    try {
+        await connectDB();
+        await PricingRule.deleteOne({
+            _id: new mongoose.Types.ObjectId(ruleId),
+            listingId: new mongoose.Types.ObjectId(id),
+        });
+        return NextResponse.json({ success: true });
+    } catch (error: any) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 }

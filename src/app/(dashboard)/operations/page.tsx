@@ -1,60 +1,56 @@
-import { db } from "@/lib/db";
-import { reservations, listings } from "@/lib/db/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { connectDB, Reservation, Listing } from "@/lib/db";
 import { OperationsClient } from "./operations-client";
 import { format, subDays, addDays } from "date-fns";
+import mongoose from "mongoose";
 
 export const dynamic = "force-dynamic";
 
 export default async function OperationsPage() {
+    await connectDB();
+
     const today = new Date();
     const startDate = format(subDays(today, 2), "yyyy-MM-dd");
     const endDate = format(addDays(today, 90), "yyyy-MM-dd");
 
-    const reservationRows = await db
-        .select({
-            id: reservations.id,
-            listingId: reservations.listingId,
-            propertyName: listings.name,
-            startDate: reservations.startDate,
-            endDate: reservations.endDate,
-            guestName: reservations.guestName,
-            guestEmail: reservations.guestEmail,
-            guestPhone: reservations.guestPhone,
-            numGuests: reservations.numGuests,
-            channelName: reservations.channelName,
-            totalPrice: reservations.totalPrice,
-            pricePerNight: reservations.pricePerNight,
-            reservationStatus: reservations.reservationStatus,
-        })
-        .from(reservations)
-        .innerJoin(listings, eq(reservations.listingId, listings.id))
-        .where(
-            and(
-                gte(reservations.endDate, startDate),
-                lte(reservations.endDate, endDate)
-            )
-        )
-        .orderBy(reservations.endDate);
+    // Fetch reservations in range, populate listing name
+    const reservationDocs = await Reservation.find({
+        checkOut: { $gte: startDate, $lte: endDate },
+    })
+        .sort({ checkOut: 1 })
+        .lean();
 
-    // Map to the shape OperationsClient expects (backwards-compat)
-    const mapped = reservationRows.map(r => ({
-        id: r.id,
-        listingId: r.listingId,
-        propertyName: r.propertyName,
-        startDate: r.startDate,
-        endDate: r.endDate,
+    // Build listing name map
+    const listingIds = [...new Set(reservationDocs.map((r) => r.listingId.toString()))];
+    const listingDocs = await Listing.find({
+        _id: { $in: listingIds.map((id) => new mongoose.Types.ObjectId(id)) },
+    })
+        .select("name")
+        .lean();
+
+    const listingNameMap = new Map(
+        listingDocs.map((l) => [l._id.toString(), l.name])
+    );
+
+    const mapped = reservationDocs.map((r) => ({
+        id: r._id.toString(),
+        listingId: r.listingId.toString(),
+        propertyName: listingNameMap.get(r.listingId.toString()) || "Unknown Property",
+        startDate: r.checkIn,
+        endDate: r.checkOut,
         guestDetails: {
             name: r.guestName,
             email: r.guestEmail,
             phone: r.guestPhone,
-            numberOfGuests: r.numGuests,
+            numberOfGuests: r.guests,
         },
         financials: {
             channelName: r.channelName,
-            totalPrice: r.totalPrice ? parseFloat(r.totalPrice) : 0,
-            price_per_night: r.pricePerNight ? `${r.pricePerNight}` : null,
-            reservationStatus: r.reservationStatus,
+            totalPrice: Number(r.totalPrice || 0),
+            price_per_night:
+                r.nights > 0
+                    ? String(Math.round(r.totalPrice / r.nights))
+                    : null,
+            reservationStatus: r.status,
         },
         type: "reservation" as const,
     }));

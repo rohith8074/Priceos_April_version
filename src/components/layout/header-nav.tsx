@@ -21,8 +21,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useContextStore } from "@/stores/context-store";
 import { useChatStore } from "@/stores/chat-store";
-import { authClient } from "@/lib/auth/client";
-
 export function HeaderNav() {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
@@ -34,58 +32,27 @@ export function HeaderNav() {
   const [userEmail, setUserEmail] = useState("");
   const [mounted, setMounted] = useState(false);
 
-  // Fetch user info from Neon Auth session — only after mount to avoid hydration mismatch
   useEffect(() => {
     setMounted(true);
     let cancelled = false;
-
-    async function loadSession(attempt = 0) {
-      if (cancelled) return;
-      try {
-        const res = await authClient.getSession();
-        if (cancelled) return;
-        if (res?.data?.user) {
-          const u = res.data.user;
-          setUserName(u.name || u.email || "User Account");
-          setUserInitial((u.name?.[0] || u.email?.[0] || "U").toUpperCase());
-          setUserEmail(u.email || "");
-        }
-      } catch (e: any) {
-        // Handle 429 rate limiting — retry once after delay
-        const msg = e?.message || String(e);
-        if (msg.includes("Too many") && attempt < 1) {
-          setTimeout(() => loadSession(attempt + 1), 2000);
-          return;
-        }
-        if (!cancelled) console.error("Failed to load session", e);
-      }
-    }
-    loadSession();
+    fetch("/api/user/settings")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (cancelled || !data) return;
+        const name = data.fullName || data.email || "User Account";
+        const email = data.email || "";
+        setUserName(name);
+        setUserInitial((name[0] || "U").toUpperCase());
+        setUserEmail(email);
+      })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
   const handleSignOut = async () => {
-    // VERSION: 2.2 - Sign out Fix
-    // 1. Await the server-side session revocation so the session is truly invalidated
     try {
-      await authClient.signOut();
-    } catch { /* ignore errors, proceed with redirect */ }
-
-    // 2. Clear all auth cookies
-    const cookiesToClear = [
-      'priceos-session',
-      '__Secure-neon-auth.session_token',
-      '__Secure-neon-auth.local.session_data',
-      'neon-auth.session_token',
-      'better-auth.session_token',
-    ];
-    cookiesToClear.forEach(name => {
-      document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-      document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; secure; samesite=lax`;
-      document.cookie = `${name}=; path=/; domain=${window.location.hostname}; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-    });
-
-    // 3. Hard redirect with signedout flag so login page doesn't auto-redirect back
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch { /* ignore */ }
     window.location.href = '/login?signedout=true';
   };
 

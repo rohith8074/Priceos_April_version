@@ -35,7 +35,7 @@ interface AutopilotConfig {
     defaultMaxStay: number;
 }
 
-export function AutopilotSettings({ listingId }: { listingId: number }) {
+export function AutopilotSettings({ listingId }: { listingId: string }) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [running, setRunning] = useState(false);

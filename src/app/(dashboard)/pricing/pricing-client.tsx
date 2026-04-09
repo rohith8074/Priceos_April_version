@@ -13,8 +13,8 @@ import { toast } from "sonner";
 import { CheckCircle2, Building2, TrendingUp, TrendingDown, RefreshCcw } from "lucide-react";
 
 export type ProposalData = {
-    id: number;
-    listingId: number;
+    id: string;
+    listingId: string;
     date: string;
     currentPrice: string;
     proposedPrice: string | null;
@@ -25,7 +25,7 @@ export type ProposalData = {
 
 export function PricingClient({ initialProposals }: { initialProposals: ProposalData[] }) {
     const [proposals, setProposals] = useState<ProposalData[]>(initialProposals);
-    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [isProcessing, setIsProcessing] = useState(false);
 
     const toggleSelectAll = () => {
@@ -36,7 +36,7 @@ export function PricingClient({ initialProposals }: { initialProposals: Proposal
         }
     };
 
-    const toggleSelect = (id: number) => {
+    const toggleSelect = (id: string) => {
         const newSelected = new Set(selectedIds);
         if (newSelected.has(id)) {
             newSelected.delete(id);

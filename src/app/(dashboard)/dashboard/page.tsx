@@ -1,82 +1,79 @@
-import { db, listings } from "@/lib/db";
-import { sql } from "drizzle-orm";
+import { connectDB, Listing, InventoryMaster, Reservation } from "@/lib/db";
 import { OverviewClient } from "./overview-client";
 
 export default async function OverviewPage() {
+  await connectDB();
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split("T")[0];
+  const plus29 = new Date(today);
+  plus29.setDate(plus29.getDate() + 29);
+  const plus29Str = plus29.toISOString().split("T")[0];
+
   // 1. Fetch all listings
-  const allListings = await db.select().from(listings);
+  const allListings = await Listing.find().lean();
 
-  // 2. Fetch aggregation stats for next 30 days
-  const statsQuery = sql`
-    SELECT
-      listing_id,
-      COALESCE(
-        ROUND(
-          100.0 * COUNT(id) FILTER (WHERE status IN ('reserved', 'booked')) / (COUNT(id) - COUNT(id) FILTER (WHERE status = 'blocked') + 0.0001),
-          0
-        ),
-        0
-      ) as occupancy,
-      COALESCE(
-        ROUND(AVG(current_price), 2),
-        0
-      ) as avg_price,
-      COALESCE(
-        SUM(current_price) FILTER (WHERE status IN ('reserved', 'booked')),
-        0
-      ) as total_revenue
-    FROM inventory_master
-    WHERE date BETWEEN CURRENT_DATE AND CURRENT_DATE + 30
-    GROUP BY listing_id
-  `;
+  // 2. Aggregate occupancy/avg_price/revenue per listing for next 30 days
+  const statsResult = await InventoryMaster.aggregate([
+    { $match: { date: { $gte: todayStr, $lte: plus29Str } } },
+    {
+      $group: {
+        _id: "$listingId",
+        totalDays: { $sum: 1 },
+        bookedDays: {
+          $sum: { $cond: [{ $eq: ["$status", "booked"] }, 1, 0] },
+        },
+        blockedDays: {
+          $sum: { $cond: [{ $eq: ["$status", "blocked"] }, 1, 0] },
+        },
+        avgPrice: { $avg: "$currentPrice" },
+        totalRevenue: {
+          $sum: { $cond: [{ $eq: ["$status", "booked"] }, "$currentPrice", 0] },
+        },
+      },
+    },
+  ]);
+  // Compute occupancy in JS (DocumentDB doesn't support $round)
+  statsResult.forEach((s: any) => {
+    const avail = s.totalDays - s.blockedDays;
+    s.occupancy = avail > 0 ? Math.round((s.bookedDays / avail) * 100) : 0;
+  });
 
-  const statsResult = await db.execute(statsQuery);
-  const rows = Array.isArray(statsResult) ? statsResult : statsResult.rows || [];
+  // 3. Total historical revenue from confirmed reservations
+  const historicalResult = await Reservation.aggregate([
+    { $match: { status: "confirmed" } },
+    { $group: { _id: null, total: { $sum: "$totalPrice" } } },
+  ]);
+  const totalHistoricalRevenue = Number(historicalResult[0]?.total || 0);
 
+  // 4. Calendar data for next 30 days
+  const calDocs = await InventoryMaster.find({
+    date: { $gte: todayStr, $lte: plus29Str },
+  }).lean();
+
+  // 5. Reservations overlapping next 30 days
+  const resDocs = await Reservation.find({
+    checkIn: { $lte: plus29Str },
+    checkOut: { $gte: todayStr },
+  }).lean();
+
+  // 6. Build per-listing metrics
   let totalPortfolioRevenue = 0;
   let totalOccupancySum = 0;
   let totalAvgPriceSum = 0;
   let activePropertiesCount = 0;
 
-  // 2.5 Fetch all-time booked revenue from actual reservations
-  const historicalQuery = sql`
-    SELECT
-      COALESCE(
-        SUM(CAST(total_price AS NUMERIC)),
-        0
-      ) as total_historical_revenue
-    FROM reservations
-    WHERE reservation_status = 'confirmed'
-  `;
-  const historicalResult = await db.execute(historicalQuery);
-  const totalHistoricalRevenue = Array.isArray(historicalResult)
-    ? Number(historicalResult[0]?.total_historical_revenue || 0)
-    : Number(historicalResult.rows?.[0]?.total_historical_revenue || 0);
-
-  const calendarQuery = sql`
-      SELECT listing_id, date, status, current_price, min_stay, max_stay
-      FROM inventory_master
-      WHERE date BETWEEN CURRENT_DATE AND CURRENT_DATE + 29
-      ORDER BY listing_id, date
-    `;
-  const calendarResult = await db.execute(calendarQuery);
-  const calRows = Array.isArray(calendarResult) ? calendarResult : calendarResult.rows || [];
-
-  const reservationsQuery = sql`
-      SELECT listing_id, guest_name, guest_email, start_date, end_date, total_price, price_per_night, channel_name, reservation_status
-      FROM reservations
-      WHERE start_date <= CURRENT_DATE + 29 
-        AND end_date >= CURRENT_DATE
-    `;
-  const reservationsResult = await db.execute(reservationsQuery);
-  const resRows = Array.isArray(reservationsResult) ? reservationsResult : reservationsResult.rows || [];
-
-  // 3. Merge stats into listing objects
   const propertiesWithMetrics = allListings.map((listing) => {
-    const stat = rows.find((r: any) => r.listing_id === listing.id);
+    const listingIdStr = listing._id.toString();
+
+    const stat = statsResult.find((s) => s._id.toString() === listingIdStr);
     const occupancy = stat ? Number(stat.occupancy) : 0;
-    const avgPrice = stat && Number(stat.avg_price) > 0 ? Number(stat.avg_price) : Number(listing.price);
-    const revenue = stat ? Number(stat.total_revenue) : 0;
+    const avgPrice =
+      stat && Number(stat.avgPrice) > 0
+        ? Math.round(Number(stat.avgPrice))
+        : Number(listing.price);
+    const revenue = stat ? Number(stat.totalRevenue) : 0;
 
     totalPortfolioRevenue += revenue;
     if (occupancy > 0) {
@@ -85,39 +82,56 @@ export default async function OverviewPage() {
       activePropertiesCount++;
     }
 
-    const listingCal = calRows.filter((r: any) => r.listing_id === listing.id).map(r => ({
-      date: new Date(r.date).toISOString().split('T')[0],
-      status: r.status,
-      price: Number(r.current_price),
-      minimumStay: Number(r.min_stay || 1),
-      maximumStay: Number(r.max_stay || 30)
-    }));
+    const listingCal = calDocs
+      .filter((r) => r.listingId.toString() === listingIdStr)
+      .map((r) => ({
+        date: r.date,
+        status: r.status,
+        price: Number(r.currentPrice),
+        minimumStay: Number(r.minStay || 1),
+        maximumStay: Number(r.maxStay || 30),
+      }));
 
-    const listingRes = resRows.filter((r: any) => r.listing_id === listing.id).map(r => ({
-      title: r.guest_name || 'Guest',
-      email: r.guest_email || null,
-      startDate: new Date(r.start_date).toISOString().split('T')[0],
-      endDate: new Date(r.end_date).toISOString().split('T')[0],
-      financials: {
-        totalPrice: Number(r.total_price || 0),
-        pricePerNight: Number(r.price_per_night || 0),
-        channelName: r.channel_name,
-        reservationStatus: r.reservation_status,
-      }
-    }));
+    const listingRes = resDocs
+      .filter((r) => r.listingId.toString() === listingIdStr)
+      .map((r) => ({
+        title: r.guestName || "Guest",
+        email: r.guestEmail || undefined,
+        startDate: r.checkIn,
+        endDate: r.checkOut,
+        financials: {
+          totalPrice: Number(r.totalPrice || 0),
+          pricePerNight:
+            r.nights > 0
+              ? Math.round(Number(r.totalPrice) / r.nights)
+              : Number(r.totalPrice),
+          channelName: r.channelName,
+          reservationStatus: r.status,
+        },
+      }));
 
     return {
-      ...listing,
+      id: listingIdStr,
+      name: listing.name,
+      area: listing.area,
+      bedroomsNumber: listing.bedroomsNumber,
+      price: listing.price,
       occupancy,
       avgPrice,
       revenue,
       calendarDays: listingCal,
-      reservations: listingRes
+      reservations: listingRes,
     };
   });
 
-  const avgPortfolioOccupancy = activePropertiesCount > 0 ? Math.round(totalOccupancySum / activePropertiesCount) : 0;
-  const avgPortfolioPrice = activePropertiesCount > 0 ? Math.round(totalAvgPriceSum / activePropertiesCount) : 0;
+  const avgPortfolioOccupancy =
+    activePropertiesCount > 0
+      ? Math.round(totalOccupancySum / activePropertiesCount)
+      : 0;
+  const avgPortfolioPrice =
+    activePropertiesCount > 0
+      ? Math.round(totalAvgPriceSum / activePropertiesCount)
+      : 0;
 
   return (
     <OverviewClient

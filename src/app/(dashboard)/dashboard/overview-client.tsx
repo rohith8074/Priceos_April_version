@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RefreshCw, Building2, TrendingUp, DollarSign, CalendarCheck, Search } from "lucide-react";
+import { RefreshCw, Building2, TrendingUp, DollarSign, CalendarCheck, Search, Bot, AlertTriangle, CheckCircle2, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +26,7 @@ import {
 import { addDays, format, isWithinInterval, parseISO } from 'date-fns';
 
 interface PropertyMetric {
-  id: number;
+  id: string;
   name: string;
   area: string;
   bedroomsNumber?: number;
@@ -63,6 +64,24 @@ export function OverviewClient({
   const [searchTerm, setSearchTerm] = useState("");
   const [calendarStartDate, setCalendarStartDate] = useState(new Date());
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // Agent status strip
+  const [agentStatus, setAgentStatus] = useState<{
+    activeCount: number;
+    warningCount: number;
+    errorCount: number;
+    pendingProposals: number;
+    criticalInsights: number;
+    isStale: boolean;
+    lastRunAt: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/agents/status")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.summary) setAgentStatus(data.summary); })
+      .catch(() => {});
+  }, []);
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -227,6 +246,48 @@ export function OverviewClient({
           </div>
         </div>
       </div>
+
+      {/* ── Agent Status Strip ───────────────────────────────────────── */}
+      {agentStatus && (
+        <Link
+          href="/agents"
+          className="z-10 relative flex items-center gap-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] px-5 py-3 mb-6 transition-colors group"
+        >
+          <div className="flex items-center gap-2 shrink-0">
+            <Bot className="h-4 w-4 text-amber-500" />
+            <span className="text-xs font-semibold text-text-primary">AI Engine</span>
+          </div>
+          <div className="w-px h-4 bg-white/10 shrink-0" />
+          <div className="flex items-center gap-5 flex-1 min-w-0 flex-wrap">
+            <span className="flex items-center gap-1.5 text-xs text-text-secondary">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
+              <strong className="text-green-400">{agentStatus.activeCount}</strong> agents active
+            </span>
+            {agentStatus.warningCount + agentStatus.errorCount > 0 && (
+              <span className="flex items-center gap-1.5 text-xs text-text-secondary">
+                <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
+                <strong className="text-red-400">{agentStatus.warningCount + agentStatus.errorCount}</strong> warnings
+              </span>
+            )}
+            {agentStatus.pendingProposals > 0 && (
+              <span className="flex items-center gap-1.5 text-xs text-text-secondary">
+                <TrendingUp className="h-3.5 w-3.5 text-amber-400" />
+                <strong className="text-amber-400">{agentStatus.pendingProposals}</strong> pending proposals
+              </span>
+            )}
+            {agentStatus.criticalInsights > 0 && (
+              <span className="flex items-center gap-1.5 text-xs text-text-secondary">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                <strong className="text-amber-400">{agentStatus.criticalInsights}</strong> critical insights
+              </span>
+            )}
+            {agentStatus.isStale && (
+              <span className="text-[11px] text-red-400">· Data stale</span>
+            )}
+          </div>
+          <ChevronRight className="h-3.5 w-3.5 text-text-disabled opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </Link>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5 mb-8">
         <Card className="bg-background/60 dark:bg-[#111113]/60 backdrop-blur-xl border-border dark:border-white/5 shadow-xl dark:shadow-2xl overflow-hidden relative group hover:border-amber-500/20 transition-all duration-500">

@@ -1,47 +1,61 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { marketEvents } from "@/lib/db/schema";
-import { desc, eq, and, gte, lte, isNull, or } from "drizzle-orm";
+import { connectDB, MarketEvent } from "@/lib/db";
+import { getSession } from "@/lib/auth/server";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-    try {
-        const { searchParams } = new URL(req.url);
-        const listingId = searchParams.get("listingId") ? Number(searchParams.get("listingId")) : null;
-        const dateFrom = searchParams.get("dateFrom");
-        const dateTo = searchParams.get("dateTo");
+  try {
+    const session = await getSession();
+    await connectDB();
 
-        // Build filter conditions
-        const conditions = [];
-        if (listingId) {
-            // Return records for this listing OR portfolio-level records (listingId IS NULL)
-            conditions.push(or(eq(marketEvents.listingId, listingId), isNull(marketEvents.listingId)));
-        }
+    const { searchParams } = new URL(req.url);
+    const listingId = searchParams.get("listingId");
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
+    const impactLevel = searchParams.get("impactLevel");
 
-        // RANGE OVERLAP: event overlaps if event.start <= queryEnd AND event.end >= queryStart
-        if (dateFrom) conditions.push(gte(marketEvents.endDate, dateFrom));   // event ends after query starts
-        if (dateTo) conditions.push(lte(marketEvents.startDate, dateTo));     // event starts before query ends
-
-        const query = db
-            .select()
-            .from(marketEvents)
-            .orderBy(desc(marketEvents.createdAt), desc(marketEvents.startDate))
-            .limit(100);
-
-        const events = conditions.length > 0
-            ? await query.where(and(...conditions))
-            : await query;
-
-        console.log(`📡 [Events API] listingId=${listingId} range=${dateFrom}→${dateTo} → ${events.length} events returned`);
-
-        return NextResponse.json({
-            success: true,
-            events
-        });
-    } catch (error) {
-        console.error("API /api/events GET Error:", error);
-        return NextResponse.json(
-            { error: "Failed to fetch market events." },
-            { status: 500 }
-        );
+    // Build query — scope by org if authenticated, else allow portfolio view
+    const query: Record<string, unknown> = {};
+    if (session?.orgId) {
+      query.orgId = session.orgId;
     }
+    if (listingId) {
+      query.$or = [{ listingId }, { listingId: null }];
+    }
+    if (dateFrom) query.endDate = { $gte: dateFrom };
+    if (dateTo) query.startDate = { $lte: dateTo };
+    if (impactLevel) query.impactLevel = impactLevel;
+
+    const events = await MarketEvent.find(query)
+      .sort({ startDate: 1 })
+      .limit(100)
+      .lean();
+
+    return NextResponse.json({ success: true, events });
+  } catch (error) {
+    console.error("[Events GET]", error);
+    return NextResponse.json({ error: "Failed to fetch events" }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    await connectDB();
+    const body = await req.json();
+
+    const event = await MarketEvent.create({
+      ...body,
+      orgId: session.orgId,
+      source: body.source || "manual",
+    });
+
+    return NextResponse.json({ success: true, event }, { status: 201 });
+  } catch (error) {
+    console.error("[Events POST]", error);
+    return NextResponse.json({ error: "Failed to create event" }, { status: 500 });
+  }
 }

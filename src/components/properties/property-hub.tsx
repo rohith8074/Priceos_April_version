@@ -141,9 +141,9 @@ export function PropertyHub({
         </TabsContent>
 
         <TabsContent value="rules" className="mt-4 space-y-8">
-          <AutopilotSettings listingId={property.id} />
+          <AutopilotSettings listingId={String(property.id)} />
           <Separator />
-          <RulesTable listingId={property.id} />
+          <RulesTable listingId={String(property.id)} />
         </TabsContent>
 
         <TabsContent value="financials" className="mt-4 space-y-6">

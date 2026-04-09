@@ -1,57 +1,94 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+const COOKIE_NAME = "priceos-session";
+
+const PUBLIC_PATHS = [
+  "/login",
+  "/waitlist",
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/refresh",
+  "/api/v1/auth",
+];
+
+function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+}
+
+function isValidToken(token: string): boolean {
+  try {
+    // Edge-compatible JWT decode (no crypto verification needed just for routing)
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+
+    // Decode base64url payload
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+
+    const payload = JSON.parse(jsonPayload);
+
+    // Check expiration if present
+    if (payload.exp) {
+      const now = Math.floor(Date.now() / 1000);
+      return payload.exp > now;
+    }
+
+    return true;
+  } catch (err) {
+    console.log("[Middleware] isValidToken error:", err);
+    return false;
+  }
+}
 
 export default function middleware(request: NextRequest) {
-  const { pathname, searchParams } = request.nextUrl;
+  const { pathname } = request.nextUrl;
 
-  // Paths that are fully public (no auth required)
-  const publicPaths = ['/login', '/waitlist', '/api/auth', '/auth', '/api/v1/auth'];
-  const isPublicPath = publicPaths.some(path => pathname.startsWith(path));
-
-  const isV1Api = pathname.startsWith('/api/v1');
-
-  // Check for Neon auth session cookies
-  const sessionCookieNames = [
-    '__Secure-neon-auth.session_token',
-    '__Secure-neon-auth.local.session_data',
-    'neon-auth.session_token',
-    'better-auth.session_token',
-  ];
-  const session = sessionCookieNames.some(name => request.cookies.get(name));
-
-  // Handle sign-out: if coming to /login with ?signedout=true, clear all cookies server-side
-  if (pathname === '/login' && searchParams.get('signedout') === 'true') {
-    const response = NextResponse.next();
-    // Delete all auth cookies server-side to ensure clean state
-    sessionCookieNames.forEach(name => {
-      response.cookies.delete(name);
-    });
-    response.cookies.delete('priceos-session');
-    return response;
-  }
-
-  // 1. If v1 API, allow through (let the routes handle JWT for now)
-  if (isV1Api) {
+  // Static assets — always allow
+  if (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon") ||
+    pathname.startsWith("/icon.png") ||
+    pathname.startsWith("/apple-icon")
+  ) {
     return NextResponse.next();
   }
 
-  // 2. If no session and trying to access private route, redirect to login
-  if (!session && !isPublicPath) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  if (isPublicPath(pathname)) {
+    return NextResponse.next();
   }
 
-  // 2. If session exists and trying to access /login (without signedout flag), redirect to dashboard
-  if (session && pathname === '/login') {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+  const token = request.cookies.get(COOKIE_NAME)?.value;
+  console.log(`[Middleware] Checking path ${pathname} | token exists:`, !!token);
+  const valid = token ? isValidToken(token) : false;
+  console.log(`[Middleware] token valid:`, valid);
+
+  // Root redirect
+  if (pathname === "/") {
+    return NextResponse.redirect(
+      new URL(valid ? "/dashboard" : "/login", request.url)
+    );
   }
 
-  // 3. Special case: redirect root to login or dashboard
-  if (pathname === '/') {
-    if (session) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
-    } else {
-      return NextResponse.redirect(new URL('/login', request.url));
-    }
+  // API routes — return 401 JSON instead of redirect
+  if (pathname.startsWith("/api/") && !valid) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Page routes — redirect to login
+  if (!valid) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  // Already logged in, don't show login page
+  if (valid && pathname === "/login") {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return NextResponse.next();
@@ -59,13 +96,6 @@ export default function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico, favicon.png, icon.png, apple-icon.png
-     */
-    '/((?!_next/static|_next/image|favicon\\.ico|favicon\\.png|icon\\.png|apple-icon\\.png).*)',
+    "/((?!_next/static|_next/image|favicon\\.ico|favicon\\.png|icon\\.png|apple-icon\\.png).*)",
   ],
 };
-

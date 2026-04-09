@@ -1,6 +1,6 @@
-import { db, marketEvents } from "@/lib/db";
-import { and, gte, lte, eq } from "drizzle-orm";
-import { format, addDays, parseISO } from "date-fns";
+import { connectDB, MarketEvent } from "@/lib/db";
+import { format } from "date-fns";
+import mongoose from "mongoose";
 
 export interface EventSignal {
   name: string;
@@ -26,48 +26,35 @@ export interface EventAnalysisResult {
 
 /**
  * Event Intelligence Agent
- * Responsible for fetching and analyzing Dubai events for pricing impact
- * Reads from the `market_events` table (populated during Setup)
+ * Reads from the `MarketEvent` collection (populated during Setup)
  */
 export class EventIntelligenceAgent {
-  /**
-   * Fetch events for a date range from market_events table
-   */
   async getEvents(startDate: Date, endDate: Date): Promise<EventSignal[]> {
+    await connectDB();
     const startDateStr = format(startDate, "yyyy-MM-dd");
     const endDateStr = format(endDate, "yyyy-MM-dd");
 
-    const cachedEvents = await db
-      .select()
-      .from(marketEvents)
-      .where(
-        and(
-          gte(marketEvents.endDate, startDateStr),
-          lte(marketEvents.startDate, endDateStr)
-        )
-      );
+    const cachedEvents = await MarketEvent.find({
+      endDate: { $gte: startDateStr },
+      startDate: { $lte: endDateStr },
+      isActive: true,
+    }).lean();
 
-    return cachedEvents.map((event: any) => ({
-      name: event.title,
+    return cachedEvents.map((event) => ({
+      name: event.name,
       startDate: event.startDate,
       endDate: event.endDate,
-      location: event.location || "Dubai",
-      expectedImpact: (event.expectedImpact || "medium") as "high" | "medium" | "low",
-      confidence: event.confidence || 50,
-      description: event.description || undefined,
-      metadata: (event.metadata as Record<string, unknown>) || {},
+      location: event.area || "Dubai",
+      expectedImpact: event.impactLevel,
+      confidence: 75,
+      description: event.description,
+      metadata: {},
     }));
   }
 
-  /**
-   * Analyze events for a specific date range
-   */
   async analyzeEvents(startDate: Date, endDate: Date): Promise<EventAnalysisResult> {
     const events = await this.getEvents(startDate, endDate);
-
-    const highImpactEvents = events.filter(
-      (e) => e.expectedImpact === "high"
-    ).length;
+    const highImpactEvents = events.filter((e) => e.expectedImpact === "high").length;
 
     let summary = "";
     if (events.length === 0) {
@@ -90,31 +77,23 @@ export class EventIntelligenceAgent {
     };
   }
 
-  /**
-   * Check if a specific date overlaps with any events
-   */
   async hasEventImpact(date: Date): Promise<boolean> {
+    await connectDB();
     const dateStr = format(date, "yyyy-MM-dd");
 
-    const overlappingEvents = await db
-      .select()
-      .from(marketEvents)
-      .where(
-        and(
-          lte(marketEvents.startDate, dateStr),
-          gte(marketEvents.endDate, dateStr)
-        )
-      );
+    const count = await MarketEvent.countDocuments({
+      startDate: { $lte: dateStr },
+      endDate: { $gte: dateStr },
+      isActive: true,
+    });
 
-    return overlappingEvents.length > 0;
+    return count > 0;
   }
 
-  /**
-   * Fetch and cache events from external sources
-   * (Mock implementation - in production would call real APIs)
-   */
-  async fetchAndCacheEvents(): Promise<{ cached: number; error?: string }> {
+  async fetchAndCacheEvents(orgId: mongoose.Types.ObjectId): Promise<{ cached: number; error?: string }> {
     try {
+      await connectDB();
+
       const mockEvents: EventSignal[] = [
         {
           name: "Dubai Shopping Festival",
@@ -124,17 +103,6 @@ export class EventIntelligenceAgent {
           expectedImpact: "high",
           confidence: 95,
           description: "Annual shopping festival attracting millions of visitors",
-          metadata: { category: "shopping", tourists: "high" },
-        },
-        {
-          name: "Formula 1 Abu Dhabi Grand Prix",
-          startDate: "2026-03-20",
-          endDate: "2026-03-22",
-          location: "Abu Dhabi",
-          expectedImpact: "high",
-          confidence: 90,
-          description: "F1 race weekend, high hotel demand in Dubai area",
-          metadata: { category: "sports", spillover: "Dubai" },
         },
         {
           name: "Dubai World Cup",
@@ -144,7 +112,6 @@ export class EventIntelligenceAgent {
           expectedImpact: "high",
           confidence: 85,
           description: "World's richest horse race",
-          metadata: { category: "sports", tourists: "high" },
         },
         {
           name: "Ramadan",
@@ -154,65 +121,34 @@ export class EventIntelligenceAgent {
           expectedImpact: "medium",
           confidence: 70,
           description: "Lower tourist demand during Ramadan",
-          metadata: { category: "religious", demand: "lower" },
         },
         {
-          name: "Dubai International Boat Show",
-          startDate: "2026-03-03",
-          endDate: "2026-03-07",
+          name: "GITEX Global",
+          startDate: "2026-10-12",
+          endDate: "2026-10-16",
           location: "Dubai",
-          expectedImpact: "medium",
-          confidence: 75,
-          description: "Annual boat show",
-          metadata: { category: "trade", tourists: "medium" },
-        },
-        {
-          name: "Dubai Food Festival",
-          startDate: "2026-02-20",
-          endDate: "2026-03-20",
-          location: "Dubai",
-          expectedImpact: "medium",
-          confidence: 80,
-          description: "Culinary festival across Dubai",
-          metadata: { category: "food", tourists: "medium" },
-        },
-        {
-          name: "Dubai Jazz Festival",
-          startDate: "2026-02-25",
-          endDate: "2026-02-27",
-          location: "Dubai",
-          expectedImpact: "medium",
-          confidence: 70,
-          description: "Annual music festival",
-          metadata: { category: "entertainment", tourists: "medium" },
+          expectedImpact: "high",
+          confidence: 90,
+          description: "Global tech event, massive demand spike",
         },
       ];
 
       let cachedCount = 0;
 
       for (const event of mockEvents) {
-        const existing = await db
-          .select()
-          .from(marketEvents)
-          .where(
-            and(
-              eq(marketEvents.title, event.name),
-              eq(marketEvents.startDate, event.startDate)
-            )
-          )
-          .limit(1);
-
-        if (existing.length === 0) {
-          await db.insert(marketEvents).values({
-            title: event.name,
+        const existing = await MarketEvent.findOne({ orgId, name: event.name, startDate: event.startDate });
+        if (!existing) {
+          await MarketEvent.create({
+            orgId,
+            name: event.name,
             startDate: event.startDate,
             endDate: event.endDate,
-            eventType: 'event',
-            location: event.location,
-            expectedImpact: event.expectedImpact,
-            confidence: event.confidence,
-            description: event.description || null,
-            metadata: event.metadata || null,
+            area: event.location,
+            impactLevel: event.expectedImpact,
+            upliftPct: event.expectedImpact === "high" ? 30 : event.expectedImpact === "medium" ? 15 : 5,
+            description: event.description,
+            source: "manual",
+            isActive: true,
           });
           cachedCount++;
         }
@@ -220,25 +156,16 @@ export class EventIntelligenceAgent {
 
       return { cached: cachedCount };
     } catch (error) {
-      return {
-        cached: 0,
-        error: (error as Error).message,
-      };
+      return { cached: 0, error: (error as Error).message };
     }
   }
 
-  /**
-   * Get event-driven pricing recommendation
-   */
   getPricingRecommendation(events: EventSignal[]): {
     suggestedIncrease: number;
     reasoning: string;
   } {
     if (events.length === 0) {
-      return {
-        suggestedIncrease: 0,
-        reasoning: "No events detected, maintain current pricing",
-      };
+      return { suggestedIncrease: 0, reasoning: "No events detected, maintain current pricing" };
     }
 
     const highImpactEvents = events.filter((e) => e.expectedImpact === "high");
@@ -260,16 +187,10 @@ export class EventIntelligenceAgent {
       };
     }
 
-    return {
-      suggestedIncrease: 5,
-      reasoning: `Low-impact events detected. Minor demand increase expected.`,
-    };
+    return { suggestedIncrease: 5, reasoning: "Low-impact events detected. Minor demand increase expected." };
   }
 }
 
-/**
- * Create an Event Intelligence Agent instance
- */
 export function createEventIntelligenceAgent(): EventIntelligenceAgent {
   return new EventIntelligenceAgent();
 }

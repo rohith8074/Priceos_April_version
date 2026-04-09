@@ -43,7 +43,7 @@ interface PricingRule {
     priceOverride: string | null;
 }
 
-export function RulesTable({ listingId }: { listingId: number }) {
+export function RulesTable({ listingId }: { listingId: string }) {
     const [loading, setLoading] = useState(true);
     const [rules, setRules] = useState<PricingRule[]>([]);
     const [open, setOpen] = useState(false);

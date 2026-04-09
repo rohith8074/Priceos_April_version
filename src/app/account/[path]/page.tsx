@@ -1,5 +1,5 @@
-import { AccountView } from '@neondatabase/auth/react/ui';
+import { redirect } from "next/navigation";
 
-export default function AccountPage({ params }: { params: { path: string } }) {
-  return <AccountView />;
+export default function AccountPage() {
+  redirect("/profile");
 }

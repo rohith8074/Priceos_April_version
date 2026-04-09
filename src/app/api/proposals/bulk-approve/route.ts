@@ -1,31 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { inventoryMaster } from "@/lib/db/schema";
-import { inArray, sql } from "drizzle-orm";
+import { connectDB, InventoryMaster } from "@/lib/db";
+import { getSession } from "@/lib/auth/server";
 
 export async function POST(req: NextRequest) {
-    try {
-        const { proposalIds } = await req.json();
+  try {
+    const session = await getSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        if (!proposalIds || !Array.isArray(proposalIds) || proposalIds.length === 0) {
-            return NextResponse.json({ error: "Invalid proposal IDs" }, { status: 400 });
-        }
-
-        // Approve selected proposals:
-        // Move proposedPrice -> currentPrice, clear proposedPrice & proposalStatus
-        await db.update(inventoryMaster)
-            .set({
-                currentPrice: sql`${inventoryMaster.proposedPrice}`,
-                proposedPrice: null,
-                proposalStatus: "approved"
-            })
-            .where(inArray(inventoryMaster.id, proposalIds));
-
-        // Notice: Background sync logic to Hostaway would trigger here (omitted for speed / sandbox)
-
-        return NextResponse.json({ success: true, count: proposalIds.length });
-    } catch (error) {
-        console.error("Error bulk approving proposals:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    const { proposalIds } = await req.json();
+    if (!Array.isArray(proposalIds) || proposalIds.length === 0) {
+      return NextResponse.json({ error: "Invalid proposal IDs" }, { status: 400 });
     }
+
+    await connectDB();
+
+    // Approve: copy proposedPrice → currentPrice, mark approved
+    // IMPORTANT: Never POST to Hostaway — only update local DB
+    const result = await InventoryMaster.updateMany(
+      { _id: { $in: proposalIds }, orgId: session.orgId, proposalStatus: "pending" },
+      [
+        {
+          $set: {
+            currentPrice: "$proposedPrice",
+            proposalStatus: "approved",
+            proposedPrice: null,
+            changePct: null,
+          },
+        },
+      ]
+    );
+
+    return NextResponse.json({ success: true, count: result.modifiedCount });
+  } catch (error) {
+    console.error("[Proposals bulk-approve]", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  }
 }

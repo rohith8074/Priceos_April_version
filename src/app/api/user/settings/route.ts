@@ -1,75 +1,68 @@
-import { db, userSettings } from "@/lib/db";
-import { eq } from "drizzle-orm";
-import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth/server";
-
-async function getNeonAuthUser() {
-    try {
-        const res = await auth.getSession();
-        return res?.data?.user || null;
-    } catch {
-        return null;
-    }
-}
+import { connectDB, Organization } from "@/lib/db";
+import { getSession } from "@/lib/auth/server";
+import { NextRequest, NextResponse } from "next/server";
+import mongoose from "mongoose";
 
 export async function GET() {
-    const neonUser = await getNeonAuthUser();
-
-    if (!neonUser) {
+    const session = await getSession();
+    if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = neonUser.id;
-    let settings = await db.query.userSettings.findFirst({
-        where: eq(userSettings.userId, userId),
-    });
+    await connectDB();
+    const org = await Organization.findById(
+        new mongoose.Types.ObjectId(session.orgId)
+    ).select("-passwordHash -refreshToken").lean();
 
-    if (!settings) {
-        const [newSettings] = await db.insert(userSettings).values({
-            userId,
-            fullName: neonUser.name || "",
-            email: neonUser.email || "",
-            preferences: {},
-        }).returning();
-        settings = newSettings;
+    if (!org) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    return NextResponse.json(settings);
+    return NextResponse.json({
+        id: org._id.toString(),
+        userId: org._id.toString(),
+        fullName: org.fullName || "",
+        email: org.email,
+        role: org.role,
+        isApproved: org.isApproved,
+        hostawayApiKey: org.hostawayApiKey || "",
+        preferences: org.settings || {},
+    });
 }
 
-export async function POST(req: Request) {
-    const neonUser = await getNeonAuthUser();
-
-    if (!neonUser) {
+export async function POST(req: NextRequest) {
+    const session = await getSession();
+    if (!session) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = neonUser.id;
+    await connectDB();
     const body = await req.json();
-    const { fullName, email, lyzrApiKey, hostawayApiKey, preferences } = body;
+    const { fullName, email, hostawayApiKey } = body;
 
-    const result = await db
-        .insert(userSettings)
-        .values({
-            userId,
-            fullName: fullName || neonUser.name || "",
-            email: email || neonUser.email || "",
-            lyzrApiKey,
-            hostawayApiKey,
-            preferences: preferences || {},
-        })
-        .onConflictDoUpdate({
-            target: userSettings.userId,
-            set: {
-                fullName: fullName || neonUser.name || "",
-                email: email || neonUser.email || "",
-                lyzrApiKey,
-                hostawayApiKey,
-                preferences: preferences || {},
-                updatedAt: new Date(),
-            },
-        })
-        .returning();
+    const updateData: Record<string, unknown> = {};
+    if (fullName !== undefined) updateData.fullName = fullName;
+    if (email !== undefined) updateData.email = email;
+    if (hostawayApiKey !== undefined) updateData.hostawayApiKey = hostawayApiKey;
 
-    return NextResponse.json(result[0]);
+    const updated = await Organization.findByIdAndUpdate(
+        new mongoose.Types.ObjectId(session.orgId),
+        { $set: updateData },
+        { new: true }
+    ).select("-passwordHash -refreshToken").lean();
+
+    if (!updated) {
+        return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({
+        id: updated._id.toString(),
+        userId: updated._id.toString(),
+        fullName: updated.fullName || "",
+        email: updated.email,
+        role: updated.role,
+        isApproved: updated.isApproved,
+        hostawayApiKey: updated.hostawayApiKey || "",
+        preferences: updated.settings || {},
+    });
 }

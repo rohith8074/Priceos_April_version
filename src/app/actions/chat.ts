@@ -1,22 +1,30 @@
 'use server'
 
-import { db } from '@/lib/db'
-import { chatMessages } from '@/lib/db/schema'
+import { connectDB, ChatMessage } from '@/lib/db'
+import { getSession } from '@/lib/auth/server'
+import mongoose from 'mongoose'
 
 export async function saveChatMessage(data: {
-  userId?: string
   sessionId: string
   role: string
   content: string
-  listingId?: number
-  structured?: Record<string, unknown>
+  propertyId?: string
+  metadata?: Record<string, unknown>
 }) {
-  await db.insert(chatMessages).values({
-    userId: data.userId ?? null,
+  await connectDB()
+  const session = await getSession()
+  const orgId = session?.orgId
+    ? new mongoose.Types.ObjectId(session.orgId)
+    : new mongoose.Types.ObjectId()
+
+  await ChatMessage.create({
+    orgId,
     sessionId: data.sessionId,
-    role: data.role,
+    role: data.role as 'user' | 'assistant' | 'system',
     content: data.content,
-    listingId: data.listingId ?? null,
-    structured: data.structured ?? null,
+    context: data.propertyId
+      ? { type: 'property', propertyId: new mongoose.Types.ObjectId(data.propertyId) }
+      : { type: 'portfolio' },
+    metadata: data.metadata ?? {},
   })
 }

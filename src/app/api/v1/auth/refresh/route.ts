@@ -1,12 +1,11 @@
-import { db, userSettings } from "@/lib/db";
-import { eq } from "drizzle-orm";
+import { connectDB, Organization } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api/response";
 import { refreshSchema, formatZodErrors } from "@/lib/validators";
 import { signAccessToken, verifyRefreshToken } from "@/lib/auth/jwt";
 import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/api/rate-limit";
+import mongoose from "mongoose";
 
 export async function POST(req: Request) {
-    // ── Rate Limiting (Auth tier) ──
     const ip = getClientIp(req);
     const rateCheck = checkRateLimit(`auth-refresh:${ip}`, RATE_LIMITS.auth);
     if (!rateCheck.allowed) {
@@ -23,27 +22,30 @@ export async function POST(req: Request) {
 
         const { refreshToken } = validation.data;
 
-        // ── 1. Verify token ──
-        let payload;
+        let payload: any;
         try {
             payload = verifyRefreshToken(refreshToken);
-        } catch (e) {
+        } catch {
             return apiError("UNAUTHORIZED", "Invalid or expired refresh token", 401);
         }
 
         const { userId } = payload;
 
-        // ── 2. Check refresh token in database ──
-        const user = await db.query.userSettings.findFirst({
-            where: eq(userSettings.userId, userId),
-        });
+        await connectDB();
+        const org = await Organization.findById(
+            new mongoose.Types.ObjectId(userId)
+        ).lean();
 
-        if (!user || user.refreshToken !== refreshToken) {
+        if (!org || org.refreshToken !== refreshToken) {
             return apiError("UNAUTHORIZED", "Refresh token mismatch or user not found", 401);
         }
 
-        // ── 3. Sign new access token ──
-        const accessToken = signAccessToken({ userId: user.userId, role: user.role });
+        const accessToken = signAccessToken({
+            userId: org._id.toString(),
+            orgId: org._id.toString(),
+            email: org.email,
+            role: org.role,
+        });
 
         return apiSuccess({ accessToken });
 

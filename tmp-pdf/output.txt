@@ -1,0 +1,8 @@
+Error reading Knowledge Base 31a605fb68578024bf16e9aa0c3c2541.pdf: pdf is not a function
+Error reading Channel Manager Docs d8b5582cf72d450c863102fc3e205041.pdf: pdf is not a function
+Error reading Dubai STR Market Research 304e27f67daa4b85a1be4c2380da329f.pdf: pdf is not a function
+Error reading Learnings and Retrospectives f8cfa7ce4027413386ee474ac4fda17b.pdf: pdf is not a function
+Error reading Lyzr Platform Documentation bcf2940b47ec41999ea0f88d991853ff.pdf: pdf is not a function
+Error reading PMS Integration Docs 73436772f6b347ac8df5e5b176af1372.pdf: pdf is not a function
+Error reading PriceOS Pricing Engine Customizations c71ffe80b8424829960ebc09927e8fb0.pdf: pdf is not a function
+Error reading Regulatory and Compliance Notes 484d65fa085e4ecdb4a666e29655de3c.pdf: pdf is not a function

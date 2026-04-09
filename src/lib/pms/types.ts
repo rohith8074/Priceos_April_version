@@ -71,5 +71,5 @@ export interface PMSClient {
   // have been deprecated as part of the architectural redesign
 
   // Utility
-  getMode(): "mock" | "live";
+  getMode(): "mock" | "db" | "live";
 }

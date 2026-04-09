@@ -1,19 +1,11 @@
-import { db } from "../../lib/db";
-import {
-    listings,
-    pricingRules,
-    inventoryMaster,
-    engineRuns,
-} from "../../lib/db/schema";
-import { eq, and, asc, sql } from "drizzle-orm";
+import { connectDB, Listing, PricingRule, InventoryMaster, EngineRun } from "@/lib/db";
+import mongoose from "mongoose";
 import {
     computeDay,
     ListingConfig,
     Rule,
     BookingContext,
 } from "./waterfall";
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function toNum(val: string | number | null | undefined): number {
     if (val === null || val === undefined) return 0;
@@ -40,32 +32,28 @@ function dateStr(d: Date): string {
     return d.toISOString().split("T")[0];
 }
 
-// ── Pipeline ───────────────────────────────────────────────────────────────────
-
 /**
  * Runs the pricing engine for a listing for the next 365 days.
- * Calculations are stored as proposals in inventory_master.
+ * Calculations are stored as proposals in InventoryMaster.
  */
 export async function runPipeline(
-    listingId: number,
-    triggerDetail?: string
+    listingId: mongoose.Types.ObjectId | string,
+    _triggerDetail?: string
 ) {
+    await connectDB();
+
+    const lid = typeof listingId === "string"
+        ? new mongoose.Types.ObjectId(listingId)
+        : listingId;
+
     const startedAt = new Date();
 
     try {
-        // 1. Fetch listing config
-        const listingRows = await db
-            .select()
-            .from(listings)
-            .where(eq(listings.id, listingId));
-
-        if (listingRows.length === 0) {
+        const listing = await Listing.findById(lid).lean();
+        if (!listing) {
             throw new Error(`Listing ${listingId} not found`);
         }
 
-        const listing = listingRows[0];
-
-        // Map Priceos schema to Engine Config
         const config: ListingConfig = {
             basePrice: toNum(listing.price),
             absoluteMinPrice: toNum(listing.priceFloor),
@@ -78,15 +66,15 @@ export async function runPipeline(
             lastMinuteEnabled: listing.lastMinuteEnabled,
             lastMinuteDaysOut: listing.lastMinuteDaysOut,
             lastMinuteDiscountPct: toNum(listing.lastMinuteDiscountPct),
-            lastMinuteMinStay: listing.lastMinuteMinStay,
+            lastMinuteMinStay: listing.lastMinuteMinStay ?? null,
             farOutEnabled: listing.farOutEnabled,
             farOutDaysOut: listing.farOutDaysOut,
             farOutMarkupPct: toNum(listing.farOutMarkupPct),
-            farOutMinStay: listing.farOutMinStay,
+            farOutMinStay: listing.farOutMinStay ?? null,
             dowPricingEnabled: listing.dowPricingEnabled,
             dowDays: toIntArray(listing.dowDays),
             dowPriceAdjPct: toNum(listing.dowPriceAdjPct),
-            dowMinStay: listing.dowMinStay,
+            dowMinStay: listing.dowMinStay ?? null,
             gapPreventionEnabled: listing.gapPreventionEnabled,
             minFragmentThreshold: listing.minFragmentThreshold,
             gapFillEnabled: listing.gapFillEnabled,
@@ -96,30 +84,26 @@ export async function runPipeline(
             gapFillOverrideCico: listing.gapFillOverrideCico,
         };
 
-        // 2. Fetch all enabled rules
-        const ruleRows = await db
-            .select()
-            .from(pricingRules)
-            .where(
-                and(eq(pricingRules.listingId, listingId), eq(pricingRules.enabled, true))
-            )
-            .orderBy(pricingRules.priority);
+        const ruleRows = await PricingRule.find({
+            listingId: lid,
+            enabled: true,
+        }).sort({ priority: 1 }).lean();
 
         const allRules: Rule[] = ruleRows.map((r) => ({
-            id: r.id,
+            id: r._id.toString(),
             ruleType: r.ruleType as any,
             name: r.name,
             enabled: r.enabled,
             priority: r.priority,
-            startDate: r.startDate,
-            endDate: r.endDate,
-            daysOfWeek: r.daysOfWeek,
-            minNights: r.minNights,
+            startDate: r.startDate ?? null,
+            endDate: r.endDate ?? null,
+            daysOfWeek: r.daysOfWeek ?? null,
+            minNights: r.minNights ?? null,
             priceOverride: toNumOrNull(r.priceOverride),
             priceAdjPct: toNumOrNull(r.priceAdjPct),
             minPriceOverride: toNumOrNull(r.minPriceOverride),
             maxPriceOverride: toNumOrNull(r.maxPriceOverride),
-            minStayOverride: r.minStayOverride,
+            minStayOverride: r.minStayOverride ?? null,
             isBlocked: r.isBlocked,
             closedToArrival: r.closedToArrival,
             closedToDeparture: r.closedToDeparture,
@@ -127,36 +111,24 @@ export async function runPipeline(
             suspendGapFill: r.suspendGapFill,
         }));
 
-        // 3. Fetch existing inventory to find bookings
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const endDate = addDays(today, 364);
 
-        const existingInventory = await db
-            .select()
-            .from(inventoryMaster)
-            .where(
-                and(
-                    eq(inventoryMaster.listingId, listingId),
-                    sql`${inventoryMaster.date} >= ${dateStr(today)}`
-                )
-            )
-            .orderBy(asc(inventoryMaster.date));
+        const existingInventory = await InventoryMaster.find({
+            listingId: lid,
+            date: { $gte: dateStr(today) },
+        }).sort({ date: 1 }).lean();
 
-        // Build a map of date -> booking info
         const bookingMap = new Map<string, { isBooked: boolean }>();
         for (const day of existingInventory) {
-            bookingMap.set(day.date, {
-                isBooked: day.status !== "available",
-            });
+            bookingMap.set(day.date, { isBooked: day.status !== "available" });
         }
 
-        // 4. Compute gap information
         const gapMap = computeGaps(today, endDate, bookingMap);
 
-        // 5. Loop 365 days and compute results
         let daysChanged = 0;
-        const upsertValues = [];
+        const bulkOps: any[] = [];
 
         for (let i = 0; i < 365; i++) {
             const currentDate = addDays(today, i);
@@ -173,74 +145,64 @@ export async function runPipeline(
 
             const result = computeDay(currentDate, today, config, allRules, bookingCtx);
 
-            upsertValues.push({
-                listingId,
-                date: ds,
-                status: bookingCtx.isBooked ? "booked" : "available",
-                currentPrice: toNum(listing.price).toFixed(2),
-                proposedPrice: result.price.toFixed(2),
-                proposedMinStay: result.minimumStay,
-                proposedMaxStay: result.maximumStay,
-                proposedClosedToArrival: result.closedToArrival === 1,
-                proposedClosedToDeparture: result.closedToDeparture === 1,
-                reasoning: result.note,
-                proposalStatus: "pending",
+            bulkOps.push({
+                updateOne: {
+                    filter: { listingId: lid, date: ds },
+                    update: {
+                        $set: {
+                            orgId: listing.orgId,
+                            listingId: lid,
+                            date: ds,
+                            status: bookingCtx.isBooked ? "booked" : "available",
+                            currentPrice: toNum(listing.price),
+                            proposedPrice: result.price,
+                            reasoning: result.note,
+                            proposalStatus: "pending",
+                            minStay: result.minimumStay,
+                            maxStay: result.maximumStay,
+                            closedToArrival: result.closedToArrival === 1,
+                            closedToDeparture: result.closedToDeparture === 1,
+                        },
+                    },
+                    upsert: true,
+                },
             });
 
             daysChanged++;
         }
 
-        // 6. Upsert into inventory_master (batch)
-        if (upsertValues.length > 0) {
+        if (bulkOps.length > 0) {
             const BATCH_SIZE = 100;
-            for (let i = 0; i < upsertValues.length; i += BATCH_SIZE) {
-                const batch = upsertValues.slice(i, i + BATCH_SIZE);
-                await db
-                    .insert(inventoryMaster)
-                    .values(batch as any)
-                    .onConflictDoUpdate({
-                        target: [inventoryMaster.listingId, inventoryMaster.date],
-                        set: {
-                            proposedPrice: sql`excluded.proposed_price`,
-                            proposedMinStay: sql`excluded.proposed_min_stay`,
-                            proposedMaxStay: sql`excluded.proposed_max_stay`,
-                            proposedClosedToArrival: sql`excluded.proposed_closed_to_arrival`,
-                            proposedClosedToDeparture: sql`excluded.proposed_closed_to_departure`,
-                            reasoning: sql`excluded.reasoning`,
-                            proposalStatus: sql`excluded.proposal_status`,
-                        },
-                    });
+            for (let i = 0; i < bulkOps.length; i += BATCH_SIZE) {
+                await InventoryMaster.bulkWrite(bulkOps.slice(i, i + BATCH_SIZE));
             }
         }
 
-        // 7. Log the run
         const durationMs = Date.now() - startedAt.getTime();
-        const [run] = await db
-            .insert(engineRuns)
-            .values({
-                listingId,
-                status: "SUCCESS",
-                daysChanged,
-                durationMs,
-            })
-            .returning();
+        const run = await EngineRun.create({
+            orgId: listing.orgId,
+            listingId: lid,
+            startedAt,
+            status: "SUCCESS",
+            daysChanged,
+            durationMs,
+        });
 
         return run;
     } catch (err: any) {
         const durationMs = Date.now() - startedAt.getTime();
-        await db
-            .insert(engineRuns)
-            .values({
-                listingId,
-                status: "FAILED",
-                errorMessage: err.message,
-                durationMs,
-            });
+        const listing = await Listing.findById(lid).select("orgId").lean();
+        await EngineRun.create({
+            orgId: listing?.orgId || new mongoose.Types.ObjectId(),
+            listingId: lid,
+            startedAt,
+            status: "FAILED",
+            errorMessage: err.message,
+            durationMs,
+        });
         throw err;
     }
 }
-
-// ── Gap Detection ──────────────────────────────────────────────────────────────
 
 interface GapInfo {
     gapLength: number;
@@ -255,9 +217,7 @@ function computeGaps(
 ): Map<string, GapInfo> {
     const gapMap = new Map<string, GapInfo>();
     const totalDays =
-        Math.round(
-            (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-        ) + 1;
+        Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
     const dates: string[] = [];
     const booked: boolean[] = [];
@@ -272,29 +232,19 @@ function computeGaps(
 
     let i = 0;
     while (i < totalDays) {
-        if (booked[i]) {
-            i++;
-            continue;
-        }
+        if (booked[i]) { i++; continue; }
 
         const gapStartIdx = i;
         const hasBookingBefore = gapStartIdx > 0 && booked[gapStartIdx - 1];
 
-        while (i < totalDays && !booked[i]) {
-            i++;
-        }
+        while (i < totalDays && !booked[i]) { i++; }
 
         const gapEndIdx = i - 1;
         const hasBookingAfter = i < totalDays && booked[i];
 
         if (hasBookingBefore && hasBookingAfter) {
             const gapLength = gapEndIdx - gapStartIdx + 1;
-            const gapInfo: GapInfo = {
-                gapLength,
-                gapStart: dates[gapStartIdx],
-                gapEnd: dates[gapEndIdx],
-            };
-
+            const gapInfo: GapInfo = { gapLength, gapStart: dates[gapStartIdx], gapEnd: dates[gapEndIdx] };
             for (let j = gapStartIdx; j <= gapEndIdx; j++) {
                 gapMap.set(dates[j], gapInfo);
             }

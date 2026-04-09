@@ -1,5 +1,5 @@
-import { AuthView } from '@neondatabase/auth/react/ui';
+import { redirect } from "next/navigation";
 
-export default function AuthPage({ params }: { params: { path: string } }) {
-  return <AuthView />;
+export default function AuthPage() {
+  redirect("/login");
 }

@@ -5,13 +5,7 @@ import { Button } from "@/components/ui/button";
 import { CompactPropertyCard } from "./compact-property-card";
 import { useContextStore } from "@/stores/context-store";
 import { useChatStore } from "@/stores/chat-store";
-import type { ListingRow } from "@/lib/db";
-
-// Extended listing type with metrics
-interface PropertyWithMetrics extends ListingRow {
-  occupancy?: number;
-  avgPrice?: number | string;
-}
+import type { PropertyWithMetrics } from "@/types";
 
 interface Props {
   properties: PropertyWithMetrics[];
@@ -31,7 +25,7 @@ export function ContextPanel({ properties }: Props) {
     switchContext({ type: "portfolio" });
   };
 
-  const handlePropertyClick = (property: ListingRow) => {
+  const handlePropertyClick = (property: PropertyWithMetrics) => {
     setPropertyContext(property.id, property.name);
     switchContext({ type: "property", propertyId: property.id });
   };

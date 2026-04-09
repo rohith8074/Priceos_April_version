@@ -16,5 +16,5 @@ export interface ChatMessage {
   content: string
   timestamp: Date
   structured?: PricingData | null
-  propertyId?: number
+  propertyId?: string | number
 }

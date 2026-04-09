@@ -3,7 +3,7 @@ import type { ChatMessage } from "@/types/chat";
 
 interface ChatContext {
   type: "portfolio" | "property";
-  propertyId?: number;
+  propertyId?: string;
 }
 
 interface ChatStore {

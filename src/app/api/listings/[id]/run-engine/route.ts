@@ -6,15 +6,14 @@ export async function POST(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const { id: idStr } = await params;
-        const id = parseInt(idStr);
+        const { id } = await params;
         const body = await req.json().catch(() => ({}));
 
         const run = await runPipeline(id, body.triggerDetail || "Manual UI Trigger");
 
         return NextResponse.json({
             success: true,
-            runId: run.id,
+            runId: run._id?.toString(),
             daysChanged: run.daysChanged,
             status: run.status,
         });

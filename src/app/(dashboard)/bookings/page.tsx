@@ -17,7 +17,7 @@ export default async function BookingsPage() {
   const endDate30 = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const endDate90 = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
 
-  const defaultPropertyId = allProperties[0]?.id ?? 0;
+  const defaultPropertyId = Number(allProperties[0]?.id ?? 0);
 
   let initialDays: CalendarDay[] = [];
   if (defaultPropertyId) {
@@ -26,8 +26,8 @@ export default async function BookingsPage() {
 
   const allCalendarsEntries = await Promise.all(
     allProperties.map(async (p) => {
-      const cal = await pms.getCalendar(p.id, today, endDate30);
-      return [p.id, cal] as [number, CalendarDay[]];
+      const cal = await pms.getCalendar(Number(p.id), today, endDate30);
+      return [Number(p.id), cal] as [number, CalendarDay[]];
     })
   );
   const allCalendars: Record<number, CalendarDay[]> =

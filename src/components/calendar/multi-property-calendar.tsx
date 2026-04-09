@@ -46,7 +46,7 @@ export function MultiPropertyCalendar({ properties, calendars }: MultiPropertyCa
           </thead>
           <tbody>
             {properties.map((property) => {
-              const cal = calendars[property.id] ?? [];
+              const cal = calendars[Number(property.id)] ?? [];
               const dayMap = new Map(cal.map((d) => [d.date, d]));
 
               return (
