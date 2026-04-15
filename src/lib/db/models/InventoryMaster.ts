@@ -13,10 +13,13 @@ export interface IInventoryMaster extends Document {
   closedToDeparture?: boolean;
   // Staged change (HITL)
   proposedPrice?: number;
-  proposalStatus?: "pending" | "approved" | "rejected" | "pushed";
+  proposalStatus?: "pending" | "approved" | "rejected" | "pushed" | "rolled_back";
   changePct?: number;
   reasoning?: string;
   batchId?: string;
+  // Rollback support — price before the last push
+  previousPrice?: number;
+  pushedAt?: Date;
   // Sync
   hostawayStatus?: string;
   lastSyncedAt?: Date;
@@ -43,11 +46,13 @@ const InventorySchema = new Schema<IInventoryMaster>(
     proposedPrice: { type: Number },
     proposalStatus: {
       type: String,
-      enum: ["pending", "approved", "rejected", "pushed"],
+      enum: ["pending", "approved", "rejected", "pushed", "rolled_back"],
     },
     changePct: { type: Number },
     reasoning: { type: String },
     batchId: { type: String },
+    previousPrice: { type: Number },   // price before last push — used for rollback
+    pushedAt: { type: Date },          // timestamp of last push
     hostawayStatus: { type: String },
     lastSyncedAt: { type: Date },
   },

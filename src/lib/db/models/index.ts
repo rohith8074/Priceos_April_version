@@ -1,5 +1,5 @@
-export { Organization } from "./Organization";
-export type { IOrganization } from "./Organization";
+export { Organization, SYSTEM_STATE_TRANSITIONS } from "./Organization";
+export type { IOrganization, SystemState } from "./Organization";
 
 export { User } from "./User";
 export type { IUser } from "./User";

@@ -45,7 +45,8 @@ export async function POST(req: Request) {
             orgId: org._id.toString(),
             email: org.email,
             role: org.role,
-            isApproved: !!org.isApproved
+            isApproved: !!org.isApproved,
+            onboardingStep: (org as any).onboarding?.step ?? "complete",
         });
 
         return apiSuccess({ accessToken });

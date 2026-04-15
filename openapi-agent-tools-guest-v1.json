@@ -1,0 +1,40 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PriceOS Guest Inbox Agent Tools API",
+    "version": "1.3.0"
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/list-guest-conversations": {
+      "get": {
+        "operationId": "list_guest_conversations",
+        "description": "Returns all guest conversations for a listing with last message and reply status.",
+        "parameters": [
+          { "name": "apiKey", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-guest-summary": {
+      "get": {
+        "operationId": "get_guest_summary",
+        "description": "Returns AI-generated summary of guest sentiment and common issues for a listing.",
+        "parameters": [
+          { "name": "apiKey", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    }
+  }
+}

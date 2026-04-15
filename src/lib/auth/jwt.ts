@@ -12,6 +12,7 @@ export interface TokenPayload {
   email: string;
   role: string;
   isApproved: boolean;
+  onboardingStep: string; // e.g. "connect" | "select" | "market" | "strategy" | "complete"
 }
 
 /**

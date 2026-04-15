@@ -1,145 +1,186 @@
-import { NextRequest, NextResponse } from "next/server";
-import { connectDB, Listing, ChatMessage, InventoryMaster, Reservation } from "@/lib/db";
+import { NextRequest } from "next/server";
+import { connectDB, ChatMessage } from "@/lib/db";
 import { getSession } from "@/lib/auth/server";
-import { addDays, format } from "date-fns";
 import mongoose from "mongoose";
+import { buildAgentContext } from "@/lib/agents/db-context-builder";
+
+const LYZR_API_URL = process.env.LYZR_API_URL || "https://agent-prod.studio.lyzr.ai/v3/inference/chat/";
+const LYZR_API_KEY = process.env.LYZR_API_KEY || "";
+
+function sseEvent(type: string, data: any): string {
+    return `data: ${JSON.stringify({ type, ...data })}\n\n`;
+}
 
 export async function POST(req: NextRequest) {
-    try {
-        const body = await req.json();
-        const { message, propertyIds, sessionId: clientSessionId } = body;
+    const startTime = performance.now();
+    const encoder = new TextEncoder();
 
-        await connectDB();
-        const session = await getSession();
-        const orgId = session?.orgId
-            ? new mongoose.Types.ObjectId(session.orgId)
-            : new mongoose.Types.ObjectId();
+    const stream = new ReadableStream({
+        async start(controller) {
+            const send = (type: string, data: any) => {
+                try { controller.enqueue(encoder.encode(sseEvent(type, data))); } catch { /* closed */ }
+            };
 
-        const sessionId = clientSessionId || "global";
+            try {
+                const dashboardAgentId = process.env.LYZR_DASHBOARD_AGENT_ID || process.env.AGENT_ID;
+                const body = await req.json();
+                const { message, sessionId: clientSessionId } = body;
 
-        // Save user message
-        await ChatMessage.create({
-            orgId,
-            sessionId,
-            role: "user",
-            content: message,
-            context: { type: "portfolio" },
-            metadata: { propertyIds },
-        });
+                if (!message?.trim()) {
+                    send("error", { message: "Message is required" });
+                    controller.close();
+                    return;
+                }
 
-        const lowerMessage = message.toLowerCase();
-        let responseMessage = "";
-        let metadata: Record<string, number> = {};
-        const thirtyDaysAgoStr = format(addDays(new Date(), -30), "yyyy-MM-dd");
+                send("status", { step: "init", message: "Connecting to PriceOS…" });
 
-        if (lowerMessage.includes("underperform")) {
-            const allListings = await Listing.find().lean();
+                await connectDB();
+                const session = await getSession();
+                if (!session?.orgId) {
+                    send("error", { message: "Unauthorized" });
+                    controller.close();
+                    return;
+                }
+                const orgId = new mongoose.Types.ObjectId(session.orgId);
+                const sessionId = clientSessionId || "global";
 
-            const listingsWithMetrics = await Promise.all(
-                allListings.map(async (listing) => {
-                    const [agg] = await InventoryMaster.aggregate([
-                        { $match: { listingId: listing._id, date: { $gte: thirtyDaysAgoStr } } },
-                        {
-                            $group: {
-                                _id: null,
-                                totalDays: { $sum: 1 },
-                                bookedDays: { $sum: { $cond: [{ $eq: ["$status", "booked"] }, 1, 0] } },
-                                blockedDays: { $sum: { $cond: [{ $eq: ["$status", "blocked"] }, 1, 0] } },
-                            },
-                        },
-                    ]);
-                    const totalDays = agg?.totalDays || 1;
-                    const bookedDays = agg?.bookedDays || 0;
-                    const blockedDays = agg?.blockedDays || 0;
-                    const bookableDays = totalDays - blockedDays;
-                    const occupancy = bookableDays > 0 ? Math.round((bookedDays / bookableDays) * 100) : 0;
-                    return { ...listing, occupancy };
-                })
-            );
+                // Save user message (fire-and-forget)
+                ChatMessage.create({
+                    orgId,
+                    sessionId,
+                    role: "user",
+                    content: message,
+                    context: { type: "portfolio" },
+                }).catch((err) => console.error("Failed to save user message:", err));
 
-            const underperforming = listingsWithMetrics.filter((l) => l.occupancy < 70);
+                send("status", { step: "context", message: "Building portfolio context…" });
 
-            if (underperforming.length > 0) {
-                responseMessage = `📊 I found ${underperforming.length} underperforming properties (occupancy < 70%):\n\n`;
-                underperforming.forEach((property) => {
-                    responseMessage += `• ${property.name}: ${property.occupancy}% occupancy\n`;
-                    responseMessage += `  Current price: AED ${Number(property.price).toLocaleString("en-US")}/night\n`;
-                    responseMessage += `  Suggestion: Consider price adjustments or targeted promotions\n\n`;
-                });
-                metadata = {
-                    propertyCount: underperforming.length,
-                    avgOccupancy: Math.round(underperforming.reduce((s, p) => s + p.occupancy, 0) / underperforming.length),
-                };
-            } else {
-                responseMessage = `✅ Great news! All properties are performing well with occupancy rates above 70%.`;
-                metadata = {
-                    propertyCount: allListings.length,
-                    avgOccupancy: Math.round(listingsWithMetrics.reduce((s, p) => s + p.occupancy, 0) / (listingsWithMetrics.length || 1)),
-                };
+                let dbContext = "";
+                try {
+                    dbContext = await buildAgentContext(orgId.toString());
+                } catch (err) {
+                    console.error("Failed to build DB context for global chat:", err);
+                }
+
+                const finalMessage = dbContext
+                    ? `[SYSTEM CONTEXT - USE EXCLUSIVELY]\n${dbContext}\n\n[USER QUESTION]\n${message}`
+                    : message;
+
+                send("status", { step: "agent", message: "Portfolio agent is analyzing…" });
+
+                const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
+                let responseMessage = "";
+                let usedFallback = false;
+                let result: any;
+
+                // Progress timer for long-running agent calls
+                let statusIdx = 0;
+                const PROGRESS_MESSAGES = [
+                    "Reviewing portfolio metrics…",
+                    "Checking property performance…",
+                    "Generating insights…",
+                ];
+                const progressTimer = setInterval(() => {
+                    if (statusIdx < PROGRESS_MESSAGES.length) {
+                        send("status", { step: "processing", message: PROGRESS_MESSAGES[statusIdx] });
+                        statusIdx++;
+                    }
+                }, 4000);
+
+                try {
+                    const agentResponse = await fetch(`${backendUrl}/api/agent/`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            message: finalMessage,
+                            agent_id: dashboardAgentId,
+                            user_id: session?.userId || "user-1",
+                            session_id: sessionId,
+                            cache: null,
+                        }),
+                    });
+                    if (!agentResponse.ok) throw new Error("Backend not ok");
+                    result = await agentResponse.json();
+                    responseMessage = result.response?.response || result.response?.message || "";
+                } catch {
+                    usedFallback = true;
+                }
+
+                let metadata: Record<string, number | string> = {};
+
+                if (usedFallback || !responseMessage) {
+                    if (!LYZR_API_KEY) {
+                        clearInterval(progressTimer);
+                        send("error", { message: "Dashboard agent unavailable (missing API key)." });
+                        controller.close();
+                        return;
+                    }
+
+                    send("status", { step: "fallback", message: "Connecting to Lyzr agent directly…" });
+
+                    const directRes = await fetch(LYZR_API_URL, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "x-api-key": LYZR_API_KEY },
+                        body: JSON.stringify({
+                            user_id: session?.userId || "priceos-user",
+                            agent_id: dashboardAgentId,
+                            session_id: sessionId,
+                            message: finalMessage,
+                        }),
+                    });
+
+                    if (!directRes.ok) {
+                        const errText = await directRes.text();
+                        clearInterval(progressTimer);
+                        send("error", { message: `Dashboard agent unavailable (${directRes.status})` });
+                        console.error(`Lyzr direct error: ${errText.slice(0, 200)}`);
+                        controller.close();
+                        return;
+                    }
+
+                    const directData = await directRes.json();
+                    const raw =
+                        typeof directData?.response === "string"
+                            ? directData.response
+                            : directData?.response?.message || directData?.response?.result?.message || "";
+
+                    responseMessage = raw || "No response from dashboard agent.";
+                    metadata = { source: "lyzr_direct" };
+                }
+
+                clearInterval(progressTimer);
+
+                send("status", { step: "saving", message: "Saving response…" });
+
+                // Save assistant reply (fire-and-forget)
+                ChatMessage.create({
+                    orgId,
+                    sessionId,
+                    role: "assistant",
+                    content: responseMessage,
+                    context: { type: "portfolio" },
+                    metadata: { ...metadata, backend_result: result?.response },
+                }).catch((err) => console.error("Failed to save reply:", err));
+
+                const duration = Math.round(performance.now() - startTime);
+                console.log(`✅ DASHBOARD REPLY — ${duration}ms`);
+
+                send("complete", { message: responseMessage, metadata, duration });
+            } catch (error) {
+                console.error("Error in global chat:", error);
+                send("error", { message: "Failed to process chat message" });
+            } finally {
+                controller.close();
             }
-        } else if (lowerMessage.includes("revenue") || lowerMessage.includes("income")) {
-            const recentReservations = await Reservation.find({ checkIn: { $gte: thirtyDaysAgoStr } }).lean();
-            const totalRevenue = recentReservations.reduce((s, r) => s + Number(r.totalPrice || 0), 0);
-            const allListings = await Listing.find().lean();
+        },
+    });
 
-            responseMessage = `💰 Revenue Summary (Last 30 Days):\n\n`;
-            responseMessage += `Total Revenue: AED ${totalRevenue.toLocaleString("en-US")}\n`;
-            responseMessage += `Total Bookings: ${recentReservations.length}\n`;
-            responseMessage += `Average Booking Value: AED ${Math.round(totalRevenue / (recentReservations.length || 1)).toLocaleString("en-US")}\n\n`;
-            responseMessage += `This represents performance across ${allListings.length} properties.`;
-            metadata = { propertyCount: allListings.length, totalRevenue: Math.round(totalRevenue) };
-        } else {
-            const allListings = await Listing.find().lean();
-
-            const occupancies = await Promise.all(
-                allListings.map(async (listing) => {
-                    const [agg] = await InventoryMaster.aggregate([
-                        { $match: { listingId: listing._id, date: { $gte: thirtyDaysAgoStr } } },
-                        {
-                            $group: {
-                                _id: null,
-                                totalDays: { $sum: 1 },
-                                bookedDays: { $sum: { $cond: [{ $eq: ["$status", "booked"] }, 1, 0] } },
-                                blockedDays: { $sum: { $cond: [{ $eq: ["$status", "blocked"] }, 1, 0] } },
-                            },
-                        },
-                    ]);
-                    const total = agg?.totalDays || 1;
-                    const booked = agg?.bookedDays || 0;
-                    const blocked = agg?.blockedDays || 0;
-                    const bookable = total - blocked;
-                    return bookable > 0 ? Math.round((booked / bookable) * 100) : 0;
-                })
-            );
-
-            const avgOccupancy = Math.round(occupancies.reduce((s, o) => s + o, 0) / (occupancies.length || 1));
-            const recentReservations = await Reservation.find({ checkIn: { $gte: thirtyDaysAgoStr } }).lean();
-            const totalRevenue = recentReservations.reduce((s, r) => s + Number(r.totalPrice || 0), 0);
-
-            responseMessage = `📊 Portfolio Overview:\n\n`;
-            responseMessage += `Properties: ${allListings.length}\n`;
-            responseMessage += `Average Occupancy: ${avgOccupancy}%\n`;
-            responseMessage += `Total Revenue (30d): AED ${totalRevenue.toLocaleString("en-US")}\n`;
-            responseMessage += `Total Bookings: ${recentReservations.length}\n\n`;
-            responseMessage += `Ask me specific questions like:\n`;
-            responseMessage += `• "Which properties are underperforming?"\n`;
-            responseMessage += `• "Show me total revenue this month"\n`;
-            responseMessage += `• "Generate proposals for all properties"`;
-            metadata = { propertyCount: allListings.length, totalRevenue: Math.round(totalRevenue), avgOccupancy };
-        }
-
-        await ChatMessage.create({
-            orgId,
-            sessionId,
-            role: "assistant",
-            content: responseMessage,
-            context: { type: "portfolio" },
-            metadata: { ...metadata, propertyIds },
-        });
-
-        return NextResponse.json({ message: responseMessage, metadata });
-    } catch (error) {
-        console.error("Error in global chat:", error);
-        return NextResponse.json({ error: "Failed to process chat message" }, { status: 500 });
-    }
+    return new Response(stream, {
+        headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-transform",
+            Connection: "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    });
 }

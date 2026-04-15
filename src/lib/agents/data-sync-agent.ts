@@ -142,9 +142,13 @@ export class DataSyncAgent {
     }
   }
 
-  async syncAllProperties(): Promise<SyncResult[]> {
+  async syncAllProperties(orgIdStr?: string): Promise<SyncResult[]> {
     await connectDB();
-    const allListings = await Listing.find({ isActive: true }).lean();
+    const filter: any = { isActive: true };
+    if (orgIdStr) {
+      filter.orgId = new mongoose.Types.ObjectId(orgIdStr);
+    }
+    const allListings = await Listing.find(filter).lean();
     const results: SyncResult[] = [];
 
     const syncPromises = allListings.map((listing) =>

@@ -1,0 +1,351 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PriceOS Dashboard Agent Tools API",
+    "version": "2.0.0",
+    "description": "Dashboard and portfolio-level tools for the PriceOS Dashboard Agent. All responses are wrapped in a standard envelope: { status, data, metadata }."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/get-portfolio-overview": {
+      "get": {
+        "operationId": "get_portfolio_overview",
+        "summary": "Portfolio KPIs",
+        "description": "Returns total revenue, average occupancy, active listing count, and per-property KPIs for the given date range.",
+        "parameters": [
+          { "name": "apiKey", "in": "query", "required": true, "description": "Shared API key for server-to-server auth", "schema": { "type": "string" } },
+          { "name": "orgId", "in": "query", "required": true, "description": "MongoDB ObjectId of the organization", "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "description": "Start date (YYYY-MM-DD)", "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-04-01" } },
+          { "name": "dateTo", "in": "query", "required": true, "description": "End date (YYYY-MM-DD)", "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-04-30" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Portfolio overview with per-property breakdown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioOverviewResponse"
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/get-agent-system-status": {
+      "get": {
+        "operationId": "get_agent_system_status",
+        "summary": "AI agent system health",
+        "description": "Returns the operational status of all AI agents in the organization: active/idle/warning/error, last run time, pending proposals, and critical insights.",
+        "parameters": [
+          { "name": "apiKey", "in": "query", "required": true, "description": "Shared API key for server-to-server auth", "schema": { "type": "string" } },
+          { "name": "orgId", "in": "query", "required": true, "description": "MongoDB ObjectId of the organization", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "System status with per-agent details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSystemStatusResponse"
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/get-portfolio-revenue-snapshot": {
+      "get": {
+        "operationId": "get_portfolio_revenue_snapshot",
+        "summary": "Revenue breakdown",
+        "description": "Returns total revenue, booking count, average booking value, and a breakdown grouped by day, week, or property.",
+        "parameters": [
+          { "name": "apiKey", "in": "query", "required": true, "description": "Shared API key for server-to-server auth", "schema": { "type": "string" } },
+          { "name": "orgId", "in": "query", "required": true, "description": "MongoDB ObjectId of the organization", "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "description": "Start date (YYYY-MM-DD)", "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-04-01" } },
+          { "name": "dateTo", "in": "query", "required": true, "description": "End date (YYYY-MM-DD)", "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-04-30" } },
+          { "name": "groupBy", "in": "query", "required": false, "description": "Grouping dimension for the breakdown array", "schema": { "type": "string", "enum": ["day", "week", "property"], "default": "day" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revenue snapshot with breakdown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevenueSnapshotResponse"
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiMetadata": {
+        "type": "object",
+        "description": "Standard metadata included in every response",
+        "properties": {
+          "requestId": { "type": "string", "example": "req_a1b2c3d4e5f6" },
+          "timestamp": { "type": "string", "format": "date-time", "example": "2026-04-15T12:00:00.000Z" }
+        }
+      },
+      "PortfolioOverviewResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": { "$ref": "#/components/schemas/PortfolioOverviewData" },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "PortfolioOverviewData": {
+        "type": "object",
+        "description": "Aggregate portfolio KPIs plus per-property details",
+        "properties": {
+          "totalProperties": {
+            "type": "integer",
+            "description": "Number of active listings in the organization",
+            "example": 8
+          },
+          "avgOccupancyPct": {
+            "type": "integer",
+            "description": "Average occupancy across all properties (0-100)",
+            "example": 69
+          },
+          "totalRevenue": {
+            "type": "number",
+            "format": "double",
+            "description": "Sum of booked-night revenue across all properties in org currency",
+            "example": 152598.50
+          },
+          "properties": {
+            "type": "array",
+            "description": "Per-property breakdown",
+            "items": { "$ref": "#/components/schemas/PropertyKPI" }
+          }
+        }
+      },
+      "PropertyKPI": {
+        "type": "object",
+        "description": "Key performance indicators for a single property",
+        "properties": {
+          "listingId": {
+            "type": "string",
+            "description": "MongoDB ObjectId (internal — never expose to user)",
+            "example": "69d776a671c7b939aaf49053"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable property name",
+            "example": "Palm Jumeirah Signature Villa"
+          },
+          "occupancyPct": {
+            "type": "integer",
+            "description": "Occupancy percentage (booked ÷ bookable × 100)",
+            "example": 75
+          },
+          "revenue": {
+            "type": "number",
+            "format": "double",
+            "description": "Total booked-night revenue for this property",
+            "example": 50052.00
+          },
+          "avgNightlyRate": {
+            "type": "integer",
+            "description": "Average nightly rate across all inventory days",
+            "example": 4171
+          }
+        }
+      },
+      "AgentSystemStatusResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": { "$ref": "#/components/schemas/AgentSystemStatusData" },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "AgentSystemStatusData": {
+        "type": "object",
+        "description": "Overall system health and per-agent status",
+        "properties": {
+          "systemState": {
+            "type": "string",
+            "enum": ["active", "observing", "paused", "connected", "error"],
+            "description": "Overall system health: active = all good, observing = data is stale, paused = critical insights pending, connected = never run yet, error = last run failed",
+            "example": "active"
+          },
+          "agents": {
+            "type": "array",
+            "description": "Status of each individual AI agent",
+            "items": { "$ref": "#/components/schemas/AgentStatus" }
+          },
+          "summary": { "$ref": "#/components/schemas/SystemSummary" }
+        }
+      },
+      "AgentStatus": {
+        "type": "object",
+        "description": "Operational state of a single AI agent",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": ["cro", "event_intelligence", "pricing_optimizer", "adjustment_reviewer", "channel_sync", "reservation_agent"],
+            "description": "Agent identifier",
+            "example": "pricing_optimizer"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "idle", "warning", "error"],
+            "description": "Current operational status",
+            "example": "active"
+          },
+          "lastRunStatus": {
+            "type": "string",
+            "description": "Result of the last engine run",
+            "example": "SUCCESS"
+          },
+          "metrics": {
+            "type": "object",
+            "description": "Agent-specific metrics (varies by agent type)",
+            "properties": {
+              "dataAgeSec": { "type": "integer", "nullable": true, "description": "Seconds since last data refresh", "example": 3600 },
+              "isStale": { "type": "boolean", "description": "True if data is older than 4 hours" },
+              "pendingProposals": { "type": "integer", "description": "Number of price proposals awaiting approval", "example": 12 },
+              "autoApproved": { "type": "integer", "description": "Proposals auto-approved in the last 24 hours", "example": 5 },
+              "lastRunDurationMs": { "type": "integer", "nullable": true, "description": "Duration of last run in milliseconds", "example": 8500 }
+            }
+          }
+        }
+      },
+      "SystemSummary": {
+        "type": "object",
+        "description": "Aggregate counts for quick overview",
+        "properties": {
+          "activeCount": { "type": "integer", "description": "Agents in active state", "example": 5 },
+          "warningCount": { "type": "integer", "description": "Agents in warning state", "example": 1 },
+          "errorCount": { "type": "integer", "description": "Agents in error state", "example": 0 },
+          "pendingProposals": { "type": "integer", "description": "Total pending price proposals", "example": 12 },
+          "criticalInsights": { "type": "integer", "description": "High-severity insights needing attention", "example": 0 },
+          "isStale": { "type": "boolean", "description": "True if pricing data is older than 4 hours", "example": false },
+          "lastRunAt": { "type": "string", "format": "date-time", "nullable": true, "description": "Timestamp of last engine run", "example": "2026-04-15T08:15:00.000Z" }
+        }
+      },
+      "RevenueSnapshotResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": { "$ref": "#/components/schemas/RevenueSnapshotData" },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "RevenueSnapshotData": {
+        "type": "object",
+        "description": "Revenue totals and grouped breakdown",
+        "properties": {
+          "totals": { "$ref": "#/components/schemas/RevenueTotals" },
+          "breakdown": {
+            "type": "array",
+            "description": "Revenue rows grouped by the requested dimension (day, week, or property). Schema varies by groupBy parameter.",
+            "items": { "$ref": "#/components/schemas/RevenueBreakdownItem" }
+          }
+        }
+      },
+      "RevenueTotals": {
+        "type": "object",
+        "description": "Aggregate revenue numbers for the entire date range",
+        "properties": {
+          "revenue": {
+            "type": "number",
+            "format": "double",
+            "description": "Total revenue in org currency",
+            "example": 152598.50
+          },
+          "bookings": {
+            "type": "integer",
+            "description": "Total number of reservations",
+            "example": 47
+          },
+          "avgBookingValue": {
+            "type": "number",
+            "format": "double",
+            "description": "Average revenue per booking",
+            "example": 3246.78
+          }
+        }
+      },
+      "RevenueBreakdownItem": {
+        "type": "object",
+        "description": "A single row in the breakdown. Fields depend on groupBy: 'day' → date, 'week' → weekStart, 'property' → listingId + name.",
+        "properties": {
+          "date": { "type": "string", "description": "Present when groupBy=day (YYYY-MM-DD)", "example": "2026-04-01" },
+          "weekStart": { "type": "string", "description": "Present when groupBy=week (YYYY-MM-)", "example": "2026-04-" },
+          "listingId": { "type": "string", "description": "Present when groupBy=property (MongoDB ObjectId — never expose to user)" },
+          "name": { "type": "string", "description": "Present when groupBy=property (property name)", "example": "Palm Jumeirah Signature Villa" },
+          "revenue": {
+            "type": "number",
+            "format": "double",
+            "description": "Revenue for this group",
+            "example": 12500.00
+          },
+          "bookings": {
+            "type": "integer",
+            "description": "Number of bookings in this group",
+            "example": 3
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Missing or invalid apiKey / orgId",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["error"] },
+                "error": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "string", "example": "UNAUTHORIZED" },
+                    "message": { "type": "string", "example": "Invalid or missing API key" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Invalid or missing query parameters",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["error"] },
+                "error": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "string", "example": "VALIDATION_ERROR" },
+                    "message": { "type": "string", "example": "dateFrom is required" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

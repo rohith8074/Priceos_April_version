@@ -1,6 +1,7 @@
-import { connectDB, MarketEvent } from "@/lib/db";
+import { connectDB, MarketEvent, Organization, MarketTemplate } from "@/lib/db";
 import { format } from "date-fns";
 import mongoose from "mongoose";
+import { syncEventFeeds } from "@/lib/events/event-feed-syncer";
 
 export interface EventSignal {
   name: string;
@@ -92,69 +93,21 @@ export class EventIntelligenceAgent {
 
   async fetchAndCacheEvents(orgId: mongoose.Types.ObjectId): Promise<{ cached: number; error?: string }> {
     try {
-      await connectDB();
-
-      const mockEvents: EventSignal[] = [
-        {
-          name: "Dubai Shopping Festival",
-          startDate: "2026-01-01",
-          endDate: "2026-02-01",
-          location: "Dubai",
-          expectedImpact: "high",
-          confidence: 95,
-          description: "Annual shopping festival attracting millions of visitors",
-        },
-        {
-          name: "Dubai World Cup",
-          startDate: "2026-03-28",
-          endDate: "2026-03-28",
-          location: "Dubai",
-          expectedImpact: "high",
-          confidence: 85,
-          description: "World's richest horse race",
-        },
-        {
-          name: "Ramadan",
-          startDate: "2026-02-17",
-          endDate: "2026-03-18",
-          location: "Dubai",
-          expectedImpact: "medium",
-          confidence: 70,
-          description: "Lower tourist demand during Ramadan",
-        },
-        {
-          name: "GITEX Global",
-          startDate: "2026-10-12",
-          endDate: "2026-10-16",
-          location: "Dubai",
-          expectedImpact: "high",
-          confidence: 90,
-          description: "Global tech event, massive demand spike",
-        },
-      ];
-
-      let cachedCount = 0;
-
-      for (const event of mockEvents) {
-        const existing = await MarketEvent.findOne({ orgId, name: event.name, startDate: event.startDate });
-        if (!existing) {
-          await MarketEvent.create({
-            orgId,
-            name: event.name,
-            startDate: event.startDate,
-            endDate: event.endDate,
-            area: event.location,
-            impactLevel: event.expectedImpact,
-            upliftPct: event.expectedImpact === "high" ? 30 : event.expectedImpact === "medium" ? 15 : 5,
-            description: event.description,
-            source: "manual",
-            isActive: true,
-          });
-          cachedCount++;
+      // Resolve the city for this org from its MarketTemplate so the event
+      // feed syncer fetches events for the right city (not always Dubai).
+      let marketCity = "Dubai";
+      const org = await Organization.findById(orgId).select("marketCode").lean();
+      if (org?.marketCode) {
+        const tmpl = await MarketTemplate.findOne({ marketCode: org.marketCode })
+          .select("eventApiConfig")
+          .lean();
+        if (tmpl?.eventApiConfig?.eventbriteCity) {
+          marketCity = tmpl.eventApiConfig.eventbriteCity;
         }
       }
 
-      return { cached: cachedCount };
+      const result = await syncEventFeeds(orgId, 90, marketCity);
+      return { cached: result.inserted + result.updated };
     } catch (error) {
       return { cached: 0, error: (error as Error).message };
     }

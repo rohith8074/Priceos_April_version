@@ -1,45 +1,58 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-// 15 minutes in milliseconds
-const INACTIVITY_TIME = 15 * 60 * 1000;
+import { useEffect, useRef } from "react";
+
+const INACTIVITY_MS = 30 * 60 * 1000; // 30 minutes
+const THROTTLE_MS = 2_000; // ignore repeated events within 2 s
 
 export function InactivityMonitor() {
-    const router = useRouter();
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastResetRef = useRef<number>(Date.now());
+    const loggingOutRef = useRef(false);
 
     useEffect(() => {
-        let timeoutId: NodeJS.Timeout;
-
-        const handleLogout = async () => {
+        const doLogout = async () => {
+            if (loggingOutRef.current) return;
+            loggingOutRef.current = true;
             try {
                 await fetch("/api/auth/logout", { method: "POST" });
-            } catch { }
-            window.location.href = '/login?signedout=true';
+            } catch { /* best-effort */ }
+            window.location.href = "/login?signedout=true";
         };
 
         const resetTimer = () => {
-            clearTimeout(timeoutId);
-            timeoutId = setTimeout(handleLogout, INACTIVITY_TIME);
+            const now = Date.now();
+            if (now - lastResetRef.current < THROTTLE_MS) return;
+            lastResetRef.current = now;
+
+            if (timerRef.current) clearTimeout(timerRef.current);
+            timerRef.current = setTimeout(doLogout, INACTIVITY_MS);
         };
 
         resetTimer();
 
-        window.addEventListener("mousemove", resetTimer);
-        window.addEventListener("mousedown", resetTimer);
-        window.addEventListener("keydown", resetTimer);
-        window.addEventListener("touchstart", resetTimer);
-        window.addEventListener("scroll", resetTimer);
+        const events: (keyof WindowEventMap)[] = [
+            "mousemove",
+            "mousedown",
+            "keydown",
+            "touchstart",
+            "scroll",
+            "click",
+            "pointerdown",
+        ];
+        events.forEach((e) => window.addEventListener(e, resetTimer, { passive: true }));
+
+        const onVisibility = () => {
+            if (document.visibilityState === "visible") resetTimer();
+        };
+        document.addEventListener("visibilitychange", onVisibility);
 
         return () => {
-            clearTimeout(timeoutId);
-            window.removeEventListener("mousemove", resetTimer);
-            window.removeEventListener("mousedown", resetTimer);
-            window.removeEventListener("keydown", resetTimer);
-            window.removeEventListener("touchstart", resetTimer);
-            window.removeEventListener("scroll", resetTimer);
+            if (timerRef.current) clearTimeout(timerRef.current);
+            events.forEach((e) => window.removeEventListener(e, resetTimer));
+            document.removeEventListener("visibilitychange", onVisibility);
         };
-    }, [router]);
+    }, []);
 
     return null;
 }

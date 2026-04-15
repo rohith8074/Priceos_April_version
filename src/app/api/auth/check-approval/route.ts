@@ -31,6 +31,7 @@ export async function GET() {
                 email: org.email,
                 role: org.role,
                 isApproved: true,
+                onboardingStep: session.onboardingStep,
             });
             response.cookies.set(COOKIE_NAME, newToken, {
                 httpOnly: true,

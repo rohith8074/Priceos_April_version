@@ -7,11 +7,27 @@ const PUBLIC_PATHS = [
   "/login",
   "/waitlist",
   "/pending-approval",
+  "/onboarding",
   "/api/auth/login",
   "/api/auth/register",
   "/api/auth/refresh",
   "/api/auth/check-approval",
+  "/api/onboarding",
+  "/api/hostaway/metadata",
+  "/api/sync/run",          // needed by Go Live step
   "/api/v1/auth",
+  "/api/debug",             // dev-only reset tools
+  "/api/agent-tools/v1",   // Bearer-token auth handled inside each route
+];
+
+// Extra paths allowed DURING onboarding (user is authenticated but not complete)
+const ONBOARDING_ALLOWED_PATHS = [
+  "/onboarding",
+  "/api/onboarding",
+  "/api/hostaway/metadata",
+  "/api/sync/run",
+  "/api/auth/logout",
+  "/api/auth/me",
 ];
 
 function isPublicPath(pathname: string): boolean {
@@ -21,6 +37,7 @@ function isPublicPath(pathname: string): boolean {
 interface JwtPayload {
   exp?: number;
   isApproved?: boolean;
+  onboardingStep?: string;
 }
 
 function decodeToken(token: string): JwtPayload | null {
@@ -73,14 +90,16 @@ export default function middleware(request: NextRequest) {
   const token = request.cookies.get(COOKIE_NAME)?.value;
   const valid = token ? isValidToken(token) : false;
   const jwtPayload = token ? decodeToken(token) : null;
-  const isApproved = jwtPayload?.isApproved ?? true; // legacy tokens without field → assume approved
+  // Legacy tokens (issued before onboardingStep was added) → treat as approved+complete
+  const isApproved = jwtPayload?.isApproved ?? true;
+  const onboardingStep = jwtPayload?.onboardingStep ?? "complete";
 
   // Root redirect
   if (pathname === "/") {
     if (!valid) return NextResponse.redirect(new URL("/login", request.url));
-    return NextResponse.redirect(
-      new URL(isApproved ? "/dashboard" : "/pending-approval", request.url)
-    );
+    if (!isApproved) return NextResponse.redirect(new URL("/pending-approval", request.url));
+    if (onboardingStep !== "complete") return NextResponse.redirect(new URL("/onboarding", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   // API routes — return 401 JSON instead of redirect
@@ -98,12 +117,19 @@ export default function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/pending-approval", request.url));
   }
 
-  // Already approved, don't show pending page or login
+  // Approved but onboarding not complete → redirect to /onboarding
+  // Allow /onboarding itself plus all API routes needed by the wizard
+  const isOnboardingAllowed = ONBOARDING_ALLOWED_PATHS.some(p => pathname.startsWith(p));
+  if (valid && isApproved && onboardingStep !== "complete" && !isOnboardingAllowed) {
+    return NextResponse.redirect(new URL("/onboarding", request.url));
+  }
+
+  // Already approved + complete — don't show pending page or login
   if (valid && isApproved && pathname === "/pending-approval") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
   if (valid && isApproved && pathname === "/login") {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL(onboardingStep !== "complete" ? "/onboarding" : "/dashboard", request.url));
   }
 
   return NextResponse.next();

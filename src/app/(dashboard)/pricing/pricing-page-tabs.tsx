@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { FileText, Sliders } from "lucide-react";
+import { FileText, Sliders, CalendarDays } from "lucide-react";
 import { PricingClient, ProposalData } from "./pricing-client";
 import { PricingRulesStudio } from "@/components/pricing/pricing-rules-studio";
+import { PricingCalendarHeatmap } from "@/components/pricing/pricing-calendar-heatmap";
 
 const TABS = [
+  { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "proposals", label: "Proposals", icon: FileText },
   { id: "rules", label: "Pricing Rules", icon: Sliders },
 ] as const;
@@ -15,11 +17,11 @@ type TabId = typeof TABS[number]["id"];
 
 interface Props {
   initialProposals: ProposalData[];
-  listings: { id: string; name: string }[];
+  listings: { id: string; name: string; currencyCode: string }[];
 }
 
 export function PricingPageTabs({ initialProposals, listings }: Props) {
-  const [activeTab, setActiveTab] = useState<TabId>("proposals");
+  const [activeTab, setActiveTab] = useState<TabId>("calendar");
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
@@ -27,8 +29,7 @@ export function PricingPageTabs({ initialProposals, listings }: Props) {
       <div className="px-8 pt-8 pb-0 shrink-0">
         <h1 className="text-3xl font-bold mb-1">Pricing Command Center</h1>
         <p className="text-muted-foreground text-sm max-w-2xl mb-6">
-          Review and approve AI-generated price proposals, then configure the rules driving
-          every pricing decision.
+          365-day price calendar, AI proposals, and the rules driving every pricing decision.
         </p>
 
         {/* Tab Bar */}
@@ -53,6 +54,11 @@ export function PricingPageTabs({ initialProposals, listings }: Props) {
 
       {/* Tab Content */}
       <div className="flex-1 overflow-auto">
+        {activeTab === "calendar" && (
+          <div className="p-8 pt-6">
+            <PricingCalendarHeatmap listings={listings} />
+          </div>
+        )}
         {activeTab === "proposals" && (
           <div className="p-8 pt-6">
             <PricingClient initialProposals={initialProposals} />

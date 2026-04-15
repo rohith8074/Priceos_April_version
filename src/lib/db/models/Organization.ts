@@ -1,5 +1,18 @@
 import mongoose, { Document, Schema, Model } from "mongoose";
 
+// System state machine — mirrors PRD Part 3
+// Connected → Observing → Simulating → Active ↔ Paused
+export type SystemState = "connected" | "observing" | "simulating" | "active" | "paused";
+
+// Valid transitions (from → allowed tos)
+export const SYSTEM_STATE_TRANSITIONS: Record<SystemState, SystemState[]> = {
+  connected:  ["observing"],
+  observing:  ["simulating", "paused"],
+  simulating: ["active", "observing", "paused"],
+  active:     ["paused"],
+  paused:     ["observing"],   // resume goes back to Observing, not Active
+};
+
 export interface IOrganization extends Document {
   name: string;
   email: string;
@@ -14,6 +27,16 @@ export interface IOrganization extends Document {
   currency: string;
   timezone: string;
   plan: "starter" | "growth" | "scale";
+  systemState: SystemState;
+  systemStateSince?: Date;
+  pauseReason?: string;
+  onboarding: {
+    step: "connect" | "select" | "market" | "strategy" | "complete";
+    selectedListingIds: string[];
+    activatedListingIds: string[];
+    completedAt?: Date;
+    listings?: any[];
+  };
   settings: {
     guardrails: {
       maxSingleDayChangePct: number;
@@ -50,6 +73,20 @@ const OrgSchema = new Schema<IOrganization>(
     currency: { type: String, default: "AED" },
     timezone: { type: String, default: "Asia/Dubai" },
     plan: { type: String, enum: ["starter", "growth", "scale"], default: "starter" },
+    systemState: {
+      type: String,
+      enum: ["connected", "observing", "simulating", "active", "paused"],
+      default: "connected",
+    },
+    systemStateSince: { type: Date },
+    pauseReason: { type: String },
+    onboarding: {
+      step: { type: String, enum: ["connect", "select", "market", "strategy", "complete"], default: "connect" },
+      selectedListingIds: [{ type: String }],
+      activatedListingIds: [{ type: String }],
+      completedAt: { type: Date },
+      listings: [{ type: Schema.Types.Mixed }],
+    },
     settings: {
       guardrails: {
         maxSingleDayChangePct: { type: Number, default: 15 },

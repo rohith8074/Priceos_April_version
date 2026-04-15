@@ -78,6 +78,7 @@ import { PriceGuardrailsEditor } from "./price-guardrails-editor";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { toast } from "sonner";
+import { readSSEStream } from "@/lib/chat/sse-reader";
 
 interface Message {
   id: string;
@@ -114,6 +115,7 @@ export function UnifiedChatInterface({ properties }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [statusText, setStatusText] = useState("");
   const [isChatActive, setIsChatActive] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -376,8 +378,8 @@ export function UnifiedChatInterface({ properties }: Props) {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setStatusText("Connecting to PriceOS…");
 
-    const startTime = performance.now();
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -411,17 +413,28 @@ export function UnifiedChatInterface({ properties }: Props) {
         throw new Error(`API Error: ${response.status}`);
       }
 
-      const data = await response.json();
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.message || "Sorry, I couldn't get a response.",
-        proposals: data.proposals || undefined,
-        proposalStatus: data.proposals ? "pending" : undefined,
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
+      await readSSEStream(
+        response,
+        (msg) => setStatusText(msg),
+        (data) => {
+          const assistantMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: data.message || "Sorry, I couldn't get a response.",
+            proposals: data.proposals || undefined,
+            proposalStatus: data.proposals ? "pending" : undefined,
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        },
+        (errMsg) => {
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: errMsg || "Sorry, something went wrong.",
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+        },
+      );
     } catch (error) {
       console.error(`Chat Error:`, error);
       const errorMessage: Message = {
@@ -432,6 +445,7 @@ export function UnifiedChatInterface({ properties }: Props) {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      setStatusText("");
     }
   };
 
@@ -645,7 +659,7 @@ export function UnifiedChatInterface({ properties }: Props) {
                 </div>
               </div>
             ))}
-            {isLoading && <div className="flex justify-start"><Card className="max-w-2xl"><CardContent className="p-4 flex items-center space-x-2"><Loader2 className="h-4 w-4 animate-spin" /><span className="text-sm text-muted-foreground">Thinking...</span></CardContent></Card></div>}
+            {isLoading && <div className="flex justify-start"><Card className="max-w-2xl"><CardContent className="p-4 flex items-center space-x-3"><Loader2 className="h-4 w-4 animate-spin text-amber" /><span className="text-sm text-muted-foreground animate-pulse">{statusText || "Thinking…"}</span></CardContent></Card></div>}
             <div ref={messagesEndRef} />
           </div>
 

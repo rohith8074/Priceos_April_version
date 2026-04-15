@@ -1,12 +1,30 @@
 import { NextResponse } from "next/server";
+import { getSession } from "@/lib/auth/server";
+import { connectDB, Organization } from "@/lib/db";
 
 export async function GET(request: Request) {
     console.log("🚀 [Hostaway Sync] Starting GET request to /api/hostaway/users");
 
     try {
-        const token = process.env.Hostaway_Authorization_token;
+        await connectDB();
+        const session = await getSession();
+        if (!session?.orgId) {
+            return NextResponse.json(
+                { error: "Unauthorized", reasonCode: "SESSION_REQUIRED" },
+                { status: 401 }
+            );
+        }
+
+        const org = await Organization.findById(session.orgId).select("hostawayApiKey").lean();
+        const token = org?.hostawayApiKey;
         if (!token) {
-            throw new Error("Hostaway_Authorization_token is not set");
+            return NextResponse.json(
+                {
+                    error: "Hostaway API key not configured for this organization",
+                    reasonCode: "HOSTAWAY_KEY_MISSING",
+                },
+                { status: 400 }
+            );
         }
 
         console.log("📥 [Hostaway Sync] Fetching live conversations from Hostaway securely (GET only)...");

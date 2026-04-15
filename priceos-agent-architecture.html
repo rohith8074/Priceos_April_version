@@ -1,0 +1,1726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PriceOS — Agent Architecture & Internal Working</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #070c14;
+      --surface: rgba(255,255,255,0.03);
+      --surface-2: rgba(255,255,255,0.055);
+      --border: rgba(255,255,255,0.07);
+      --border-bright: rgba(255,255,255,0.14);
+      --text: #f1f5f9;
+      --muted: #64748b;
+      --accent: #f59e0b;
+      --accent-dim: rgba(245,158,11,0.12);
+      --blue: #3b82f6;
+      --blue-dim: rgba(59,130,246,0.12);
+      --green: #10b981;
+      --green-dim: rgba(16,185,129,0.12);
+      --red: #ef4444;
+      --red-dim: rgba(239,68,68,0.12);
+      --purple: #8b5cf6;
+      --purple-dim: rgba(139,92,246,0.12);
+      --cyan: #06b6d4;
+      --cyan-dim: rgba(6,182,212,0.12);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      padding: 5rem 2rem 4rem;
+      text-align: center;
+      background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(245,158,11,0.18) 0%, transparent 70%);
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-tag {
+      display: inline-block;
+      padding: 4px 14px;
+      border-radius: 20px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(245,158,11,0.3);
+      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #fff 30%, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1rem;
+    }
+    .hero p {
+      max-width: 650px;
+      margin: 0 auto;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+
+    /* ── NAV ── */
+    .toc {
+      max-width: 1100px;
+      margin: 3rem auto;
+      padding: 0 2rem;
+    }
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.75rem;
+    }
+    .toc-item {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.65rem 1rem;
+      border-radius: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .toc-item:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-bright); }
+    .toc-num { color: var(--accent); font-weight: 700; font-size: 0.75rem; }
+
+    /* ── LAYOUT ── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+    .section { padding: 4rem 0; border-bottom: 1px solid var(--border); }
+    .section:last-child { border-bottom: none; }
+
+    h2.section-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+    h2.section-title span { color: var(--accent); }
+    .section-sub {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-bottom: 2.5rem;
+      max-width: 700px;
+    }
+
+    /* ── CALLOUT ── */
+    .callout {
+      padding: 1.25rem 1.5rem;
+      border-radius: 12px;
+      border-left: 3px solid;
+      margin-bottom: 2rem;
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+    .callout.info { background: var(--blue-dim); border-color: var(--blue); color: #93c5fd; }
+    .callout.warn { background: var(--accent-dim); border-color: var(--accent); color: #fcd34d; }
+    .callout.success { background: var(--green-dim); border-color: var(--green); color: #6ee7b7; }
+    .callout strong { color: #fff; }
+
+    /* ── ONBOARDING STEPS ── */
+    .step-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .step-card {
+      display: grid;
+      grid-template-columns: 80px 1fr;
+      gap: 0;
+      position: relative;
+    }
+    .step-card::before {
+      content: '';
+      position: absolute;
+      left: 39px;
+      top: 70px;
+      bottom: -2px;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--border-bright), transparent);
+    }
+    .step-card:last-child::before { display: none; }
+
+    .step-left {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 1.75rem;
+    }
+    .step-circle {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 2px solid var(--border-bright);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.85rem;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+    }
+    .step-circle.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+    .step-circle.live-agent { background: var(--blue-dim); border-color: var(--blue); color: var(--blue); }
+    .step-circle.demo { background: var(--purple-dim); border-color: var(--purple); color: var(--purple); }
+
+    .step-body {
+      padding: 1.5rem 0 2.5rem 1.5rem;
+    }
+    .step-label {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .step-name { font-size: 1.1rem; font-weight: 700; }
+    .pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .pill.live { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.3); }
+    .pill.demo { background: var(--purple-dim); color: var(--purple); border: 1px solid rgba(139,92,246,0.3); }
+    .pill.both { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+    .pill.agent { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(245,158,11,0.3); }
+
+    .step-desc { color: #94a3b8; font-size: 0.88rem; margin-bottom: 1rem; }
+
+    .agent-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-top: 0.75rem;
+    }
+    .agent-box-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .agent-icon {
+      width: 34px; height: 34px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .agent-icon.blue { background: var(--blue-dim); }
+    .agent-icon.green { background: var(--green-dim); }
+    .agent-icon.amber { background: var(--accent-dim); }
+    .agent-icon.purple { background: var(--purple-dim); }
+    .agent-icon.red { background: var(--red-dim); }
+    .agent-icon.cyan { background: var(--cyan-dim); }
+
+    .agent-name { font-size: 0.9rem; font-weight: 700; }
+    .agent-id { font-family: 'JetBrains Mono', monospace; font-size: 0.68rem; color: var(--muted); }
+
+    .detail-row {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 0.4rem 1rem;
+      font-size: 0.8rem;
+      margin-bottom: 0.3rem;
+      align-items: start;
+    }
+    .detail-label { color: var(--muted); font-weight: 500; }
+    .detail-val { color: #cbd5e1; }
+    .detail-val code {
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(0,0,0,0.3);
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      color: #7dd3fc;
+    }
+
+    .db-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+    }
+    .db-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      padding: 2px 8px;
+      border-radius: 5px;
+    }
+    .db-tag.read { background: rgba(16,185,129,0.1); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.2); }
+    .db-tag.write { background: rgba(239,68,68,0.1); color: #fca5a5; border: 1px solid rgba(239,68,68,0.2); }
+
+    /* ── RUNTIME AGENTS ── */
+    .agents-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+      gap: 1.5rem;
+    }
+    @media (max-width: 700px) { .agents-grid { grid-template-columns: 1fr; } }
+
+    .runtime-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .runtime-card:hover { border-color: var(--border-bright); transform: translateY(-3px); }
+    .runtime-card::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--blue));
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .runtime-card:hover::after { opacity: 1; }
+
+    .rc-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .rc-icon {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      font-size: 1.3rem;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .rc-title { font-size: 1rem; font-weight: 700; margin-bottom: 0.2rem; }
+    .rc-subtitle { font-size: 0.75rem; color: var(--muted); }
+
+    .flow-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin: 0.75rem 0;
+      font-size: 0.82rem;
+      color: #94a3b8;
+    }
+    .flow-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+    }
+    .flow-list li::before {
+      content: '→';
+      color: var(--accent);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ── DB TABLE ── */
+    .db-table-wrap { overflow-x: auto; margin-top: 2rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    thead th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 0.7rem;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody td {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+      color: #cbd5e1;
+    }
+    tbody tr:hover td { background: var(--surface); }
+    .col-name { font-family: 'JetBrains Mono', monospace; color: #7dd3fc; font-size: 0.78rem; }
+    .col-access-r { color: var(--green); font-weight: 600; font-size: 0.75rem; }
+    .col-access-w { color: var(--red); font-weight: 600; font-size: 0.75rem; }
+    .col-access-n { color: var(--muted); font-size: 0.75rem; }
+
+    /* ── QUERY EXAMPLES ── */
+    .query-block {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin: 0.5rem 0;
+    }
+    .query-label { font-size: 0.7rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .query-block pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #a5f3fc;
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.6;
+    }
+
+    /* ── FLOW DIAGRAM ── */
+    .flow-diagram {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 2rem;
+      margin: 2rem 0;
+      font-size: 0.82rem;
+    }
+    .flow-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+    .flow-box {
+      padding: 0.5rem 0.85rem;
+      border-radius: 8px;
+      font-weight: 600;
+      white-space: nowrap;
+      font-size: 0.78rem;
+    }
+    .flow-arrow { color: var(--muted); font-size: 1rem; }
+    .flow-box.user { background: var(--purple-dim); border: 1px solid rgba(139,92,246,0.3); color: var(--purple); }
+    .flow-box.frontend { background: var(--blue-dim); border: 1px solid rgba(59,130,246,0.3); color: var(--blue); }
+    .flow-box.backend { background: var(--accent-dim); border: 1px solid rgba(245,158,11,0.3); color: var(--accent); }
+    .flow-box.db { background: var(--green-dim); border: 1px solid rgba(16,185,129,0.3); color: var(--green); }
+    .flow-box.lyzr { background: var(--red-dim); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; }
+
+    /* ── CONTEXT FRAME ── */
+    .context-block {
+      background: rgba(0,0,0,0.5);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-top: 1rem;
+    }
+    .context-block h4 { font-size: 0.78rem; color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.75rem; }
+    .context-field {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 0.3rem 1rem;
+      font-size: 0.78rem;
+      margin-bottom: 0.25rem;
+    }
+    .cf-key { color: #7dd3fc; font-family: 'JetBrains Mono', monospace; }
+    .cf-val { color: #94a3b8; }
+
+    footer {
+      padding: 3rem 2rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════ HERO -->
+<div class="hero">
+  <div class="hero-tag">Architecture Document — Confidential</div>
+  <h1>PriceOS Agent Architecture<br>& Internal Working</h1>
+  <p>A detailed technical reference documenting every Lyzr AI agent in the PriceOS platform — when it is invoked, what database collections it reads or writes, and exactly how it answers queries.</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ TOC -->
+<div class="toc">
+  <div class="toc-grid">
+    <a class="toc-item" href="#overview"><span class="toc-num">01</span> Platform Overview</a>
+    <a class="toc-item" href="#onboarding"><span class="toc-num">02</span> Onboarding Flow</a>
+    <a class="toc-item" href="#query-flow"><span class="toc-num">03</span> Runtime Query Flow</a>
+    <a class="toc-item" href="#agents"><span class="toc-num">04</span> All 10 Agents</a>
+    <a class="toc-item" href="#db-matrix"><span class="toc-num">05</span> DB Access Matrix</a>
+    <a class="toc-item" href="#context"><span class="toc-num">06</span> Context Builder</a>
+    <a class="toc-item" href="#security"><span class="toc-num">07</span> Security & Isolation</a>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ SECTION 1: OVERVIEW -->
+<section class="section" id="overview">
+  <div class="container">
+    <h2 class="section-title"><span>01 /</span> Platform Overview</h2>
+    <p class="section-sub">PriceOS is a multi-tenant short-term rental revenue management platform powered by a fleet of specialised Lyzr Studio agents, each scoped to a single purpose and communicating exclusively through structured MongoDB reads.</p>
+
+    <div class="callout info">
+      <strong>Key Architecture Principle:</strong> No agent ever uses stale global context. At every query, the system reads <em>live, real-time data</em> from MongoDB — scoped by <code>orgId</code> — builds a structured JSON context block, and injects it into the Lyzr agent's prompt before forwarding the user's question. This makes every answer deterministic and tenant-isolated.
+    </div>
+
+    <div class="flow-diagram">
+      <p style="font-size:0.78rem;color:var(--muted);margin-bottom:1.25rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">System Data Flow</p>
+      <div class="flow-row">
+        <div class="flow-box user">🧑‍💼 User / Dashboard</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box frontend">Next.js Frontend</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box backend">POST /api/agent</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box db">MongoDB (orgId scoped)</div>
+      </div>
+      <div class="flow-row" style="padding-left:3rem">
+        <div class="flow-box backend">db-context-builder.ts</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box lyzr">Lyzr Studio Agent</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box frontend">Structured Response → UI</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;margin-top:2rem;">
+      <div class="callout success" style="margin:0">
+        <strong>10 Lyzr Agents</strong><br>5 inference-time chat agents + 3 background workers + 2 guest inbox agents
+      </div>
+      <div class="callout info" style="margin:0">
+        <strong>0 Global Context</strong><br>All data is fetched live from DB at inference time per authenticated user
+      </div>
+      <div class="callout warn" style="margin:0">
+        <strong>orgId Isolation</strong><br>Every MongoDB query carries an orgId filter — cross-tenant data access is impossible
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ SECTION 2: ONBOARDING -->
+<section class="section" id="onboarding">
+  <div class="container">
+    <h2 class="section-title"><span>02 /</span> Onboarding Flow — Step by Step</h2>
+    <p class="section-sub">The 4-step onboarding wizard smart-routes between two modes: <strong style="color:#8b5cf6">Demo Mode</strong> (Launch Demo button — no real API key, instant static seeding) and <strong style="color:#3b82f6">Live Mode</strong> (real Hostaway API key — triggers Lyzr agents for real-world data).</p>
+
+    <div class="callout warn">
+      <strong>Mode Detection Logic:</strong> When the onboarding completes, the server inspects the listing IDs saved in the session. If any listing ID starts with <code>"demo-"</code>, Demo Mode activates. Otherwise, Live Mode runs and invokes Lyzr agents.
+    </div>
+
+    <div class="step-flow">
+
+      <!-- STEP 1 -->
+      <div class="step-card">
+        <div class="step-left">
+          <div class="step-circle active">1</div>
+        </div>
+        <div class="step-body">
+          <div class="step-label">
+            <span class="step-name">Connect — API Key Entry</span>
+            <span class="pill both">Both Modes</span>
+          </div>
+          <p class="step-desc">User enters their Hostaway API key (or clicks "Launch Demo"). The system immediately calls <strong>GET /api/hostaway/metadata</strong> to validate the key and fetch property names.</p>
+
+          <div class="agent-box">
+            <div class="agent-box-header">
+              <div class="agent-icon blue">🔑</div>
+              <div>
+                <div class="agent-name">No Lyzr Agent — Direct API Validation</div>
+                <div class="agent-id">API: GET /api/hostaway/metadata?apiKey=...</div>
+              </div>
+            </div>
+            <div class="detail-row"><span class="detail-label">What happens</span><span class="detail-val">Calls Hostaway <code>GET /v1/listings</code> with the user's key. Returns id, name, bedrooms, city for each property.</span></div>
+            <div class="detail-row"><span class="detail-label">Demo fallback</span><span class="detail-val">If key is invalid / demo mode: returns 8 static Dubai properties (Luxury Marina View Suite, Burj Khalifa Studio, etc.) — no 400 error shown to user.</span></div>
+            <div class="detail-row"><span class="detail-label">DB Writes</span><span class="detail-val">Saves <code>hostawayApiKey</code> to <code>organizations</code> collection. Sets <code>onboarding.step = "select"</code>.</span></div>
+            <div class="db-tags">
+              <span class="db-tag write">organizations WRITE</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div class="step-card">
+        <div class="step-left">
+          <div class="step-circle active">2</div>
+        </div>
+        <div class="step-body">
+          <div class="step-label">
+            <span class="step-name">Select — Choose Properties</span>
+            <span class="pill both">Both Modes</span>
+          </div>
+          <p class="step-desc">User selects which properties PriceOS should manage. No agents invoked here — pure UI selection state saved to the organisation record.</p>
+
+          <div class="agent-box">
+            <div class="agent-box-header">
+              <div class="agent-icon purple">📋</div>
+              <div>
+                <div class="agent-name">No Lyzr Agent — Progress Persistence</div>
+                <div class="agent-id">API: PATCH /api/onboarding</div>
+              </div>
+            </div>
+            <div class="detail-row"><span class="detail-label">What happens</span><span class="detail-val">Saves <code>selectedListingIds</code> array to org document. Updates <code>onboarding.step = "market"</code>.</span></div>
+            <div class="db-tags">
+              <span class="db-tag write">organizations WRITE</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div class="step-card">
+        <div class="step-left">
+          <div class="step-circle active">3</div>
+        </div>
+        <div class="step-body">
+          <div class="step-label">
+            <span class="step-name">Market — Select Operating City</span>
+            <span class="pill live">Live: Lyzr Agents</span>
+            <span class="pill demo">Demo: Static Seed</span>
+          </div>
+          <p class="step-desc">User picks a city (Dubai, London, NYC, etc.). This triggers the most important intelligence gathering phase — the city-specific pricing rulebook is built here.</p>
+
+          <div class="agent-box" style="border-color:rgba(59,130,246,0.25);">
+            <div class="agent-box-header">
+              <div class="agent-icon blue">🔍</div>
+              <div>
+                <div class="agent-name">Market Research Agent</div>
+                <div class="agent-id">Lyzr ID: 699991985dbb137e7b660594</div>
+              </div>
+            </div>
+            <div class="detail-row"><span class="detail-label">Triggered when</span><span class="detail-val">Real Hostaway API key detected (no <code>demo-</code> listing IDs)</span></div>
+            <div class="detail-row"><span class="detail-label">Prompt sent</span><span class="detail-val">"Find all major events, public holidays, conferences for {city} from {today} to {+180 days}. Return a JSON array with name, startDate, endDate, impactLevel, upliftPct, description."</span></div>
+            <div class="detail-row"><span class="detail-label">Response parsed</span><span class="detail-val">JSON array of events — impactLevel mapped to <code>critical/high/moderate</code>, upliftPct saved as-is</span></div>
+            <div class="detail-row"><span class="detail-label">DB Writes</span><span class="detail-val">Upserts each event into <code>marketevents</code> tagged with <code>[Lyzr Market Research Agent]</code> in description</span></div>
+            <div class="db-tags">
+              <span class="db-tag write">marketevents WRITE</span>
+            </div>
+
+            <div style="margin-top:1rem;">
+              <div class="query-block">
+                <div class="query-label">Example MongoDB Write (per event)</div>
+                <pre>MarketEvent.updateOne(
+  { orgId: ObjectId("..."), name: "GITEX Global" },
+  { $set: {
+      startDate: "2026-10-13",
+      endDate: "2026-10-17",
+      impactLevel: "critical",
+      upliftPct: 45,
+      isActive: true,
+      description: "[Lyzr Market Research Agent] ..."
+  }},
+  { upsert: true }
+)</pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="agent-box" style="margin-top:1rem;border-color:rgba(16,185,129,0.2);">
+            <div class="agent-box-header">
+              <div class="agent-icon green">📊</div>
+              <div>
+                <div class="agent-name">Benchmark Agent (Rate Context)</div>
+                <div class="agent-id">Lyzr ID: 699e7b559ff614f6db8964cf</div>
+              </div>
+            </div>
+            <div class="detail-row"><span class="detail-label">Triggered when</span><span class="detail-val">Same condition as Market Research Agent (Live Mode only)</span></div>
+            <div class="detail-row"><span class="detail-label">Prompt sent</span><span class="detail-val">"Provide weekday_avg, weekend_avg, occupancy_trend, demand_level for {city} in JSON."</span></div>
+            <div class="detail-row"><span class="detail-label">Purpose</span><span class="detail-val">Establishes the baseline market rate intelligence logged to console and used by Pricing Optimizer downstream</span></div>
+            <div class="db-tags">
+              <span class="db-tag read">benchmarkdatas READ</span>
+            </div>
+          </div>
+
+          <div class="agent-box" style="margin-top:1rem;border-color:rgba(139,92,246,0.2);">
+            <div class="agent-box-header">
+              <div class="agent-icon purple">🎮</div>
+              <div>
+                <div class="agent-name">Static Market Template (Demo Mode Only)</div>
+                <div class="agent-id">Internal function: seedMarketTemplate()</div>
+              </div>
+            </div>
+            <div class="detail-row"><span class="detail-label">Triggered when</span><span class="detail-val">Listing IDs start with <code>demo-</code> (Launch Demo flow)</span></div>
+            <div class="detail-row"><span class="detail-label">What it does</span><span class="detail-val">Inserts pre-defined events from a local dictionary: Dubai Shopping Festival, Eid Al Fitr, GITEX Global, Dubai Airshow with hardcoded dates and uplift percentages</span></div>
+            <div class="db-tags">
+              <span class="db-tag write">marketevents WRITE</span>
+              <span class="db-tag write">pricingrules WRITE</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div class="step-card">
+        <div class="step-left">
+          <div class="step-circle active">4</div>
+        </div>
+        <div class="step-body">
+          <div class="step-label">
+            <span class="step-name">Strategy → Complete — Dashboard Activation</span>
+            <span class="pill both">Both Modes</span>
+          </div>
+          <p class="step-desc">User confirms their pricing strategy. The system upserts all selected properties into the <code>listings</code> collection, seeds 90 days of inventory, and 5 demo reservations per property. The JWT is re-issued with <code>onboardingStep: "complete"</code> granting dashboard access.</p>
+
+          <div class="agent-box">
+            <div class="agent-box-header">
+              <div class="agent-icon amber">⚡</div>
+              <div>
+                <div class="agent-name">No Lyzr Agent — Data Seeder Pipeline</div>
+                <div class="agent-id">API: PATCH /api/onboarding → step: "complete"</div>
+              </div>
+            </div>
+            <div class="detail-row"><span class="detail-label">Listings upserted</span><span class="detail-val">Each property upserted to <code>listings</code> with floor/ceiling prices, bedroom count, city, currency</span></div>
+            <div class="detail-row"><span class="detail-label">Inventory seeded</span><span class="detail-val">90 × calendar rows per listing in <code>inventorymasters</code>: realistic prices with weekend premiums + seasonal multipliers</span></div>
+            <div class="detail-row"><span class="detail-label">Reservations seeded</span><span class="detail-val">5 reservations per listing in <code>reservations</code> with randomised guest names, channels (Airbnb / Booking.com / VRBO / Direct)</span></div>
+            <div class="detail-row"><span class="detail-label">Rules seeded</span><span class="detail-val">Market-specific <code>PricingRule</code> guardrails: Weekend Uplift, Last-Minute Discount, Far-out Markup</span></div>
+            <div class="db-tags">
+              <span class="db-tag write">listings WRITE</span>
+              <span class="db-tag write">inventorymasters WRITE</span>
+              <span class="db-tag write">reservations WRITE</span>
+              <span class="db-tag write">pricingrules WRITE</span>
+              <span class="db-tag write">organizations WRITE</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /step-flow -->
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ SECTION 3: QUERY FLOW -->
+<section class="section" id="query-flow">
+  <div class="container">
+    <h2 class="section-title"><span>03 /</span> Runtime Query Flow</h2>
+    <p class="section-sub">Every time a user asks a question in the dashboard chat, the system executes the following pipeline in under 200ms before it even reaches the Lyzr agent.</p>
+
+    <div class="flow-diagram">
+      <p style="font-size:0.78rem;color:var(--muted);margin-bottom:1.5rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;">POST /api/agent → Lyzr Response</p>
+
+      <div class="flow-row">
+        <div class="flow-box user">1. User Message</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box backend">2. Auth Check (JWT)</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box db">3. buildAgentContext(orgId)</div>
+      </div>
+      <div style="height:0.5rem"></div>
+      <div class="flow-row">
+        <div class="flow-box db">3a. Read: Listing</div>
+        <div class="flow-box db">3b. Read: InventoryMaster</div>
+        <div class="flow-box db">3c. Read: Reservation</div>
+        <div class="flow-box db">3d. Read: MarketEvent</div>
+        <div class="flow-box db">3e. Read: PricingRule</div>
+      </div>
+      <div style="height:0.5rem"></div>
+      <div class="flow-row">
+        <div class="flow-box backend">4. Build JSON Context Block</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box lyzr">5. [SYSTEM CONTEXT] + User Q → Lyzr Agent</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box frontend">6. Response → Dashboard</div>
+      </div>
+    </div>
+
+    <div class="context-block">
+      <h4>Exact Structure Injected Into Every Agent Prompt</h4>
+      <div class="context-field"><span class="cf-key">MANDATORY_INSTRUCTIONS</span><span class="cf-val">analysis_window, instruction to trust only figures below</span></div>
+      <div class="context-field"><span class="cf-key">property</span><span class="cf-val">id, name, area, city, bedrooms, current_price, floor_price, ceiling_price</span></div>
+      <div class="context-field"><span class="cf-key">inventory[]</span><span class="cf-val">date, status, price, proposed_price, min_stay, max_stay — next 30 days</span></div>
+      <div class="context-field"><span class="cf-key">metrics</span><span class="cf-val">total_days, bookable_days, booked_days, occupancy_pct, total_revenue</span></div>
+      <div class="context-field"><span class="cf-key">active_bookings[]</span><span class="cf-val">guest_name, channel, check_in, check_out, nights, total_price</span></div>
+      <div class="context-field"><span class="cf-key">pricing_rules[]</span><span class="cf-val">name, type, priority, adjust_pct, days_of_week</span></div>
+      <div class="context-field"><span class="cf-key">market_events[]</span><span class="cf-val">name, start, end, impact, premium_pct, description</span></div>
+      <div class="context-field"><span class="cf-key">portfolio_summary[]</span><span class="cf-val">Portfolio-level: id, name, city, base_price for all active listings</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ SECTION 4: ALL 10 AGENTS -->
+<section class="section" id="agents">
+  <div class="container">
+    <h2 class="section-title"><span>04 /</span> All 10 Lyzr Agents — Internal Working</h2>
+    <p class="section-sub">Each agent has a single, well-defined responsibility. Below is the exact internal working, trigger condition, database access, and query examples for each.</p>
+
+    <div class="agents-grid">
+
+      <!-- AGENT 1: CRO Router -->
+      <div class="runtime-card">
+        <div class="rc-header">
+          <div class="rc-icon amber" style="background:var(--accent-dim)">🧠</div>
+          <div>
+            <div class="rc-title">1. CRO Router — Aria (Orchestrator)</div>
+            <div class="rc-subtitle">Lyzr ID: 69998743f4d61186679a9515</div>
+          </div>
+        </div>
+        <div class="detail-row"><span class="detail-label">Trigger</span><span class="detail-val">Every chat message on the Agent Chat tab or Dashboard popup</span></div>
+        <div class="detail-row"><span class="detail-label">Role</span><span class="detail-val">Manager agent — identifies intent, parses property name, routes to sub-agents or answers directly</span></div>
+        <div class="detail-row" style="margin-top:.75rem"><span class="detail-label">DB Reads</span><span class="detail-val"></span></div>
+        <div class="db-tags">
+          <span class="db-tag read">Listing: name, city, area, isActive</span>
+          <span class="db-tag read">MarketEvent: upcoming events</span>
+          <span class="db-tag read">InventoryMaster: status, price</span>
+        </div>
+        <ul class="flow-list" style="margin-top:1rem">
+          <li>Receives full context block (property + inventory + events)</li>
+          <li>Identifies which property is being asked about from user message</li>
+          <li>Delegates complex sub-queries to worker agents</li>
+          <li>Returns synthesised natural language answer</li>
+        </ul>
+      </div>
+
+      <!-- AGENT 2: Property Analyst -->
+      <div class="runtime-card">
+        <div class="rc-header">
+          <div class="rc-icon blue" style="background:var(--blue-dim)">📉</div>
+          <div>
+            <div class="rc-title">2. Property Analyst (Pricing Optimizer)</div>
+            <div class="rc-subtitle">Lyzr ID: 699987c35dbb137e7b66052e</div>
+          </div>
+        </div>
+        <div class="detail-row"><span class="detail-label">Trigger</span><span class="detail-val">Background engine run (nightly cron) OR user asks "What should I price X for next week?"</span></div>
+        <div class="detail-row"><span class="detail-label">Role</span><span class="detail-val">Generates price proposals per calendar day using occupancy math, event uplift, and guardrail constraints</span></div>
+        <div class="detail-row" style="margin-top:.75rem"><span class="detail-label">DB Reads</span><span class="detail-val"></span></div>
+        <div class="db-tags">
+          <span class="db-tag read">InventoryMaster: date, status, currentPrice</span>
+          <span class="db-tag read">Listing: priceFloor, priceCeiling</span>
+          <span class="db-tag read">MarketEvent: upliftPct</span>
+          <span class="db-tag read">PricingRule: priceAdjPct, daysOfWeek</span>
+        </div>
+        <div class="db-tags" style="margin-top:.5rem">
+          <span class="db-tag write">InventoryMaster: proposedPrice, reasoning, proposalStatus</span>
+        </div>
+        <ul class="flow-list" style="margin-top:1rem">
+          <li>Scans next 30–90 days of calendar for available/gap nights</li>
+          <li>Applies event uplift multipliers from MarketEvent collection</li>
+          <li>Checks PricingRule guardrails (DOW, LEAD_TIME)</li>
+          <li>Writes proposedPrice → proposalStatus: "pending" awaiting human approval</li>
+        </ul>
+      </div>
+
+      <!-- AGENT 3: Booking Intelligence -->
+      <div class="runtime-card">
+        <div class="rc-header">
+          <div class="rc-icon cyan" style="background:var(--cyan-dim)">📅</div>
+          <div>
+            <div class="rc-title">3. Booking Intelligence</div>
+            <div class="rc-subtitle">Lyzr ID: 699988262654671e44099318</div>
+          </div>
+        </div>
+        <div class="detail-row"><span class="detail-label">Trigger</span><span class="detail-val">User queries about revenue, occupancy, channel breakdown, or upcoming bookings</span></div>
+        <div class="detail-row"><span class="detail-label">Role</span><span class="detail-val">Financial analyst — computes revenue totals, ADR, length-of-stay, channel mix from confirmed reservations</span></div>
+        <div class="detail-row" style="margin-top:.75rem"><span class="detail-label">DB Reads</span><span class="detail-val"></span></div>
+        <div class="db-tags">
+          <span class="db-tag read">Reservation: status, checkIn, checkOut, totalPrice, channelName, guestName, nights</span>
+        </div>
+        <ul class="flow-list" style="margin-top:1rem">
+          <li>Filters by <code>status: "confirmed"</code> and date overlap with query window</li>
+          <li>Aggregates totalPrice by channel for channel-mix analysis</li>
+          <li>Computes ADR = totalRevenue ÷ totalNights</li>
+          <li>Returns structured answer with exact figures from DB</li>
+        </ul>
+        <div class="query-block" style="margin-top:1rem">
+          <div class="query-label">Example Query</div>
+          <pre>Reservation.aggregate([
+  { $match: { orgId, status: "confirmed",
+    checkIn: { $gte: "2026-04-01" } }},
+  { $group: { _id: "$channelName",
+    revenue: { $sum: "$totalPrice" } }}
+])</pre>
+        </div>
+      </div>
+
+      <!-- AGENT 4: Market Research -->
+      <div class="runtime-card">
+        <div class="rc-header">
+          <div class="rc-icon blue" style="background:var(--blue-dim)">🔍</div>
+          <div>
+            <div class="rc-title">4. Market Research Agent</div>
+            <div class="rc-subtitle">Lyzr ID: 699991985dbb137e7b660594</div>
+          </div>
+        </div>
+        <div class="detail-row"><span class="detail-label">Trigger</span><span class="detail-val">① Onboarding Step 3 (Live Mode), ② User asks "What events are affecting prices this month?"</span></div>
+        <div class="detail-row"><span class="detail-label">Role</span><span class="detail-val">Scans local geography for holidays, events, seasons — during onboarding calls Lyzr Studio directly to populate DB</span></div>
+        <div class="detail-row" style="margin-top:.75rem"><span class="detail-label">DB Reads</span><span class="detail-val"></span></div>
+        <div class="db-tags">
+          <span class="db-tag read">MarketEvent: name, startDate, endDate, impactLevel, upliftPct</span>
+        </div>
+        <div class="db-tags" style="margin-top:.4rem">
+          <span class="db-tag write">MarketEvent: WRITE during onboarding</span>
+        </div>
+        <ul class="flow-list" style="margin-top:1rem">
+          <li><strong>Onboarding:</strong> Called server-side with structured JSON prompt — populates MarketEvent collection from Lyzr AI response</li>
+          <li><strong>Chat queries:</strong> Reads pre-populated MarketEvent rows via context builder</li>
+          <li>Maps impactLevel to upliftPct thresholds: critical→45%, high→35%, moderate→18%</li>
+        </ul>
+      </div>
+
+      <!-- AGENT 5: PriceGuard -->
+      <div class="runtime-card">
+        <div class="rc-header">
+          <div class="rc-icon green" style="background:var(--green-dim)">🛡️</div>
+          <div>
+            <div class="rc-title">5. PriceGuard (Adjustment Reviewer)</div>
+            <div class="rc-subtitle">Lyzr ID: 6999933b83d9dff0252dd86f</div>
+          </div>
+        </div>
+        <div class="detail-row"><span class="detail-label">Trigger</span><span class="detail-val">User asks "Is this price safe?" or pipeline runs validation pass after Pricing Optimizer generates proposals</span></div>
+        <div class="detail-row"><span class="detail-label">Role</span><span class="detail-val">Risk classifier — validates proposals against hard floors/ceilings and rule-based guardrails</span></div>
+        <div class="detail-row" style="margin-top:.75rem"><span class="detail-label">DB Reads</span><span class="detail-val"></span></div>
+        <div class="db-tags">
+          <span class="db-tag read">PricingRule: ruleType, priceAdjPct, priority, daysOfWeek</span>
+          <span class="db-tag read">Listing: priceFloor, priceCeiling</span>
+          <span class="db-tag read">InventoryMaster: proposedPrice, currentPrice, changePct</span>
+        </div>
+        <ul class="flow-list" style="margin-top:1rem">
+          <li>Compares proposed price against <code>priceFloor</code> and <code>priceCeiling</code></li>
+          <li>Checks if changePct exceeds <code>maxSingleDayChangePct</code> guardrail</li>
+          <li>Flags proposals exceeding threshold as "requires approval" → HITL inbox</li>
+          <li>Auto-approves proposals below autoApproveThreshold%</li>
+        </ul>
+      </div>
+
+      <!-- AGENT 6: Marketing -->
+      <div class="runtime-card">
+        <div class="rc-header">
+          <div class="rc-icon amber" style="background:var(--accent-dim)">📢</div>
+          <div>
+            <div class="rc-title">6. Marketing Agent</div>
+            <div class="rc-subtitle">Lyzr ID: 699993adb8bd4d3aac102a81</div>
+          </div>
+        </div>
+        <div class="detail-row"><span class="detail-label">Trigger</span><span class="detail-val">User queries in the Market Intelligence or Insights tab about positioning and messaging</span></div>
+        <div class="detail-row"><span class="detail-label">Role</span><span class="detail-val">Generates promotional copy, listing optimisation suggestions, and occupancy gap fill strategies</span></div>
+        <div class="detail-row" style="margin-top:.75rem"><span class="detail-label">DB Reads</span><span class="detail-val"></span></div>
+        <div class="db-tags">
+          <span class="db-tag read">Listing: name, amenities, area, price</span>
+          <span class="db-tag read">InventoryMaster: available dates (gap nights)</span>
+          <span class="db-tag read">MarketEvent: upcoming high-demand periods</span>
+        </div>
+        <ul class="flow-list" style="margin-top:1rem">
+          <li>Identifies gap nights (available blocks) from InventoryMaster</li>
+          <li>Cross-references upcoming events for promotional angle</li>
+          <li>Generates listing headline variants and guest-facing messaging</li>
+        </ul>
+      </div>
+
+      <!-- AGENT 7: Benchmark -->
+      <div class="runtime-card">
+        <div class="rc-header">
+          <div class="rc-icon cyan" style="background:var(--cyan-dim)">🕵️</div>
+          <div>
+            <div class="rc-title">7. Benchmark Agent (Competitor Scanner)</div>
+            <div class="rc-subtitle">Lyzr ID: 699e7b559ff614f6db8964cf</div>
+          </div>
+        </div>
+        <div class="detail-row"><span class="detail-label">Trigger</span><span class="detail-val">① Onboarding Step 3 (Live Mode market rate context), ② User asks about competitor pricing</span></div>
+        <div class="detail-row"><span class="detail-label">Role</span><span class="detail-val">Pulls P25/P50/P75 percentile market positions from stored BenchmarkData. During onboarding, queries Lyzr for current city rates.</span></div>
+        <div class="detail-row" style="margin-top:.75rem"><span class="detail-label">DB Reads</span><span class="detail-val"></span></div>
+        <div class="db-tags">
+          <span class="db-tag read">BenchmarkData: p25_rate, p50_rate, p75_rate, verdict, percentile</span>
+          <span class="db-tag read">Listing: price, area, bedroomsNumber</span>
+        </div>
+        <div class="db-tags" style="margin-top:.4rem">
+          <span class="db-tag write">Listing: benchmarkData WRITE (competitor percentile update)</span>
+        </div>
+        <ul class="flow-list" style="margin-top:1rem">
+          <li>p50_rate is the primary pricing anchor for all optimisation agents</li>
+          <li>verdict field: UNDERPRICED / FAIR / SLIGHTLY_ABOVE / OVERPRICED</li>
+          <li>Writes updated percentiles to Listing.benchmarkData periodically</li>
+        </ul>
+      </div>
+
+      <!-- AGENT 8: Guardrails -->
+      <div class="runtime-card">
+        <div class="rc-header">
+          <div class="rc-icon red" style="background:var(--red-dim)">⚙️</div>
+          <div>
+            <div class="rc-title">8. Guardrails Agent (Floor/Ceiling Enforcer)</div>
+            <div class="rc-subtitle">Lyzr ID: 69a941c5ad0c99ac601ac935</div>
+          </div>
+        </div>
+        <div class="detail-row"><span class="detail-label">Trigger</span><span class="detail-val">Background validation pass following pipeline execution — validates all proposals in a batch</span></div>
+        <div class="detail-row"><span class="detail-label">Role</span><span class="detail-val">Hard-clamps all proposed prices to never exceed absolute floor × multiplier or ceiling × multiplier configured per org</span></div>
+        <div class="detail-row" style="margin-top:.75rem"><span class="detail-label">DB Reads</span><span class="detail-val"></span></div>
+        <div class="db-tags">
+          <span class="db-tag read">Listing: priceFloor, priceCeiling</span>
+          <span class="db-tag read">Organization: settings.guardrails (maxSingleDayChangePct)</span>
+          <span class="db-tag read">InventoryMaster: proposedPrice</span>
+        </div>
+        <div class="db-tags" style="margin-top:.4rem">
+          <span class="db-tag write">InventoryMaster: proposedPrice (clamp corrections)</span>
+        </div>
+      </div>
+
+      <!-- AGENT 9: Conversation Summary -->
+      <div class="runtime-card">
+        <div class="rc-header">
+          <div class="rc-icon purple" style="background:var(--purple-dim)">📝</div>
+          <div>
+            <div class="rc-title">9. Conversation Summary Agent</div>
+            <div class="rc-subtitle">Lyzr ID: 699d6ba5d3183ea975c8c375</div>
+          </div>
+        </div>
+        <div class="detail-row"><span class="detail-label">Trigger</span><span class="detail-val">User opens Guest Inbox and clicks "Summarise Thread" on a Hostaway conversation</span></div>
+        <div class="detail-label" style="font-size:.8rem;color:var(--muted);margin-top:.75rem">Role</div>
+        <p class="detail-val" style="font-size:.8rem;color:#cbd5e1;margin-bottom:.75rem">Compresses long guest message chains into a 3–5 bullet executive summary with sentiment and action items</p>
+        <div class="db-tags">
+          <span class="db-tag read">HostawayConversation: messages[], guestName</span>
+        </div>
+        <div class="db-tags" style="margin-top:.4rem">
+          <span class="db-tag write">GuestSummary: summaryText, actionItems, sentiment WRITE</span>
+        </div>
+        <ul class="flow-list" style="margin-top:1rem">
+          <li>Receives full thread as inline context (not DB lookup — payload injection)</li>
+          <li>Extracts key requests, complaints, check-in questions</li>
+          <li>Writes structured summary to GuestSummary collection for persistence</li>
+        </ul>
+      </div>
+
+      <!-- AGENT 10: Chat Response -->
+      <div class="runtime-card">
+        <div class="rc-header">
+          <div class="rc-icon blue" style="background:var(--blue-dim)">💬</div>
+          <div>
+            <div class="rc-title">10. Chat Response Agent</div>
+            <div class="rc-subtitle">Lyzr ID: 699d8ab150b4c733eb376fd4</div>
+          </div>
+        </div>
+        <div class="detail-row"><span class="detail-label">Trigger</span><span class="detail-val">User clicks "Generate Reply" on a guest message inside the Guest Inbox section</span></div>
+        <div class="detail-label" style="font-size:.8rem;color:var(--muted);margin-top:.75rem">Role</div>
+        <p class="detail-val" style="font-size:.8rem;color:#cbd5e1;margin-bottom:.75rem">Drafts a 2–4 sentence professional host reply that matches the brand tone and addresses the guest's exact question</p>
+        <div class="db-tags">
+          <span class="db-tag read">HostawayConversation: latest message, full thread history</span>
+          <span class="db-tag read">Listing: name, checkIn, checkOut (from active reservation)</span>
+        </div>
+        <ul class="flow-list" style="margin-top:1rem">
+          <li>Receives thread history as inline payload (no separate DB call needed)</li>
+          <li>Generates a reply strictly in the host's voice — no generic AI disclaimer phrases</li>
+          <li>Reply can be sent directly or edited before dispatch</li>
+        </ul>
+      </div>
+
+    </div><!-- /agents-grid -->
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ SECTION 5: DB MATRIX -->
+<section class="section" id="db-matrix">
+  <div class="container">
+    <h2 class="section-title"><span>05 /</span> Database Access Matrix</h2>
+    <p class="section-sub">Which agent can read or write which MongoDB collection. R = Read, W = Write, — = No Access.</p>
+
+    <div class="db-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Collection</th>
+            <th>CRO Router</th>
+            <th>Pricing Opt.</th>
+            <th>Booking Intel.</th>
+            <th>Market Research</th>
+            <th>PriceGuard</th>
+            <th>Marketing</th>
+            <th>Benchmark</th>
+            <th>Guardrails</th>
+            <th>Conv. Summary</th>
+            <th>Chat Reply</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-name">listings</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-w">R+W</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-r">R</td>
+          </tr>
+          <tr>
+            <td class="col-name">inventorymasters</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-w">R+W</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-w">R+W</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+          </tr>
+          <tr>
+            <td class="col-name">reservations</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+          </tr>
+          <tr>
+            <td class="col-name">marketevents</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-w">R+W</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+          </tr>
+          <tr>
+            <td class="col-name">pricingrules</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+          </tr>
+          <tr>
+            <td class="col-name">benchmarkdatas</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-w">R+W</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+          </tr>
+          <tr>
+            <td class="col-name">insights</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-w">W</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-w">W</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+          </tr>
+          <tr>
+            <td class="col-name">hostawayconversations</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-r">R</td>
+          </tr>
+          <tr>
+            <td class="col-name">guestsummaries</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-w">W</td>
+            <td class="col-access-n">—</td>
+          </tr>
+          <tr>
+            <td class="col-name">organizations</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-r">R</td>
+            <td class="col-access-n">—</td>
+            <td class="col-access-n">—</td>
+          </tr>
+          <tr>
+            <td class="col-name">users</td>
+            <td class="col-access-n">— System Only</td>
+            <td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td>
+          </tr>
+          <tr>
+            <td class="col-name">chatmessages</td>
+            <td class="col-access-n">— UI Only</td>
+            <td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td><td class="col-access-n">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ SECTION 6: CONTEXT BUILDER -->
+<section class="section" id="context">
+  <div class="container">
+    <h2 class="section-title"><span>06 /</span> db-context-builder.ts — How Context is Built</h2>
+    <p class="section-sub">This server-side function is executed on every agent API call. It performs 5 MongoDB reads in ~100ms and assembles the JSON block injected into every Lyzr prompt.</p>
+
+    <div class="query-block" style="margin-top:1.5rem">
+      <div class="query-label">MongoDB Reads Executed (Property Mode)</div>
+      <pre>// 1. Validate ownership + fetch property metadata
+Listing.findOne({ _id: listingId, orgId })
+
+// 2. Fetch next 30-day calendar
+InventoryMaster.find({
+  listingId,
+  date: { $gte: today, $lte: +30days }
+}).sort({ date: 1 })
+
+// 3. Fetch active bookings in window
+Reservation.find({
+  listingId,
+  status: "confirmed",
+  $or: [{ checkIn: { $lte: endStr }, checkOut: { $gte: startStr } }]
+})
+
+// 4. Fetch enabled pricing rules
+PricingRule.find({ listingId, enabled: true })
+
+// 5. Fetch upcoming market events (org-scoped)
+MarketEvent.find({
+  orgId,
+  endDate: { $gte: today },
+  startDate: { $lte: +30days },
+  isActive: true
+})</pre>
+    </div>
+
+    <div class="callout success" style="margin-top:1.5rem">
+      <strong>Why this matters:</strong> The agent never hallucinates pricing data because every number it references (occupancy %, current prices, booked nights, event premium) comes directly from the live database query result injected into its prompt. The agent is instructed: <em>"TRUST THE FIGURES BELOW EXCLUSIVELY."</em>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ SECTION 7: SECURITY -->
+<section class="section" id="security">
+  <div class="container">
+    <h2 class="section-title"><span>07 /</span> Security & Tenant Isolation</h2>
+    <p class="section-sub">Every database access is hardened against cross-tenant data leakage through three enforcement layers.</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.25rem;margin-top:1rem">
+      <div class="agent-box" style="border-color:rgba(16,185,129,0.25)">
+        <div class="agent-box-header">
+          <div class="agent-icon green">🔒</div>
+          <div><div class="agent-name">Layer 1: JWT Authentication</div></div>
+        </div>
+        <p style="font-size:.82rem;color:#94a3b8">Every API request validates a signed JWT. The <code>orgId</code> is extracted from the token — not from user-supplied query parameters. Forged orgIds are impossible.</p>
+      </div>
+      <div class="agent-box" style="border-color:rgba(59,130,246,0.25)">
+        <div class="agent-box-header">
+          <div class="agent-icon blue">🗃️</div>
+          <div><div class="agent-name">Layer 2: orgId Filter on Every Query</div></div>
+        </div>
+        <p style="font-size:.82rem;color:#94a3b8">Every MongoDB query includes <code>{ orgId: ObjectId(session.orgId) }</code>. A user from Organisation A cannot read listings, inventory, or events belonging to Organisation B — even if they know the document ID.</p>
+      </div>
+      <div class="agent-box" style="border-color:rgba(245,158,11,0.25)">
+        <div class="agent-box-header">
+          <div class="agent-icon amber">🤖</div>
+          <div><div class="agent-name">Layer 3: Agent Context Scoping</div></div>
+        </div>
+        <p style="font-size:.82rem;color:#94a3b8">Lyzr agents never receive raw database dumps. They only see the pre-filtered context JSON built by <code>buildAgentContext(orgId)</code>. The agent cannot ask the database anything — it can only reason over what was injected.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="inference">
+  <div class="container">
+    <h2 class="section-title"><span>08 /</span> Inference-Time Inputs — Per Agent</h2>
+    <p class="section-sub">Exact data structure sent to each Lyzr agent at the first message and on subsequent turns. Every agent receives a two-part prompt: the <code>[SYSTEM CONTEXT]</code> JSON block (live DB data) prepended to the <code>[USER QUESTION]</code>.</p>
+
+    <div class="callout info">
+      <strong>How the prompt is assembled (ai-agent.ts):</strong><br>
+      <code>finalMessage = "[SYSTEM CONTEXT]\n" + JSON.stringify(dbContext) + "\n\n[USER QUESTION]\n" + userMessage</code><br>
+      This combined string is sent as the <code>message</code> field to the Lyzr Studio Chat API (<code>LYZR_API_URL</code>) with <code>x-api-key: LYZR_API_KEY</code>.
+    </div>
+
+    <!-- ── AGENT 1 ── -->
+    <div class="agent-box" style="margin-bottom:1.5rem;border-color:rgba(245,158,11,0.3)">
+      <div class="agent-box-header">
+        <div class="agent-icon amber">🧠</div>
+        <div>
+          <div class="agent-name">1. CRO Router — Aria</div>
+          <div class="agent-id">Trigger: every dashboard chat message · ID: 69998743f4d61186679a9515</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+        <div>
+          <div class="query-label" style="margin-bottom:.5rem">First Message — Portfolio (no property selected)</div>
+          <div class="query-block" style="margin:0"><pre>[SYSTEM CONTEXT]
+{
+  "MANDATORY_INSTRUCTIONS": {
+    "analysis_window": "2026-04-14 to 2026-05-14",
+    "instruction_1": "TRUST THE FIGURES BELOW EXCLUSIVELY."
+  },
+  "portfolio_summary": [
+    { "id":"...", "name":"Luxury Marina View Suite",
+      "city":"Dubai", "base_price":"AED 850" },
+    { "id":"...", "name":"Burj Khalifa Studio",
+      "city":"Dubai", "base_price":"AED 650" }
+  ],
+  "market_events": [
+    { "name":"GITEX Global","start":"2026-10-13",
+      "impact":"critical","premium_pct":45 }
+  ]
+}
+
+[USER QUESTION]
+Give me an overview of my portfolio</pre></div>
+        </div>
+        <div>
+          <div class="query-label" style="margin-bottom:.5rem">Subsequent Message — Property selected</div>
+          <div class="query-block" style="margin:0"><pre>[SYSTEM CONTEXT]
+{
+  "property": {
+    "name":"Luxury Marina View Suite",
+    "floor_price":"AED 500","ceiling_price":"AED 2000",
+    "current_price":"AED 850"
+  },
+  "inventory": [
+    { "date":"2026-04-18","status":"available","price":850 },
+    { "date":"2026-04-19","status":"available","price":850 }
+  ],
+  "metrics": { "occupancy_pct":"62.3","total_revenue":14450 },
+  "active_bookings": [
+    { "guest_name":"Ahmed","channel":"Airbnb",
+      "check_in":"2026-04-22","nights":5 }
+  ],
+  "pricing_rules": [
+    { "name":"Weekend Uplift","type":"DOW",
+      "adjust_pct":20,"days_of_week":[4,5] }
+  ],
+  "market_events": [
+    { "name":"GITEX","start":"2026-10-13","premium_pct":45 }
+  ]
+}
+
+[USER QUESTION]
+What should I price Marina Suite for next weekend?</pre></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── AGENT 2 ── -->
+    <div class="agent-box" style="margin-bottom:1.5rem;border-color:rgba(59,130,246,0.3)">
+      <div class="agent-box-header">
+        <div class="agent-icon blue">📉</div>
+        <div>
+          <div class="agent-name">2. Property Analyst — Pricing Optimizer</div>
+          <div class="agent-id">Trigger: nightly pipeline OR pricing query · ID: 699987c35dbb137e7b66052e</div>
+        </div>
+      </div>
+      <div class="query-block"><pre>[SYSTEM CONTEXT]
+{
+  "property": {
+    "name":"Luxury Marina View Suite",
+    "floor_price":"AED 500","ceiling_price":"AED 2000","current_price":"AED 850"
+  },
+  "inventory": [
+    { "date":"2026-04-20","status":"available","price":850,"min_stay":2 },
+    { "date":"2026-10-14","status":"available","price":850,"min_stay":2 },
+    { "date":"2026-10-15","status":"available","price":850,"min_stay":2 }
+  ],
+  "pricing_rules": [
+    { "name":"Weekend Uplift","type":"DOW","priority":1,"adjust_pct":20,"days_of_week":[4,5] },
+    { "name":"Last-Minute Discount","type":"LEAD_TIME","priority":2,"adjust_pct":-10 },
+    { "name":"Far-out Markup","type":"LEAD_TIME","priority":3,"adjust_pct":5 }
+  ],
+  "market_events": [
+    { "name":"GITEX Global","start":"2026-10-13","end":"2026-10-17","impact":"critical","premium_pct":45 }
+  ],
+  "metrics": { "occupancy_pct":"62.3","bookable_days":30,"booked_days":19 }
+}
+
+[USER QUESTION]
+Generate pricing proposals for all available nights. Apply rules + events. Respect floor/ceiling. Write proposedPrice, changePct, proposalStatus, reasoning for each date.</pre></div>
+    </div>
+
+    <!-- ── AGENT 3 ── -->
+    <div class="agent-box" style="margin-bottom:1.5rem;border-color:rgba(6,182,212,0.3)">
+      <div class="agent-box-header">
+        <div class="agent-icon cyan">📅</div>
+        <div>
+          <div class="agent-name">3. Booking Intelligence</div>
+          <div class="agent-id">Trigger: revenue / occupancy / channel queries · ID: 699988262654671e44099318</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+        <div>
+          <div class="query-label" style="margin-bottom:.5rem">First Message</div>
+          <div class="query-block" style="margin:0"><pre>[SYSTEM CONTEXT]
+{
+  "property": { "name":"Luxury Marina View Suite" },
+  "metrics": {
+    "total_days":30,"bookable_days":28,
+    "booked_days":17,"occupancy_pct":"60.7",
+    "total_revenue":14450
+  },
+  "active_bookings": [
+    { "guest_name":"Ahmed","channel":"Airbnb",
+      "check_in":"2026-04-22","nights":5,"total_price":4250 },
+    { "guest_name":"Sarah","channel":"Booking.com",
+      "check_in":"2026-04-15","nights":3,"total_price":2550 }
+  ]
+}
+
+[USER QUESTION]
+What's my revenue this month?</pre></div>
+        </div>
+        <div>
+          <div class="query-label" style="margin-bottom:.5rem">Follow-up</div>
+          <div class="query-block" style="margin:0"><pre>[SYSTEM CONTEXT]
+{ "...": "same context as above" }
+
+[USER QUESTION]
+Break it down by booking channel and
+show me ADR per channel</pre></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── AGENT 4 ── -->
+    <div class="agent-box" style="margin-bottom:1.5rem;border-color:rgba(59,130,246,0.3)">
+      <div class="agent-box-header">
+        <div class="agent-icon blue">🔍</div>
+        <div>
+          <div class="agent-name">4. Market Research Agent</div>
+          <div class="agent-id">Trigger: event queries (runtime) + onboarding seeding (server) · ID: 699991985dbb137e7b660594</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+        <div>
+          <div class="query-label" style="margin-bottom:.5rem">Runtime Chat (DB context injected)</div>
+          <div class="query-block" style="margin:0"><pre>[SYSTEM CONTEXT]
+{
+  "property": { "name":"Marina Suite","current_price":"AED 850" },
+  "market_events": [
+    { "name":"GITEX Global","start":"2026-10-13",
+      "end":"2026-10-17","impact":"critical","premium_pct":45 },
+    { "name":"Eid Al Fitr","start":"2026-03-28",
+      "impact":"high","premium_pct":30 }
+  ]
+}
+
+[USER QUESTION]
+What events are affecting prices this month?
+What premium should I apply?</pre></div>
+        </div>
+        <div>
+          <div class="query-label" style="margin-bottom:.5rem">Onboarding Seeding (no DB context — server direct call)</div>
+          <div class="query-block" style="margin:0"><pre>[MESSAGE ONLY — no system context]
+You are onboarding a new property manager in Dubai.
+
+Find all major events, public holidays, conferences,
+and tourism demand signals for Dubai between
+2026-04-14 and 2026-10-14 that would affect
+short-term rental pricing.
+
+Return a JSON array (no markdown) with:
+name, startDate, endDate, impactLevel (critical|high|moderate),
+upliftPct (5–60), description.
+
+Only the JSON array. No explanation.</pre></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── AGENT 5 ── -->
+    <div class="agent-box" style="margin-bottom:1.5rem;border-color:rgba(16,185,129,0.3)">
+      <div class="agent-box-header">
+        <div class="agent-icon green">🛡️</div>
+        <div>
+          <div class="agent-name">5. PriceGuard</div>
+          <div class="agent-id">Trigger: after Pricing Optimizer writes proposals · ID: 6999933b83d9dff0252dd86f</div>
+        </div>
+      </div>
+      <div class="query-block"><pre>[SYSTEM CONTEXT]
+{
+  "property": {
+    "name":"Marina Suite","floor_price":"AED 500","ceiling_price":"AED 2000"
+  },
+  "inventory": [
+    { "date":"2026-10-14","status":"available","price":850,
+      "proposed_price":1479,"proposed_change_pct":74.0,
+      "proposal_status":"pending",
+      "reasoning":"GITEX Global uplift +45% + Thursday DOW +20%" },
+    { "date":"2026-04-20","status":"available","price":850,
+      "proposed_price":765,"proposed_change_pct":-10.0,
+      "proposal_status":"auto_approved",
+      "reasoning":"Last-minute discount -10%" }
+  ],
+  "market_events": [
+    { "name":"GITEX Global","start":"2026-10-13","end":"2026-10-17","premium_pct":45 }
+  ],
+  "metrics": { "occupancy_pct":"62.3" }
+}
+
+[USER QUESTION]
+Review all pending proposals. Check guardrails. Classify risk (auto_approved / low / medium / high / guardrail_violation).
+Recommend approve/review/reject for each. Flag any event-justified high-risk proposals.</pre></div>
+    </div>
+
+    <!-- ── AGENT 6 ── -->
+    <div class="agent-box" style="margin-bottom:1.5rem;border-color:rgba(245,158,11,0.3)">
+      <div class="agent-box-header">
+        <div class="agent-icon amber">📢</div>
+        <div>
+          <div class="agent-name">6. Marketing Agent</div>
+          <div class="agent-id">Trigger: promotions / gap-fill / listing copy queries · ID: 699993adb8bd4d3aac102a81</div>
+        </div>
+      </div>
+      <div class="query-block"><pre>[SYSTEM CONTEXT]
+{
+  "property": {
+    "name":"Luxury Marina View Suite","area":"Dubai Marina",
+    "current_price":"AED 850","floor_price":"AED 500"
+  },
+  "inventory": [
+    { "date":"2026-04-20","status":"available","price":850 },
+    { "date":"2026-04-21","status":"available","price":850 },
+    { "date":"2026-04-22","status":"available","price":850 }
+  ],
+  "metrics": { "occupancy_pct":"52.1" },
+  "market_events": []
+}
+
+[USER QUESTION]
+Help me fill the 3-night gap April 20–22.
+Write Airbnb listing copy and suggest a rate strategy.</pre></div>
+    </div>
+
+    <!-- ── AGENT 7 ── -->
+    <div class="agent-box" style="margin-bottom:1.5rem;border-color:rgba(6,182,212,0.3)">
+      <div class="agent-box-header">
+        <div class="agent-icon cyan">🕵️</div>
+        <div>
+          <div class="agent-name">7. Benchmark Agent</div>
+          <div class="agent-id">Trigger: competitor / positioning queries + onboarding rates · ID: 699e7b559ff614f6db8964cf</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+        <div>
+          <div class="query-label" style="margin-bottom:.5rem">Runtime Chat</div>
+          <div class="query-block" style="margin:0"><pre>[SYSTEM CONTEXT]
+{
+  "property": {
+    "name":"Marina Suite","current_price":"AED 850",
+    "benchmarkData": {
+      "p25Rate":620,"p50Rate":870,"p75Rate":1150,
+      "yourPrice":850,"percentile":48,"verdict":"FAIR",
+      "rateTrend":"rising","trendPct":6.2,
+      "recommendedWeekday":870,
+      "recommendedWeekend":1020,
+      "recommendedEvent":1350
+    }
+  },
+  "metrics": { "booked_days":17 }
+}
+
+[USER QUESTION]
+How am I priced vs competitors?
+Should I raise my rates?</pre></div>
+        </div>
+        <div>
+          <div class="query-label" style="margin-bottom:.5rem">Onboarding Seeding (server direct call)</div>
+          <div class="query-block" style="margin:0"><pre>[MESSAGE ONLY — no system context]
+Provide a market rate overview for STR
+properties in Dubai for 2026-04-14 to 2026-10-14.
+
+Return JSON (no markdown):
+{
+  "weekday_avg": &lt;AED nightly rate&gt;,
+  "weekend_avg": &lt;AED nightly rate&gt;,
+  "occupancy_trend": "increasing|stable|decreasing",
+  "demand_level": "high|medium|low",
+  "notes": "1-2 sentence summary"
+}</pre></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── AGENT 8 ── -->
+    <div class="agent-box" style="margin-bottom:1.5rem;border-color:rgba(239,68,68,0.3)">
+      <div class="agent-box-header">
+        <div class="agent-icon red">⚙️</div>
+        <div>
+          <div class="agent-name">8. Guardrails Agent</div>
+          <div class="agent-id">Trigger: background batch validation after proposals · ID: 69a941c5ad0c99ac601ac935</div>
+        </div>
+      </div>
+      <div class="query-block"><pre>[SYSTEM CONTEXT]
+{
+  "property": {
+    "name":"Marina Suite","floor_price":"AED 500","ceiling_price":"AED 2000"
+  },
+  "inventory": [
+    { "date":"2026-10-14","status":"available","price":850,
+      "proposed_price":2350,"proposed_change_pct":176.5,
+      "proposal_status":"pending" },
+    { "date":"2026-04-20","status":"available","price":850,
+      "proposed_price":765,"proposed_change_pct":-10.0,
+      "proposal_status":"auto_approved" }
+  ]
+}
+
+[USER QUESTION]
+Run guardrails enforcement. Clamp any proposals outside floor/ceiling.
+Recalculate changePct after clamping. Return report with clamp types and adjusted values.</pre></div>
+    </div>
+
+    <!-- ── AGENT 9 ── -->
+    <div class="agent-box" style="margin-bottom:1.5rem;border-color:rgba(139,92,246,0.3)">
+      <div class="agent-box-header">
+        <div class="agent-icon purple">📝</div>
+        <div>
+          <div class="agent-name">9. Conversation Summary Agent</div>
+          <div class="agent-id">Trigger: Guest Inbox → Summarise Thread · ID: 699d6ba5d3183ea975c8c375</div>
+        </div>
+      </div>
+      <div class="callout warn" style="margin:0 0 0.75rem">
+        <strong>Special:</strong> No DB system context. The guest thread is sent inline as part of the message payload itself.
+      </div>
+      <div class="query-block"><pre>[MESSAGE — full conversation payload]
+Analyze the following guest conversations for
+"Luxury Marina View Suite" from 2026-04-01 to 2026-04-14.
+
+CONVERSATION DATA:
+{
+  "propertyName": "Luxury Marina View Suite",
+  "listingId": "6642a3f...",
+  "dateFrom": "2026-04-01",
+  "dateTo": "2026-04-14",
+  "conversations": [
+    {
+      "id": "conv-1",
+      "guestName": "Sarah Johnson",
+      "messages": [
+        { "sender":"guest","text":"Is the pool heated?","timestamp":"2026-04-05T10:00Z" },
+        { "sender":"admin","text":"Yes, year-round!","timestamp":"2026-04-05T10:30Z" }
+      ]
+    },
+    {
+      "id": "conv-2",
+      "guestName": "Mike Chen",
+      "messages": [
+        { "sender":"guest","text":"AC isn't working","timestamp":"2026-04-10T14:00Z" }
+      ]
+    }
+  ]
+}
+
+Return JSON: { sentiment, themes[], actionItems[], bulletPoints[], totalConversations, needsReplyCount }</pre></div>
+    </div>
+
+    <!-- ── AGENT 10 ── -->
+    <div class="agent-box" style="margin-bottom:1.5rem;border-color:rgba(59,130,246,0.3)">
+      <div class="agent-box-header">
+        <div class="agent-icon blue">💬</div>
+        <div>
+          <div class="agent-name">10. Chat Response Agent (Guest Reply)</div>
+          <div class="agent-id">Trigger: Guest Inbox → Generate Reply · ID: 699d8ab150b4c733eb376fd4</div>
+        </div>
+      </div>
+      <div class="callout warn" style="margin:0 0 0.75rem">
+        <strong>Special:</strong> No DB system context. Thread history + latest message sent inline as payload.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+        <div>
+          <div class="query-label" style="margin-bottom:.5rem">First Reply Generation</div>
+          <div class="query-block" style="margin:0"><pre>[MESSAGE]
+Generate a professional reply for:
+
+{
+  "propertyName": "Luxury Marina View Suite",
+  "guestName": "Sarah Johnson",
+  "conversationHistory": [
+    { "sender":"guest",
+      "text":"Is the pool heated?",
+      "timestamp":"2026-04-05T10:00Z" }
+  ],
+  "latestGuestMessage": "Is the pool heated?"
+}
+
+Return JSON: { reply, sentiment, category }</pre></div>
+        </div>
+        <div>
+          <div class="query-label" style="margin-bottom:.5rem">Subsequent Message (conversation continues)</div>
+          <div class="query-block" style="margin:0"><pre>[MESSAGE]
+Generate a professional reply for:
+
+{
+  "propertyName": "Luxury Marina View Suite",
+  "guestName": "Mike Chen",
+  "conversationHistory": [
+    { "sender":"guest","text":"AC isn't working","timestamp":"2026-04-10T14:00Z" },
+    { "sender":"admin","text":"Team coming in 1hr","timestamp":"2026-04-10T14:05Z" }
+  ],
+  "latestGuestMessage": "Still no one came to fix it"
+}
+
+Return JSON: { reply, sentiment, category }</pre></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ SECTION 9 -->
+<section class="section" id="prompts">
+  <div class="container">
+    <h2 class="section-title"><span>09 /</span> Agent Prompt Files Reference</h2>
+    <p class="section-sub">All agent system prompts are versioned markdown files in <code>src/lib/agents/prompts/</code>. Each contains: <strong>Role · Goal · Instructions · Inference-Time Inputs · Examples · Structured Output schema</strong>.</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:0.75rem;margin-top:1.5rem">
+      <div class="agent-box"><div class="agent-box-header"><div class="agent-icon amber">🧠</div><div><div class="agent-name">CRO Router — Aria</div><div class="agent-id">cro-router-agent.md · Lyzr: 69998743f4d61186679a9515</div></div></div></div>
+      <div class="agent-box"><div class="agent-box-header"><div class="agent-icon blue">📉</div><div><div class="agent-name">Property Analyst (Pricing Optimizer)</div><div class="agent-id">property-analyst-agent.md · Lyzr: 699987c35dbb137e7b66052e</div></div></div></div>
+      <div class="agent-box"><div class="agent-box-header"><div class="agent-icon cyan">📅</div><div><div class="agent-name">Booking Intelligence</div><div class="agent-id">booking-intelligence-agent.md · Lyzr: 699988262654671e44099318</div></div></div></div>
+      <div class="agent-box"><div class="agent-box-header"><div class="agent-icon blue">🔍</div><div><div class="agent-name">Market Research Agent</div><div class="agent-id">market-research-agent.md · Lyzr: 699991985dbb137e7b660594</div></div></div></div>
+      <div class="agent-box"><div class="agent-box-header"><div class="agent-icon green">🛡️</div><div><div class="agent-name">PriceGuard</div><div class="agent-id">price-guard-agent.md · Lyzr: 6999933b83d9dff0252dd86f</div></div></div></div>
+      <div class="agent-box"><div class="agent-box-header"><div class="agent-icon amber">📢</div><div><div class="agent-name">Marketing Agent</div><div class="agent-id">marketing-agent.md · Lyzr: 699993adb8bd4d3aac102a81</div></div></div></div>
+      <div class="agent-box"><div class="agent-box-header"><div class="agent-icon cyan">🕵️</div><div><div class="agent-name">Benchmark Agent</div><div class="agent-id">benchmark-agent.md · Lyzr: 699e7b559ff614f6db8964cf</div></div></div></div>
+      <div class="agent-box"><div class="agent-box-header"><div class="agent-icon red">⚙️</div><div><div class="agent-name">Guardrails Agent</div><div class="agent-id">guardrails-agent.md · Lyzr: 69a941c5ad0c99ac601ac935</div></div></div></div>
+      <div class="agent-box"><div class="agent-box-header"><div class="agent-icon purple">📝</div><div><div class="agent-name">Conversation Summary Agent</div><div class="agent-id">conversation-summary-agent.md · Lyzr: 699d6ba5d3183ea975c8c375</div></div></div></div>
+      <div class="agent-box"><div class="agent-box-header"><div class="agent-icon blue">💬</div><div><div class="agent-name">Chat Response (Guest Reply) Agent</div><div class="agent-id">guest-reply-agent.md · Lyzr: 699d8ab150b4c733eb376fd4</div></div></div></div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

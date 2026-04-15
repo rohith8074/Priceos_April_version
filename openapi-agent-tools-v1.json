@@ -1,0 +1,210 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PriceOS Agent Tools API",
+    "version": "1.1.0",
+    "description": "Production-safe tools for PriceOS Lyzr agents (read-only in tool config). All endpoints are org-scoped by backend session."
+  },
+  "servers": [
+    {
+      "url": "https://YOUR_DOMAIN/api/agent-tools/v1"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": [],
+      "ToolOrgId": []
+    }
+  ],
+  "paths": {
+    "/get-portfolio-overview": {
+      "get": {
+        "operationId": "get_portfolio_overview",
+        "security": [
+          {
+            "BearerAuth": [],
+            "ToolOrgId": []
+          }
+        ],
+        "parameters": [
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-agent-system-status": {
+      "get": {
+        "operationId": "get_agent_system_status",
+        "security": [
+          {
+            "BearerAuth": [],
+            "ToolOrgId": []
+          }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-portfolio-revenue-snapshot": {
+      "get": {
+        "operationId": "get_portfolio_revenue_snapshot",
+        "security": [
+          {
+            "BearerAuth": [],
+            "ToolOrgId": []
+          }
+        ],
+        "parameters": [
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
+          { "name": "groupBy", "in": "query", "required": false, "schema": { "type": "string", "enum": ["day", "week", "property"], "default": "day" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-property-profile": {
+      "get": {
+        "operationId": "get_property_profile",
+        "security": [
+          {
+            "BearerAuth": [],
+            "ToolOrgId": []
+          }
+        ],
+        "parameters": [
+          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-property-calendar-metrics": {
+      "get": {
+        "operationId": "get_property_calendar_metrics",
+        "security": [
+          {
+            "BearerAuth": [],
+            "ToolOrgId": []
+          }
+        ],
+        "parameters": [
+          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-property-reservations": {
+      "get": {
+        "operationId": "get_property_reservations",
+        "security": [
+          {
+            "BearerAuth": [],
+            "ToolOrgId": []
+          }
+        ],
+        "parameters": [
+          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 100 } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-property-market-events": {
+      "get": {
+        "operationId": "get_property_market_events",
+        "security": [
+          {
+            "BearerAuth": [],
+            "ToolOrgId": []
+          }
+        ],
+        "parameters": [
+          { "name": "listingId", "in": "query", "required": false, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-property-benchmark": {
+      "get": {
+        "operationId": "get_property_benchmark",
+        "security": [
+          {
+            "BearerAuth": [],
+            "ToolOrgId": []
+          }
+        ],
+        "parameters": [
+          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/list-guest-conversations": {
+      "get": {
+        "operationId": "list_guest_conversations",
+        "security": [
+          {
+            "BearerAuth": [],
+            "ToolOrgId": []
+          }
+        ],
+        "parameters": [
+          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-guest-summary": {
+      "get": {
+        "operationId": "get_guest_summary",
+        "security": [
+          {
+            "BearerAuth": [],
+            "ToolOrgId": []
+          }
+        ],
+        "parameters": [
+          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "ToolOrgId": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-tool-org-id"
+      }
+    },
+    "schemas": {
+      "DateString": {
+        "type": "string",
+        "pattern": "^\\\\d{4}-\\\\d{2}-\\\\d{2}$",
+        "example": "2026-04-15"
+      },
+      "ObjectIdString": {
+        "type": "string",
+        "pattern": "^[a-fA-F0-9]{24}$",
+        "example": "67fcbf9f0fa9d36b6f447a90"
+      }
+    }
+  }
+}

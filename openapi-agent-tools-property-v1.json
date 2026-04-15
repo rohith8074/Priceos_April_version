@@ -1,0 +1,81 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PriceOS Property Agent Tools API",
+    "version": "1.3.0"
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/get-property-profile": {
+      "get": {
+        "operationId": "get_property_profile",
+        "description": "Returns full profile of a listing: name, type, location, amenities, base price.",
+        "parameters": [
+          { "name": "apiKey", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-property-calendar-metrics": {
+      "get": {
+        "operationId": "get_property_calendar_metrics",
+        "description": "Returns occupancy, blocked dates, and booking lead time for a listing.",
+        "parameters": [
+          { "name": "apiKey", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-property-reservations": {
+      "get": {
+        "operationId": "get_property_reservations",
+        "description": "Returns list of reservations for a listing over a date range.",
+        "parameters": [
+          { "name": "apiKey", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "default": 100 } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-property-market-events": {
+      "get": {
+        "operationId": "get_property_market_events",
+        "description": "Returns local market events and demand signals affecting pricing.",
+        "parameters": [
+          { "name": "apiKey", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/get-property-benchmark": {
+      "get": {
+        "operationId": "get_property_benchmark",
+        "description": "Returns benchmark comparison against similar properties in the market.",
+        "parameters": [
+          { "name": "apiKey", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    }
+  }
+}

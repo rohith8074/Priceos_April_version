@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PriceOS — Architecture & Onboarding Spec</title>
+  <style>
+    :root {
+      --bg: #0a0a0c;
+      --surface: #131316;
+      --surface2: #1a1a1f;
+      --border: #2a2a35;
+      --amber: #f59e0b;
+      --amber-dim: rgba(245,158,11,0.08);
+      --green: #22c55e;
+      --blue: #3b82f6;
+      --red: #ef4444;
+      --purple: #a855f7;
+      --text: #f5f5f5;
+      --text2: #a1a1aa;
+      --text3: #52525b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.6; }
+    .page { max-width: 1100px; margin: 0 auto; padding: 60px 40px; }
+
+    /* HEADER */
+    .doc-header { border-bottom: 1px solid var(--border); padding-bottom: 40px; margin-bottom: 60px; }
+    .badge { display: inline-block; background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); border-radius: 6px; padding: 4px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; }
+    .doc-title { font-size: 42px; font-weight: 800; letter-spacing: -1px; color: #fff; line-height: 1.1; margin-bottom: 12px; }
+    .doc-subtitle { color: var(--text2); font-size: 16px; max-width: 620px; }
+    .meta { display: flex; gap: 24px; margin-top: 20px; font-size: 12px; color: var(--text3); }
+    .meta span { display: flex; align-items: center; gap: 6px; }
+
+    /* SECTIONS */
+    .section { margin-bottom: 70px; }
+    .section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); margin-bottom: 10px; }
+    .section-title { font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .section-desc { color: var(--text2); font-size: 14px; max-width: 660px; margin-bottom: 32px; line-height: 1.7; }
+
+    /* CARDS */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 16px; }
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+
+    /* FLOW DIAGRAM */
+    .flow { display: flex; flex-direction: column; gap: 0; }
+    .flow-step { display: grid; grid-template-columns: 200px 1fr; gap: 24px; position: relative; }
+    .flow-step + .flow-step::before {
+      content: '';
+      position: absolute;
+      left: 20px; top: -20px;
+      width: 2px; height: 20px;
+      background: var(--border);
+    }
+    .flow-dot {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+      padding: 20px 0;
+    }
+    .step-num {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 800; shrink-0;
+    }
+    .step-label { font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+    .flow-content { padding: 20px 0; }
+    .flow-content h4 { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+    .flow-content p { color: var(--text2); font-size: 13px; margin-bottom: 10px; }
+    .api-call { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; font-family: monospace; font-size: 11px; color: var(--blue); }
+    .no-call { display: inline-flex; align-items: center; gap: 6px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); border-radius: 6px; padding: 3px 10px; font-size: 11px; color: var(--green); font-weight: 600; }
+
+    /* TABLE */
+    .spec-table { width: 100%; border-collapse: collapse; }
+    .spec-table th { background: var(--surface2); color: var(--text2); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+    .spec-table td { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 13px; vertical-align: top; }
+    .spec-table tr:last-child td { border-bottom: none; }
+    .spec-table tr:hover td { background: var(--surface2); }
+    .tag { display: inline-flex; align-items: center; gap: 4px; border-radius: 5px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
+    .tag-green { background: rgba(34,197,94,0.1); color: var(--green); }
+    .tag-red { background: rgba(239,68,68,0.1); color: var(--red); }
+    .tag-blue { background: rgba(59,130,246,0.1); color: var(--blue); }
+    .tag-amber { background: var(--amber-dim); color: var(--amber); }
+    .tag-purple { background: rgba(168,85,247,0.1); color: var(--purple); }
+
+    /* ARCHITECTURE DIAGRAM */
+    .arch-container { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px; }
+    .arch-row { display: flex; gap: 12px; align-items: stretch; margin-bottom: 12px; }
+    .arch-box {
+      flex: 1; border-radius: 10px; padding: 16px; border: 1px solid;
+      text-align: center; font-size: 12px; font-weight: 600;
+    }
+    .arch-box.source { border-color: var(--border); background: var(--surface2); color: var(--text2); }
+    .arch-box.central { border-color: rgba(245,158,11,0.3); background: var(--amber-dim); color: var(--amber); }
+    .arch-box.agent { border-radius: 8px; padding: 12px 16px; font-size: 11px; }
+    .arch-box.pricing-agent { border-color: rgba(59,130,246,0.3); background: rgba(59,130,246,0.06); color: var(--blue); }
+    .arch-box.guest-agent { border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.06); color: var(--green); }
+    .arch-box.guardrail-agent { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); color: var(--red); }
+    .arch-box.benchmark-agent { border-color: rgba(168,85,247,0.3); background: rgba(168,85,247,0.06); color: var(--purple); }
+    .arch-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); text-align: center; margin-bottom: 8px; }
+    .arrow { text-align: center; color: var(--text3); font-size: 20px; margin: 4px 0; }
+    .arch-separator { border: none; border-top: 1px dashed var(--border); margin: 16px 0; }
+
+    /* TABLE GRID */
+    .table-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .table-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+    .table-card h5 { font-family: monospace; font-size: 13px; color: var(--amber); margin-bottom: 8px; }
+    .table-card ul { list-style: none; }
+    .table-card ul li { font-size: 12px; color: var(--text2); padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .table-card ul li:last-child { border: none; }
+    .table-card ul li::before { content: '→ '; color: var(--text3); }
+    .agent-tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-top: 8px; }
+
+    /* CODE */
+    pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; font-family: monospace; font-size: 12px; overflow-x: auto; color: var(--text2); line-height: 1.8; }
+    .kw { color: var(--blue); } .str { color: var(--green); } .cm { color: var(--text3); }
+
+    /* CALLOUT */
+    .callout { border-radius: 12px; padding: 20px 24px; margin: 24px 0; border: 1px solid; }
+    .callout.amber { background: var(--amber-dim); border-color: rgba(245,158,11,0.2); }
+    .callout.green { background: rgba(34,197,94,0.06); border-color: rgba(34,197,94,0.2); }
+    .callout.blue { background: rgba(59,130,246,0.06); border-color: rgba(59,130,246,0.2); }
+    .callout-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+    .callout.amber .callout-title { color: var(--amber); }
+    .callout.green .callout-title { color: var(--green); }
+    .callout.blue .callout-title { color: var(--blue); }
+    .callout p { font-size: 13px; color: var(--text2); line-height: 1.6; }
+
+    /* HR */
+    hr { border: none; border-top: 1px solid var(--border); margin: 60px 0; }
+
+    /* PHASE BAR */
+    .phase-bar { display: flex; gap: 0; margin-bottom: 32px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+    .phase { flex: 1; text-align: center; padding: 12px 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+    .phase.p1 { background: rgba(59,130,246,0.1); color: var(--blue); }
+    .phase.p2 { background: rgba(245,158,11,0.08); color: var(--amber); }
+    .phase.p3 { background: rgba(168,85,247,0.08); color: var(--purple); }
+    .phase.p4 { background: rgba(34,197,94,0.08); color: var(--green); }
+    .phase.p5 { background: rgba(239,68,68,0.08); color: var(--red); }
+
+    @media (max-width: 700px) {
+      .page { padding: 30px 20px; }
+      .doc-title { font-size: 28px; }
+      .flow-step { grid-template-columns: 1fr; }
+      .phase-bar { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- DOC HEADER -->
+  <div class="doc-header">
+    <div class="badge">Technical Architecture · v1.0</div>
+    <h1 class="doc-title">PriceOS: Onboarding &<br/>Agent Data Isolation</h1>
+    <p class="doc-subtitle">End-to-end specification for lazy-loading data from Hostaway, selective property activation, and table-scoped AI Agent access.</p>
+    <div class="meta">
+      <span>📅 April 2026</span>
+      <span>🏷 Architecture &amp; Product</span>
+      <span>✅ Build-ready</span>
+    </div>
+  </div>
+
+  <!-- SECTION 1: PROBLEM -->
+  <div class="section">
+    <div class="section-label">01 · The Problem</div>
+    <h2 class="section-title">Why "Pre-Push" Sync Fails</h2>
+    <p class="section-desc">Most PMS integrations (including the current PriceOS V1 model) pull all available data from Hostaway immediately on connection. This creates friction at every layer of the product.</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div style="font-size:28px;margin-bottom:12px;">🐌</div>
+        <h4 style="font-size:15px;font-weight:700;margin-bottom:6px;">Slow Onboarding</h4>
+        <p style="color:var(--text2);font-size:13px;">Syncing 100+ properties, 1-year calendars, and all reservations on Day 1 takes minutes. New users abandon the flow before it completes.</p>
+      </div>
+      <div class="card">
+        <div style="font-size:28px;margin-bottom:12px;">🔒</div>
+        <h4 style="font-size:15px;font-weight:700;margin-bottom:6px;">No Data Isolation</h4>
+        <p style="color:var(--text2);font-size:13px;">Every agent (Pricing, Guest, Benchmark) has access to all collections. A bug in the Guest Agent could accidentally affect pricing data.</p>
+      </div>
+      <div class="card">
+        <div style="font-size:28px;margin-bottom:12px;">💸</div>
+        <h4 style="font-size:15px;font-weight:700;margin-bottom:6px;">Wasted API Calls</h4>
+        <p style="color:var(--text2);font-size:13px;">Hostaway charges per API call. Fetching reservation history for un-activated properties burns quota that users don't benefit from.</p>
+      </div>
+      <div class="card">
+        <div style="font-size:28px;margin-bottom:12px;">😵</div>
+        <h4 style="font-size:15px;font-weight:700;margin-bottom:6px;">Cognitive Overload</h4>
+        <p style="color:var(--text2);font-size:13px;">New users land on a dashboard showing 200 proposals for properties they haven't reviewed yet. No context. No guided setup. They're lost.</p>
+      </div>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- SECTION 2: ARCHITECTURE -->
+  <div class="section">
+    <div class="section-label">02 · New Architecture</div>
+    <h2 class="section-title">Lazy Tables + Agent Lenses</h2>
+    <p class="section-desc">Data lives in one Central MongoDB store. It is only fetched when a specific Agent needs it. Each Agent has a read-only "Lens" — a strict collection allowlist. No agent can read outside its scope.</p>
+
+    <div class="arch-container">
+      <div class="arch-label">External Source</div>
+      <div class="arch-row">
+        <div class="arch-box source">🏠 Hostaway PMS API<br/><span style="font-size:10px;font-weight:400;color:var(--text3)">Source of truth (external)</span></div>
+      </div>
+
+      <div class="arrow">↓ &nbsp;<span style="font-size:11px;color:var(--text3)">Lazy fetch — only triggered by Agent request</span></div>
+
+      <div class="arch-label" style="margin-top:8px;">Central Data Layer (MongoDB)</div>
+      <div class="arch-row">
+        <div class="arch-box central">📋 listings_table</div>
+        <div class="arch-box central">📅 calendar_table</div>
+        <div class="arch-box central">📦 reservations_table</div>
+        <div class="arch-box central">💬 conversations_table</div>
+        <div class="arch-box central">💰 financials_table</div>
+      </div>
+
+      <div class="arch-separator"/>
+      <div class="arch-label">Agent Layer (Isolated Read Access)</div>
+
+      <div class="arch-row">
+        <div class="arch-box agent pricing-agent">
+          🧠 <strong>Pricing Agent</strong><br/>
+          <span style="font-size:10px;">listings · calendar</span>
+        </div>
+        <div class="arch-box agent guest-agent">
+          💬 <strong>Guest Agent</strong><br/>
+          <span style="font-size:10px;">conversations · reservations</span>
+        </div>
+        <div class="arch-box agent guardrail-agent">
+          🛡 <strong>Guardrail Agent</strong><br/>
+          <span style="font-size:10px;">listings (rules only)</span>
+        </div>
+        <div class="arch-box agent benchmark-agent">
+          📊 <strong>Benchmark Agent</strong><br/>
+          <span style="font-size:10px;">listings · calendar</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout amber" style="margin-top:24px;">
+      <div class="callout-title">🔑 Key Principle</div>
+      <p>Agents do not "own" data. They query a read-only projection of the Central Layer. If the Guest Agent crashes, pricing data is completely unaffected. This is called a <strong>Data Mesh Pattern</strong>.</p>
+    </div>
+  </div>
+
+  <!-- DATA TABLES -->
+  <div class="section">
+    <div class="section-label">03 · Data Tables</div>
+    <h2 class="section-title">What Each Table Contains</h2>
+    <p class="section-desc">Each MongoDB collection is populated lazily — only when an activated property triggers a relevant Agent workflow.</p>
+
+    <div class="table-grid">
+      <div class="table-card">
+        <h5>listings_table</h5>
+        <ul>
+          <li>Property name &amp; ID</li>
+          <li>Bedroom count</li>
+          <li>Market Template code</li>
+          <li>Base price &amp; floor/ceiling</li>
+          <li>Active rules config</li>
+          <li>Activation status</li>
+        </ul>
+        <div class="agent-tag" style="background:rgba(59,130,246,0.1);color:var(--blue);">All Agents</div>
+      </div>
+      <div class="table-card">
+        <h5>calendar_table</h5>
+        <ul>
+          <li>Night-by-night availability</li>
+          <li>Current Hostaway price</li>
+          <li>Min/max stay restrictions</li>
+          <li>Blocked dates</li>
+          <li>Last synced timestamp</li>
+        </ul>
+        <div class="agent-tag" style="background:rgba(59,130,246,0.1);color:var(--blue);">Pricing · Benchmark</div>
+      </div>
+      <div class="table-card">
+        <h5>reservations_table</h5>
+        <ul>
+          <li>Guest name &amp; channel</li>
+          <li>Check-in / check-out dates</li>
+          <li>Total revenue</li>
+          <li>LOS &amp; booking lead time</li>
+          <li>Cancellation status</li>
+        </ul>
+        <div class="agent-tag" style="background:rgba(34,197,94,0.1);color:var(--green);">Guest · Benchmark</div>
+      </div>
+      <div class="table-card">
+        <h5>conversations_table</h5>
+        <ul>
+          <li>Message thread ID</li>
+          <li>Guest messages</li>
+          <li>Host replies (sent/unsent)</li>
+          <li>AI suggested replies</li>
+          <li>Sentiment score</li>
+        </ul>
+        <div class="agent-tag" style="background:rgba(34,197,94,0.1);color:var(--green);">Guest Agent only</div>
+      </div>
+      <div class="table-card">
+        <h5>financials_table</h5>
+        <ul>
+          <li>Revenue per property/month</li>
+          <li>Owner payout calculations</li>
+          <li>Expense categories</li>
+          <li>Occupancy rate history</li>
+          <li>RevPAR / ADR metrics</li>
+        </ul>
+        <div class="agent-tag" style="background:rgba(168,85,247,0.1);color:var(--purple);">Finance Module only</div>
+      </div>
+      <div class="table-card">
+        <h5>proposals_table</h5>
+        <ul>
+          <li>AI suggested price per night</li>
+          <li>% change from current</li>
+          <li>Risk level (low/med/high)</li>
+          <li>Reasoning text</li>
+          <li>Approval status</li>
+        </ul>
+        <div class="agent-tag" style="background:rgba(245,158,11,0.1);color:var(--amber);">Pricing Agent (write)</div>
+      </div>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- SECTION 4: ONBOARDING FLOW -->
+  <div class="section">
+    <div class="section-label">04 · Onboarding Flow</div>
+    <h2 class="section-title">5-Step Wizard: Progressive Activation</h2>
+    <p class="section-desc">New users go through a guided wizard. Data is fetched from Hostaway incrementally — only the minimum required at each step. Properties are activated one-by-one, not bulk-synced.</p>
+
+    <div class="phase-bar">
+      <div class="phase p1">Step 1<br/>Connect</div>
+      <div class="phase p2">Step 2<br/>Select</div>
+      <div class="phase p3">Step 3<br/>Market</div>
+      <div class="phase p4">Step 4<br/>Strategy</div>
+      <div class="phase p5">Step 5<br/>Go Live</div>
+    </div>
+
+    <div class="flow">
+
+      <div class="flow-step">
+        <div class="flow-dot">
+          <div class="step-num" style="background:rgba(59,130,246,0.1);color:var(--blue);">1</div>
+          <div class="step-label">Connect</div>
+        </div>
+        <div class="flow-content">
+          <h4>Enter Hostaway API Key</h4>
+          <p>User pastes their Hostaway API key. The system validates it and fetches <strong>only listing names and IDs</strong> — no pricing, no reservations, no calendar data.</p>
+          <span class="api-call">GET /api/listings?fields=id,name,bedrooms</span>
+          <p style="margin-top:8px;font-size:12px;color:var(--text3);">~200ms · ~2KB data · 1 API call</p>
+        </div>
+      </div>
+
+      <div class="flow-step" style="margin-top:24px;">
+        <div class="flow-dot">
+          <div class="step-num" style="background:rgba(245,158,11,0.1);color:var(--amber);">2</div>
+          <div class="step-label">Select</div>
+        </div>
+        <div class="flow-content">
+          <h4>Choose Properties to Activate</h4>
+          <p>User sees a checklist of their properties. They select which ones PriceOS should manage. Only selected properties will ever have data synced.</p>
+          <span class="no-call">✅ No API Call — uses fetched listing stubs</span>
+        </div>
+      </div>
+
+      <div class="flow-step" style="margin-top:24px;">
+        <div class="flow-dot">
+          <div class="step-num" style="background:rgba(168,85,247,0.1);color:var(--purple);">3</div>
+          <div class="step-label">Market</div>
+        </div>
+        <div class="flow-content">
+          <h4>Select City / Market Template</h4>
+          <p>User picks their primary city (Dubai, London, NYC…). PriceOS loads the Market Template from the <strong>local database</strong> — zero API call. Guardrails, seasonal patterns, and weekend definitions are auto-applied.</p>
+          <span class="no-call">✅ No API Call — local market-templates.ts</span>
+        </div>
+      </div>
+
+      <div class="flow-step" style="margin-top:24px;">
+        <div class="flow-dot">
+          <div class="step-num" style="background:rgba(34,197,94,0.1);color:var(--green);">4</div>
+          <div class="step-label">Strategy</div>
+        </div>
+        <div class="flow-content">
+          <h4>Aria Proposes a Starter Strategy</h4>
+          <p>The AI Agent fetches the <strong>next 90-day calendar</strong> for selected properties only. Aria (AI Copilot) analyzes occupancy gaps and suggests a starter pricing floor/ceiling with an explanation.</p>
+          <span class="api-call">GET /api/calendar?listingIds=[selected]&amp;days=90</span>
+          <p style="margin-top:8px;font-size:12px;color:var(--text3);">calendar_table populated for activated listings only</p>
+        </div>
+      </div>
+
+      <div class="flow-step" style="margin-top:24px;">
+        <div class="flow-dot">
+          <div class="step-num" style="background:rgba(239,68,68,0.1);color:var(--red);">5</div>
+          <div class="step-label">Go Live</div>
+        </div>
+        <div class="flow-content">
+          <h4>Activate the Pricing Engine</h4>
+          <p>User clicks "Go Live." PriceOS syncs the full reservation history (last 12 months) for selected properties, registers Hostaway Webhooks, and generates the first batch of Proposals. The dashboard is now live.</p>
+          <span class="api-call">GET /api/reservations?listingIds=[selected]&amp;months=12</span>
+          &nbsp;&nbsp;
+          <span class="api-call">POST /api/webhooks/hostaway/register</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- SECTION 5: AGENT ISOLATION SPEC -->
+  <div class="section">
+    <div class="section-label">05 · Agent Isolation</div>
+    <h2 class="section-title">Collection Allowlist per Agent</h2>
+    <p class="section-desc">Each agent is initialized with a strict <code>dataScope</code> configuration. A middleware wrapper around MongoDB enforces this at query time — agents cannot read outside their scope even if called incorrectly.</p>
+
+    <div class="card" style="overflow:auto;">
+      <table class="spec-table">
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th>Can Read (Allowed)</th>
+            <th>Can Write</th>
+            <th>Cannot Access</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tag tag-blue">🧠 PricingAgent</span></td>
+            <td><code>listings</code> · <code>calendar</code> · <code>market_templates</code></td>
+            <td><code>proposals</code> (write new only)</td>
+            <td><span class="tag tag-red">conversations · financials · reservations</span></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-green">💬 GuestAgent</span></td>
+            <td><code>conversations</code> · <code>reservations</code></td>
+            <td><code>conversations</code> (reply drafts)</td>
+            <td><span class="tag tag-red">proposals · calendar · financials</span></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-red">🛡 GuardrailAgent</span></td>
+            <td><code>listings</code> (rules only) · <code>proposals</code> (pending)</td>
+            <td><code>proposals</code> (status update)</td>
+            <td><span class="tag tag-red">conversations · calendar · reservations</span></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-purple">📊 BenchmarkAgent</span></td>
+            <td><code>listings</code> · <code>calendar</code> · <code>reservations</code></td>
+            <td><code>insights</code> (write new only)</td>
+            <td><span class="tag tag-red">conversations · proposals · financials</span></td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-amber">💰 FinanceModule</span></td>
+            <td><code>financials</code> · <code>reservations</code> · <code>listings</code></td>
+            <td><code>financials</code></td>
+            <td><span class="tag tag-red">conversations · proposals · calendar</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout green" style="margin-top:20px;">
+      <div class="callout-title">✅ Implementation Note</div>
+      <p>The <code>dataScope</code> config is enforced inside a wrapper utility like <code>lib/db/scoped-query.ts</code>. When any agent calls <code>scopedQuery(agentName, collection, filter)</code>, the wrapper checks the allowlist and throws a security error if the collection is not permitted — <strong>before</strong> the MongoDB query runs.</p>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- SECTION 6: CODE SPEC -->
+  <div class="section">
+    <div class="section-label">06 · Code Spec</div>
+    <h2 class="section-title">Enforcement: Scoped Query Middleware</h2>
+
+    <pre><span class="cm">// lib/db/scoped-query.ts</span>
+
+<span class="kw">const</span> AGENT_SCOPES = {
+  PricingAgent:    { read: [<span class="str">'listings'</span>, <span class="str">'calendar'</span>, <span class="str">'market_templates'</span>], write: [<span class="str">'proposals'</span>] },
+  GuestAgent:      { read: [<span class="str">'conversations'</span>, <span class="str">'reservations'</span>],          write: [<span class="str">'conversations'</span>] },
+  GuardrailAgent:  { read: [<span class="str">'listings'</span>, <span class="str">'proposals'</span>],                   write: [<span class="str">'proposals'</span>] },
+  BenchmarkAgent:  { read: [<span class="str">'listings'</span>, <span class="str">'calendar'</span>, <span class="str">'reservations'</span>],   write: [<span class="str">'insights'</span>] },
+  FinanceModule:   { read: [<span class="str">'financials'</span>, <span class="str">'reservations'</span>, <span class="str">'listings'</span>],  write: [<span class="str">'financials'</span>] },
+};
+
+<span class="kw">export async function</span> scopedRead(agent: <span class="kw">keyof typeof</span> AGENT_SCOPES, collection: string, filter = {}) {
+  <span class="kw">const</span> allowed = AGENT_SCOPES[agent].read;
+  <span class="kw">if</span> (!allowed.includes(collection)) {
+    <span class="kw">throw new</span> Error(<span class="str">`[ScopedQuery] ${agent} is not allowed to read '${collection}'`</span>);
+  }
+  <span class="kw">return</span> db.collection(collection).find(filter).toArray();
+}
+
+<span class="kw">export async function</span> scopedWrite(agent: <span class="kw">keyof typeof</span> AGENT_SCOPES, collection: string, doc: object) {
+  <span class="kw">const</span> allowed = AGENT_SCOPES[agent].write;
+  <span class="kw">if</span> (!allowed.includes(collection)) {
+    <span class="kw">throw new</span> Error(<span class="str">`[ScopedQuery] ${agent} is not allowed to write to '${collection}'`</span>);
+  }
+  <span class="kw">return</span> db.collection(collection).insertOne(doc);
+}</pre>
+  </div>
+
+  <hr/>
+
+  <!-- SECTION 7: ONBOARDING STATE -->
+  <div class="section">
+    <div class="section-label">07 · Data Model Addition</div>
+    <h2 class="section-title">Onboarding State in Organization Model</h2>
+    <p class="section-desc">We need to add an <code>onboarding</code> field to the Organization schema to track wizard progress and persist selected properties before activation.</p>
+
+    <pre><span class="cm">// Addition to IOrganization interface</span>
+onboarding: {
+  step: <span class="str">'connect'</span> | <span class="str">'select'</span> | <span class="str">'market'</span> | <span class="str">'strategy'</span> | <span class="str">'complete'</span>;
+  hostawayAccountId?: string;
+  selectedListingIds: string[];   <span class="cm">// Properties the user checked in Step 2</span>
+  activatedListingIds: string[];  <span class="cm">// Properties where full sync completed</span>
+  completedAt?: Date;
+};</pre>
+
+    <div class="callout blue" style="margin-top:20px;">
+      <div class="callout-title">💡 Why track onboarding steps?</div>
+      <p>If a user drops off at Step 3, the next login resumes the wizard from Step 3 — they don't have to re-enter their API key or re-select their properties. This is a major UX improvement over re-starting from scratch.</p>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- SECTION 8: NEXT STEPS -->
+  <div class="section">
+    <div class="section-label">08 · Implementation Roadmap</div>
+    <h2 class="section-title">Build Order</h2>
+
+    <div class="card" style="overflow:auto;">
+      <table class="spec-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Task</th>
+            <th>File</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>Add <code>onboarding</code> field to Organization schema</td>
+            <td><code>lib/db/models/Organization.ts</code></td>
+            <td><span class="tag tag-amber">Pending</span></td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>Build the 5-step Onboarding Wizard UI component</td>
+            <td><code>components/onboarding/wizard.tsx</code></td>
+            <td><span class="tag tag-amber">Pending</span></td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Create Hostaway "Slim Fetch" API (listing names + IDs only)</td>
+            <td><code>api/hostaway/metadata/route.ts</code></td>
+            <td><span class="tag tag-amber">Pending</span></td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>Create <code>scopedQuery</code> middleware for Agent isolation</td>
+            <td><code>lib/db/scoped-query.ts</code></td>
+            <td><span class="tag tag-amber">Pending</span></td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td>Refactor PricingAgent to use <code>scopedRead</code></td>
+            <td><code>lib/engine/pipeline.ts</code></td>
+            <td><span class="tag tag-amber">Pending</span></td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td>Refactor GuestAgent to use <code>scopedRead</code></td>
+            <td><code>api/v1/guests/*</code></td>
+            <td><span class="tag tag-amber">Pending</span></td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td>Register Hostaway webhooks on "Go Live" step</td>
+            <td><code>api/hostaway/webhooks/route.ts</code></td>
+            <td><span class="tag tag-amber">Pending</span></td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td>Redirect post-sign-up to Wizard if <code>onboarding.step !== 'complete'</code></td>
+            <td><code>middleware.ts</code></td>
+            <td><span class="tag tag-amber">Pending</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="text-align:center;padding:40px 0;color:var(--text3);font-size:12px;">
+    PriceOS · Architecture Spec v1.0 · Confidential
+  </div>
+</div>
+</body>
+</html>

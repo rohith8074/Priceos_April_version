@@ -1,8 +1,23 @@
 import { connectDB, InventoryMaster, MarketEvent, Listing } from "@/lib/db";
 import { MarketIntelligenceClient } from "./market-client";
+import { getSession } from "@/lib/auth/server";
+import mongoose from "mongoose";
 
 export default async function MarketPage() {
+  const session = await getSession();
+  if (!session?.orgId) {
+    return (
+      <MarketIntelligenceClient
+        events={[]}
+        occupancyPct={0}
+        avgNightly={0}
+        listings={[]}
+      />
+    );
+  }
+
   await connectDB();
+  const orgId = new mongoose.Types.ObjectId(session.orgId);
 
   const today = new Date();
   const todayStr = today.toISOString().split("T")[0];
@@ -12,6 +27,7 @@ export default async function MarketPage() {
 
   // Fetch upcoming market events (next 90 days)
   const events = await MarketEvent.find({
+    orgId,
     startDate: { $lte: plus90Str },
     endDate: { $gte: todayStr },
   })
@@ -25,7 +41,7 @@ export default async function MarketPage() {
   const plus30Str = plus30.toISOString().split("T")[0];
 
   const occupancyResult = await InventoryMaster.aggregate([
-    { $match: { date: { $gte: todayStr, $lte: plus30Str } } },
+    { $match: { orgId, date: { $gte: todayStr, $lte: plus30Str } } },
     {
       $group: {
         _id: null,
@@ -43,7 +59,7 @@ export default async function MarketPage() {
   const avgNightly = Math.round(Number(occ.avgPrice) || 0);
 
   // Fetch listings for benchmark selector
-  const listingDocs = await Listing.find({ isActive: true })
+  const listingDocs = await Listing.find({ orgId, isActive: true })
     .select("_id name currencyCode")
     .lean();
 

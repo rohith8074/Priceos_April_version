@@ -18,6 +18,7 @@ import {
     GUARDRAILS_AGENT_ID,
 } from "@/lib/agents/constants";
 import mongoose from "mongoose";
+import { syncEventFeeds } from "@/lib/events/event-feed-syncer";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +104,20 @@ export async function POST(req: NextRequest) {
         const template = await MarketTemplate.findOne({ marketCode }).lean() as any;
         const templateCity = template?.eventApiConfig?.ticketmasterCity || template?.displayName || marketCode;
         const templateKeywords: string[] = template?.eventApiConfig?.customKeywords || [];
+
+        // 1b. Sync live events from Ticketmaster, Eventbrite, DTCM, RSS
+        console.log(`📡 Syncing live event feeds for ${templateCity}...`);
+        let eventSyncResult;
+        try {
+            eventSyncResult = await syncEventFeeds(orgId, 90, templateCity);
+            console.log(
+                `📡 Event sync done — inserted: ${eventSyncResult.inserted}, ` +
+                `updated: ${eventSyncResult.updated}, sources: ${JSON.stringify(eventSyncResult.sources)}`
+            );
+        } catch (syncErr) {
+            console.warn("⚠️ Event feed sync failed (non-blocking):", syncErr);
+            eventSyncResult = { inserted: 0, updated: 0, skipped: 0, sources: {}, errors: [String(syncErr)] };
+        }
 
         // 2. Build search context — use area if set, fall back to template city
         const searchClusters = area || templateCity;
@@ -298,6 +313,12 @@ export async function POST(req: NextRequest) {
             guardrails: generatedGuardrails,
             calendarMetrics: { totalDays, bookedDays, blockedDays, bookableDays, occupancy },
             reservationsCount: resRows.length,
+            liveEventSync: {
+                inserted: eventSyncResult.inserted,
+                updated: eventSyncResult.updated,
+                sources: eventSyncResult.sources,
+                errors: eventSyncResult.errors,
+            },
         });
     } catch (error) {
         console.error("❌ Market Analysis failed:", error);

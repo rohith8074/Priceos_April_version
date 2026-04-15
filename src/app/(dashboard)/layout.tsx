@@ -1,5 +1,4 @@
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { AgentDrawer } from "@/components/layout/agent-drawer";
 import { AgentCacheProvider } from "@/lib/cache/agent-cache-provider";
 import { InactivityMonitor } from "@/components/auth/inactivity-wrapper";
 import { ApprovalGuard } from "@/components/auth/approval-guard";
@@ -30,8 +29,6 @@ export default function DashboardLayout({
               {children}
             </main>
 
-            {/* Column 3: Agent Drawer (360px collapsible) */}
-            <AgentDrawer />
           </div>
         </AgentCacheProvider>
       </div>

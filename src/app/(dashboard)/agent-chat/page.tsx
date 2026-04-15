@@ -1,4 +1,8 @@
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import mongoose from "mongoose";
 import { connectDB, Listing, InventoryMaster } from "@/lib/db";
+import { verifyAccessToken } from "@/lib/auth/jwt";
 import { ContextPanel } from "@/components/layout/context-panel";
 import { UnifiedChatInterface } from "@/components/chat/unified-chat-interface";
 import { SidebarTabbedView } from "@/components/layout/sidebar-tabbed-view";
@@ -6,6 +10,19 @@ import { RightSidebarLayout } from "@/components/layout/right-sidebar-layout";
 import { OnboardingTour } from "@/components/chat/onboarding-tour";
 
 export default async function DashboardPage() {
+  // ── Auth + orgId ──────────────────────────────────────────────────────────
+  const cookieStore = await cookies();
+  const token = cookieStore.get("priceos-session")?.value;
+  if (!token) redirect("/login");
+
+  let orgObjectId: mongoose.Types.ObjectId;
+  try {
+    const payload = verifyAccessToken(token!);
+    orgObjectId = new mongoose.Types.ObjectId(payload.orgId);
+  } catch {
+    redirect("/login");
+  }
+
   await connectDB();
 
   const today = new Date();
@@ -15,12 +32,12 @@ export default async function DashboardPage() {
   plus14.setDate(plus14.getDate() + 14);
   const plus14Str = plus14.toISOString().split("T")[0];
 
-  // 1. Fetch all listings
-  const allListings = await Listing.find().lean();
+  // Fetch only THIS org's listings
+  const allListings = await Listing.find({ orgId: orgObjectId! }).lean();
 
-  // 2. Aggregate occupancy/avg_price for next 14 days per listing
+  // Aggregate occupancy/avg_price scoped to orgId
   const statsResult = await InventoryMaster.aggregate([
-    { $match: { date: { $gte: todayStr, $lte: plus14Str } } },
+    { $match: { orgId: orgObjectId!, date: { $gte: todayStr, $lte: plus14Str } } },
     {
       $group: {
         _id: "$listingId",
@@ -35,13 +52,12 @@ export default async function DashboardPage() {
       },
     },
   ]);
-  // Compute occupancy in JS (DocumentDB doesn't support $round)
+
   statsResult.forEach((s: any) => {
     const avail = s.totalDays - s.blockedDays;
     s.occupancy = avail > 0 ? Math.round((s.bookedDays / avail) * 100) : 0;
   });
 
-  // 3. Merge stats into listing objects
   const plainListings = JSON.parse(JSON.stringify(allListings));
   const propertiesWithMetrics = plainListings.map((listing: any) => {
     const listingIdStr = String(listing._id);
@@ -66,12 +82,10 @@ export default async function DashboardPage() {
         <ContextPanel properties={propertiesWithMetrics} />
       </div>
 
-      {/* Center Chat Panel */}
       <div className="flex-[2] min-w-[500px] border-r flex flex-col h-full bg-background relative z-10 transition-all duration-300">
         <UnifiedChatInterface properties={propertiesWithMetrics} />
       </div>
 
-      {/* Right Side Stack: Events Table on top, Sync status below */}
       <div id="tour-sidebar">
         <RightSidebarLayout>
           <SidebarTabbedView />

@@ -62,6 +62,7 @@ export async function runPipeline(
             const lookbackStartStr = dateStr(lookbackStart);
             const todayStr = dateStr(new Date());
             const lookbackDocs = await InventoryMaster.find({
+                orgId: listing.orgId,
                 listingId: lid,
                 date: { $gte: lookbackStartStr, $lte: todayStr },
             }).select("status").lean();
@@ -146,6 +147,7 @@ export async function runPipeline(
         const endDate = addDays(today, 364);
 
         const existingInventory = await InventoryMaster.find({
+            orgId: listing.orgId,
             listingId: lid,
             date: { $gte: dateStr(today) },
         }).sort({ date: 1 }).lean();
@@ -177,7 +179,7 @@ export async function runPipeline(
 
             bulkOps.push({
                 updateOne: {
-                    filter: { listingId: lid, date: ds },
+                    filter: { orgId: listing.orgId, listingId: lid, date: ds },
                     update: {
                         $set: {
                             orgId: listing.orgId,

@@ -71,7 +71,8 @@ export async function POST(req: Request) {
             orgId, 
             email: org.email, 
             role: org.role,
-            isApproved: !!org.isApproved 
+            isApproved: !!org.isApproved,
+            onboardingStep: (org as any).onboarding?.step ?? "complete",
         });
         const refreshToken = signRefreshToken(orgId);
 

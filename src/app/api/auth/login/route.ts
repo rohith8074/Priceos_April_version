@@ -38,12 +38,20 @@ export async function POST(req: NextRequest) {
       return apiError("UNAUTHORIZED", "Invalid credentials", 401);
     }
 
+    // Determine onboarding step:
+    // - If the field exists → use it
+    // - If missing AND no Hostaway key → user needs to onboard ("connect")
+    // - If missing AND Hostaway key is set → legacy user already set up ("complete")
+    const onboardingStep = org.onboarding?.step
+      ?? (org.hostawayApiKey ? "complete" : "connect");
+
     const accessToken = signAccessToken({
       userId: org._id.toString(),
       orgId:  org._id.toString(),
       email:  org.email,
       role:   org.role,
       isApproved: org.isApproved,
+      onboardingStep,
     });
     const refreshToken = signRefreshToken(org._id.toString());
 
@@ -52,14 +60,16 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json({
       success: true,
       pending: !org.isApproved,
+      needsOnboarding: org.isApproved && onboardingStep !== "complete",
       user: {
-        id:         org._id.toString(),
-        email:      org.email,
-        name:       org.fullName || org.name,
-        role:       org.role,
-        orgId:      org._id.toString(),
-        plan:       org.plan,
-        isApproved: org.isApproved,
+        id:             org._id.toString(),
+        email:          org.email,
+        name:           org.fullName || org.name,
+        role:           org.role,
+        orgId:          org._id.toString(),
+        plan:           org.plan,
+        isApproved:     org.isApproved,
+        onboardingStep,
       },
     });
 

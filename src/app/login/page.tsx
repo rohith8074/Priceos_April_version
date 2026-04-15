@@ -41,6 +41,11 @@ function SignInForm() {
                 router.push("/pending-approval");
                 return;
             }
+            // If onboarding not yet complete, redirect to wizard
+            if (data.needsOnboarding) {
+                router.push("/onboarding");
+                return;
+            }
             router.push("/dashboard");
             router.refresh();
         } catch {

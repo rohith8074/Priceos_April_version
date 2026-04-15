@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { connectDB, HostawayConversation, Listing } from "@/lib/db";
+import { connectDB, HostawayConversation, Listing, Organization } from "@/lib/db";
 import { getSession } from "@/lib/auth/server";
 import mongoose from "mongoose";
 
@@ -32,9 +32,13 @@ export async function GET(request: Request) {
         await connectDB();
 
         const session = await getSession();
-        const orgId = session?.orgId
-            ? new mongoose.Types.ObjectId(session.orgId)
-            : new mongoose.Types.ObjectId();
+        if (!session?.orgId) {
+            return NextResponse.json(
+                { error: "Unauthorized", reasonCode: "SESSION_REQUIRED" },
+                { status: 401 }
+            );
+        }
+        const orgId = new mongoose.Types.ObjectId(session.orgId);
 
         let listingObjectId: mongoose.Types.ObjectId;
         try {
@@ -43,9 +47,16 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: "Invalid listingId" }, { status: 400 });
         }
 
-        const token = process.env.Hostaway_Authorization_token;
+        const org = await Organization.findById(orgId).select("hostawayApiKey").lean();
+        const token = org?.hostawayApiKey;
         if (!token) {
-            throw new Error("Hostaway_Authorization_token is not set in .env");
+            return NextResponse.json(
+                {
+                    error: "Hostaway API key not configured for this organization",
+                    reasonCode: "HOSTAWAY_KEY_MISSING",
+                },
+                { status: 400 }
+            );
         }
 
         const listing = await Listing.findById(listingObjectId).select("hostawayId").lean();

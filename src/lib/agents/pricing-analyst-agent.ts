@@ -1,4 +1,4 @@
-import { connectDB, InventoryMaster, Listing } from "@/lib/db";
+import { connectDB, InventoryMaster, Listing, Organization } from "@/lib/db";
 import { format, eachDayOfInterval } from "date-fns";
 import { createEventIntelligenceAgent } from "./event-intelligence-agent";
 import mongoose from "mongoose";
@@ -133,11 +133,27 @@ export class PricingAnalystAgent {
     return { proposals, summary, totalProposals, averageIncrease };
   }
 
-  async saveProposals(analysisResult: AnalysisResult): Promise<string[]> {
+  async saveProposals(analysisResult: AnalysisResult, orgId?: string): Promise<string[]> {
     await connectDB();
+
+    // Resolve auto-approve threshold from org guardrails (default: 5%)
+    let autoApproveThreshold = 5;
+    if (orgId) {
+      const org = await Organization.findById(new mongoose.Types.ObjectId(orgId))
+        .select("settings.guardrails.autoApproveThreshold")
+        .lean();
+      if (org?.settings?.guardrails?.autoApproveThreshold != null) {
+        autoApproveThreshold = org.settings.guardrails.autoApproveThreshold;
+      }
+    }
+
     const proposalIds: string[] = [];
 
     for (const proposal of analysisResult.proposals) {
+      // Auto-approve if the absolute change is within the org's threshold
+      const proposalStatus: "pending" | "approved" =
+        Math.abs(proposal.changePct) <= autoApproveThreshold ? "approved" : "pending";
+
       const updated = await InventoryMaster.findOneAndUpdate(
         {
           listingId: new mongoose.Types.ObjectId(proposal.listingId),
@@ -147,7 +163,7 @@ export class PricingAnalystAgent {
           $set: {
             proposedPrice: proposal.proposedPrice,
             changePct: proposal.changePct,
-            proposalStatus: "pending",
+            proposalStatus,
             reasoning: proposal.reasoning,
           },
         },
@@ -158,6 +174,12 @@ export class PricingAnalystAgent {
         proposalIds.push(updated._id.toString());
       }
     }
+
+    console.log(
+      `[PricingAnalyst] Saved ${proposalIds.length} proposals — ` +
+      `auto-approve threshold: ${autoApproveThreshold}%, ` +
+      `auto-approved: ${analysisResult.proposals.filter(p => Math.abs(p.changePct) <= autoApproveThreshold).length}`
+    );
 
     return proposalIds;
   }
@@ -199,11 +221,15 @@ export class PricingAnalystAgent {
   }
 
   async generatePortfolioProposals(
+    orgId: string,
     startDate: Date,
     endDate: Date
   ): Promise<Map<string, AnalysisResult>> {
     await connectDB();
-    const allListings = await Listing.find({ isActive: true }).lean();
+    const allListings = await Listing.find({ 
+      isActive: true,
+      orgId: new mongoose.Types.ObjectId(orgId)
+    }).lean();
     const results = new Map<string, AnalysisResult>();
 
     for (const listing of allListings) {

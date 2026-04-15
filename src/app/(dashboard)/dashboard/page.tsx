@@ -1,7 +1,26 @@
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import mongoose from "mongoose";
 import { connectDB, Listing, InventoryMaster, Reservation } from "@/lib/db";
+import { verifyAccessToken } from "@/lib/auth/jwt";
 import { OverviewClient } from "./overview-client";
 
 export default async function OverviewPage() {
+  // ── 1. Identify the logged-in user's org ─────────────────────────────────
+  const cookieStore = await cookies();
+  const token = cookieStore.get("priceos-session")?.value;
+  if (!token) redirect("/login");
+
+  let orgId: string;
+  try {
+    const payload = verifyAccessToken(token!);
+    orgId = payload.orgId;
+  } catch {
+    redirect("/login");
+  }
+
+  const orgObjectId = new mongoose.Types.ObjectId(orgId!);
+
   await connectDB();
 
   const today = new Date();
@@ -11,12 +30,12 @@ export default async function OverviewPage() {
   plus29.setDate(plus29.getDate() + 29);
   const plus29Str = plus29.toISOString().split("T")[0];
 
-  // 1. Fetch all listings
-  const allListings = await Listing.find().lean();
+  // ── 2. Fetch only THIS org's listings ─────────────────────────────────────
+  const allListings = await Listing.find({ orgId: orgObjectId }).lean();
 
-  // 2. Aggregate occupancy/avg_price/revenue per listing for next 30 days
+  // ── 3. Aggregate stats scoped to orgId ────────────────────────────────────
   const statsResult = await InventoryMaster.aggregate([
-    { $match: { date: { $gte: todayStr, $lte: plus29Str } } },
+    { $match: { orgId: orgObjectId, date: { $gte: todayStr, $lte: plus29Str } } },
     {
       $group: {
         _id: "$listingId",
@@ -34,31 +53,32 @@ export default async function OverviewPage() {
       },
     },
   ]);
-  // Compute occupancy in JS (DocumentDB doesn't support $round)
+
   statsResult.forEach((s: any) => {
     const avail = s.totalDays - s.blockedDays;
     s.occupancy = avail > 0 ? Math.round((s.bookedDays / avail) * 100) : 0;
   });
 
-  // 3. Total historical revenue from confirmed reservations
+  // ── 4. Historical revenue scoped to orgId ─────────────────────────────────
   const historicalResult = await Reservation.aggregate([
-    { $match: { status: "confirmed" } },
+    { $match: { orgId: orgObjectId, status: "confirmed" } },
     { $group: { _id: null, total: { $sum: "$totalPrice" } } },
   ]);
   const totalHistoricalRevenue = Number(historicalResult[0]?.total || 0);
 
-  // 4. Calendar data for next 30 days
+  // ── 5. Calendar + reservations scoped to orgId ────────────────────────────
   const calDocs = await InventoryMaster.find({
+    orgId: orgObjectId,
     date: { $gte: todayStr, $lte: plus29Str },
   }).lean();
 
-  // 5. Reservations overlapping next 30 days
   const resDocs = await Reservation.find({
+    orgId: orgObjectId,
     checkIn: { $lte: plus29Str },
     checkOut: { $gte: todayStr },
   }).lean();
 
-  // 6. Build per-listing metrics
+  // ── 6. Build per-listing metrics ──────────────────────────────────────────
   let totalPortfolioRevenue = 0;
   let totalOccupancySum = 0;
   let totalAvgPriceSum = 0;

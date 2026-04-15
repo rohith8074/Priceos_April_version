@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB, InventoryMaster, Listing, Reservation } from "@/lib/db";
+import { verifyAccessToken } from "@/lib/auth/jwt";
 import mongoose from "mongoose";
 
 export async function GET(req: NextRequest) {
     try {
+        // ── Auth + orgId scoping ───────────────────────────────────────────────
+        const token = req.cookies.get("priceos-session")?.value;
+        if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        let orgObjectId: mongoose.Types.ObjectId;
+        try {
+            const payload = verifyAccessToken(token);
+            orgObjectId = new mongoose.Types.ObjectId(payload.orgId);
+        } catch {
+            return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+        }
+
         const { searchParams } = new URL(req.url);
         const listingId = searchParams.get("listingId");
         const from = searchParams.get("from");
@@ -20,9 +32,15 @@ export async function GET(req: NextRequest) {
 
         const lid = new mongoose.Types.ObjectId(listingId);
 
-        // Aggregate metrics from InventoryMaster
+        // Verify this listing belongs to the current org (RLS check)
+        const listingExists = await Listing.exists({ _id: lid, orgId: orgObjectId });
+        if (!listingExists) {
+            return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+        }
+
+        // Aggregate metrics
         const [agg] = await InventoryMaster.aggregate([
-            { $match: { listingId: lid, date: { $gte: from, $lte: to } } },
+            { $match: { orgId: orgObjectId, listingId: lid, date: { $gte: from, $lte: to } } },
             {
                 $group: {
                     _id: null,
@@ -47,9 +65,8 @@ export async function GET(req: NextRequest) {
         let blockedDays = Number(agg?.blockedDays || 0);
         let avgPriceVal = agg?.avgPrice ? Number(agg.avgPrice) : 0;
 
-        // Fallback to listing base price if no inventory data
         if (avgPriceVal === 0) {
-            const prop = await Listing.findById(lid).select("price").lean();
+            const prop = await Listing.findOne({ _id: lid, orgId: orgObjectId }).select("price").lean();
             if (prop) avgPriceVal = Number(prop.price);
         }
 
@@ -57,8 +74,8 @@ export async function GET(req: NextRequest) {
         const occupancy =
             bookableDays > 0 ? Math.round((bookedDays / bookableDays) * 100) : 0;
 
-        // Calendar days
         const calendarDocs = await InventoryMaster.find({
+            orgId: orgObjectId,
             listingId: lid,
             date: { $gte: from, $lte: to },
         })
@@ -72,8 +89,8 @@ export async function GET(req: NextRequest) {
             price: Number(d.currentPrice),
         }));
 
-        // Reservations overlapping the range
         const resDocs = await Reservation.find({
+            orgId: orgObjectId,
             listingId: lid,
             checkIn: { $lte: to },
             checkOut: { $gte: from },

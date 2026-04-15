@@ -3,6 +3,7 @@ import { ContextPanel } from "@/components/layout/context-panel";
 import { GuestChatInterface } from "@/components/chat/guest-chat-interface";
 import { SidebarTabbedView } from "@/components/layout/sidebar-tabbed-view";
 import { RightSidebarLayout } from "@/components/layout/right-sidebar-layout";
+import { AriaGuestPanel } from "@/components/chat/aria-guest-panel";
 
 export const metadata = {
     title: "Guest Inbox | PriceOS Intelligence",
@@ -80,6 +81,9 @@ export default async function GuestChatPage() {
                     <SidebarTabbedView />
                 </RightSidebarLayout>
             </div>
+
+            {/* Aria floating chat panel */}
+            <AriaGuestPanel />
         </div>
     );
 }

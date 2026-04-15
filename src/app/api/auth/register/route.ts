@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { connectDB, Organization, MarketTemplate } from "@/lib/db";
+import { connectDB, Organization, MarketTemplate, User } from "@/lib/db";
 import { signAccessToken } from "@/lib/auth/jwt";
 import { COOKIE_NAME } from "@/lib/auth/server";
 
@@ -25,6 +25,17 @@ export async function POST(req: NextRequest) {
 
     const passwordHash = await bcrypt.hash(password, 12);
 
+    // Duplicate user record to 'users' collection to maintain auth synchronization
+    const user = await User.create({
+      name: name,
+      email: email.toLowerCase(),
+      passwordHash,
+      fullName: name,
+      role: "owner",
+      isApproved: false,
+      plan: "starter"
+    });
+
     const org = await Organization.create({
       name: orgName || name,
       email: email.toLowerCase(),
@@ -36,6 +47,11 @@ export async function POST(req: NextRequest) {
       currency: template?.currency || "AED",
       timezone: template?.timezone || "Asia/Dubai",
       plan: "starter",
+      onboarding: {
+        step: "connect",
+        selectedListingIds: [],
+        activatedListingIds: [],
+      },
       settings: {
         guardrails: {
           maxSingleDayChangePct: template?.guardrailDefaults?.maxSingleDayChangePct ?? 15,
@@ -54,6 +70,7 @@ export async function POST(req: NextRequest) {
       email: org.email,
       role: org.role,
       isApproved: false,
+      onboardingStep: "connect",
     });
 
     const response = NextResponse.json({

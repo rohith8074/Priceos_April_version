@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PriceOS AI Architecture - Data Access Map</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --surface-color: rgba(255, 255, 255, 0.03);
+            --surface-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-primary: #3b82f6;
+            --accent-secondary: #8b5cf6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --neutral: #64748b;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        header {
+            padding: 4rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--surface-border);
+            background: rgba(11, 15, 25, 0.7);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0 0 1rem 0;
+            background: linear-gradient(135deg, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.125rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        .intro-box {
+            background: var(--surface-color);
+            border: 1px solid var(--surface-border);
+            border-left: 4px solid var(--accent-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 4rem;
+        }
+
+        .intro-box p {
+            margin: 0;
+            font-size: 1.05rem;
+            color: var(--text-secondary);
+        }
+
+        h3.section-header {
+            font-size: 1.75rem;
+            margin: 3rem 0 2rem 0;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--surface-border);
+            color: var(--text-primary);
+        }
+
+        /* DB Index Grid */
+        .db-index-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 4rem;
+        }
+
+        .db-table-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--surface-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            position: relative;
+        }
+
+        .db-table-card .collection-name {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            color: #38bdf8;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .db-table-desc {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .access-badge {
+            align-self: flex-start;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .access-yes {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .access-no {
+            background: rgba(100, 116, 139, 0.1);
+            color: var(--text-secondary);
+            border: 1px solid rgba(100, 116, 139, 0.2);
+        }
+
+        /* Agents Grid */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+            gap: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .agent-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--surface-border);
+            border-radius: 16px;
+            padding: 2.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .agent-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .agent-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .agent-card:hover::before {
+            opacity: 1;
+        }
+
+        .agent-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            gap: 1rem;
+        }
+
+        .agent-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .agent-title {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .agent-desc {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px dashed var(--surface-border);
+            flex-grow: 1;
+        }
+
+        .db-header {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--accent-primary);
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .db-collections {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .collection {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            padding: 1rem;
+            border: 1px solid var(--surface-border);
+        }
+
+        .collection-name {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            color: #38bdf8;
+            font-size: 0.9rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .collection.write-mode .collection-name {
+            color: #fca5a5;
+        }
+
+        .collection-name::after {
+            content: '(Read Only)';
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            font-family: 'Inter', sans-serif;
+            letter-spacing: 0;
+        }
+
+        .collection.write-mode .collection-name::after {
+            content: '(Write Access)';
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+        }
+
+        .fields-list {
+            margin: 0;
+            padding-left: 1.2rem;
+            font-size: 0.85rem;
+            color: #cbd5e1;
+        }
+
+        .fields-list li {
+            margin-bottom: 0.3rem;
+        }
+
+        .fields-list li span {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .badge {
+            align-self: flex-start;
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: rgba(245, 158, 11, 0.1);
+            color: var(--warning);
+            margin-top: 1.5rem;
+        }
+        
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>PriceOS Intelligence Architecture Complete Map</h1>
+        <p class="subtitle">Complete technical specification of exactly which MongoDB collections are read (or written) by each of the 10 System Agents to generate accurate, real-world behaviours.</p>
+    </header>
+
+    <div class="container">
+        
+        <div class="intro-box">
+            <p><strong>Security Context:</strong> All database queries made by these agents are tightly scoped via the <code>orgId</code> of the currently authenticated user. All inference-time chat agents retrieve context strictly via <code>db-context-builder.ts</code>, preventing multi-tenant data bleed. System and infrastructure tables are completely sealed off from AI context.</p>
+        </div>
+
+
+        <!-- DATABASE COLLECTIONS OVERVIEW -->
+        <h3 class="section-header">Database Collections Index</h3>
+        
+        <div class="db-index-grid">
+            
+            <!-- Accessible Tables -->
+            <div class="db-table-card">
+                <div class="collection-name">Listing</div>
+                <div class="db-table-desc">Core property metadata, physical attributes, limits, and locations.</div>
+                <span class="access-badge access-yes">Agent Access Needed</span>
+            </div>
+            
+            <div class="db-table-card">
+                <div class="collection-name">InventoryMaster</div>
+                <div class="db-table-desc">The 365-day calendar. Contains real prices, availability statuses, and pricing proposals per day.</div>
+                <span class="access-badge access-yes">Agent Access Needed</span>
+            </div>
+
+            <div class="db-table-card">
+                <div class="collection-name">Reservation</div>
+                <div class="db-table-desc">Contains booked stays, financial payouts, guest identifiers, and status pipelines.</div>
+                <span class="access-badge access-yes">Agent Access Needed</span>
+            </div>
+
+            <div class="db-table-card">
+                <div class="collection-name">MarketEvent</div>
+                <div class="db-table-desc">Local holidays, conferences, and massive impacts requiring predictive surges.</div>
+                <span class="access-badge access-yes">Agent Access Needed</span>
+            </div>
+
+            <div class="db-table-card">
+                <div class="collection-name">PricingRule</div>
+                <div class="db-table-desc">User-defined rules restricting AI behaviour such as DOW buffers, last-minute discounts.</div>
+                <span class="access-badge access-yes">Agent Access Needed</span>
+            </div>
+
+            <div class="db-table-card">
+                <div class="collection-name">Insight</div>
+                <div class="db-table-desc">Automated alerts logged by Anomaly detectors when catastrophic problems are detected.</div>
+                <span class="access-badge access-yes">Agent Access Needed</span>
+            </div>
+
+            <div class="db-table-card">
+                <div class="collection-name">BenchmarkData</div>
+                <div class="db-table-desc">Scraped competitor positioning percentiles. OTA external benchmarks.</div>
+                <span class="access-badge access-yes">Agent Access Needed</span>
+            </div>
+
+            <div class="db-table-card">
+                <div class="collection-name">HostawayConversation / GuestSummary</div>
+                <div class="db-table-desc">Actual historic text threads mapped backwards from the Booking engines to handle guest inbox.</div>
+                <span class="access-badge access-yes">Agent Access Needed</span>
+            </div>
+
+            <!-- Inaccessible / Internal Tables -->
+            <div class="db-table-card">
+                <div class="collection-name">Organization</div>
+                <div class="db-table-desc">Top-level tenant authentication and financial routing. Strictly for internal SaaS operations.</div>
+                <span class="access-badge access-no">System Internal Only</span>
+            </div>
+
+            <div class="db-table-card">
+                <div class="collection-name">User</div>
+                <div class="db-table-desc">Sub-auth level login objects and roles strictly mapping the authentication gateway.</div>
+                <span class="access-badge access-no">System Internal Only</span>
+            </div>
+
+            <div class="db-table-card">
+                <div class="collection-name">MarketTemplate</div>
+                <div class="db-table-desc">Globally pre-defined system constants for generating defaults during SaaS onboarding.</div>
+                <span class="access-badge access-no">System Internal Only</span>
+            </div>
+
+            <div class="db-table-card">
+                <div class="collection-name">ChatMessage</div>
+                <div class="db-table-desc">Logs internal agent chat histories purely for audit/UI rebuilding.</div>
+                <span class="access-badge access-no">System Internal Only</span>
+            </div>
+
+            <div class="db-table-card">
+                <div class="collection-name">EngineRun / SourceRun</div>
+                <div class="db-table-desc">Cron job diagnostics, tracking metrics, speeds, and execution health.</div>
+                <span class="access-badge access-no">System Internal Only</span>
+            </div>
+
+            <div class="db-table-card">
+                <div class="collection-name">Source / Detector</div>
+                <div class="db-table-desc">Internal event syncing and webhook hooks triggers infrastructure.</div>
+                <span class="access-badge access-no">System Internal Only</span>
+            </div>
+
+        </div>
+
+
+        <!-- AGENTS SPECIFICATION -->
+        <h3 class="section-header">Agent Data Profiles</h3>
+        
+        <div class="grid">
+            
+            <!-- 1: CRO Router -->
+            <div class="agent-card">
+                <div class="agent-header">
+                    <div class="agent-icon">🧠</div>
+                    <h2 class="agent-title">1. CRO — Aria (Orchestrator)</h2>
+                </div>
+                <p class="agent-desc">The main user-facing AI manager. Receives the initial chat prompt, identifies the target property, interprets intent, and routes to sub-agents.</p>
+                
+                <div class="db-header">Database Access Needs</div>
+                <div class="db-collections">
+                    <div class="collection">
+                        <div class="collection-name">Listing</div>
+                        <ul class="fields-list">
+                            <li><code>name</code> <span>(Matches property questions context)</span></li>
+                            <li><code>city</code> / <code>area</code> <span>(Geographic context)</span></li>
+                            <li><code>isActive</code> <span>(Filters out inactive properties)</span></li>
+                            <li><code>price</code> <span>(High-level base configuration reference)</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="badge">Inference-Time Context</span>
+            </div>
+
+            <!-- 2: Pricing Optimizer -->
+            <div class="agent-card">
+                <div class="agent-header">
+                    <div class="agent-icon">📉</div>
+                    <h2 class="agent-title">2. Pricing Optimizer</h2>
+                </div>
+                <p class="agent-desc">The primary mathematical agent responsible for analyzing inventory windows, calculating occupancy gaps, applying dynamic waterfall algorithms, and generating exact pricing recommendations.</p>
+                
+                <div class="db-header">Database Access Needs</div>
+                <div class="db-collections">
+                    <div class="collection">
+                        <div class="collection-name">InventoryMaster</div>
+                        <ul class="fields-list">
+                            <li><code>date</code> <span>(30 or 90 day lookahead)</span></li>
+                            <li><code>status</code> <span>(booked/blocked/available)</span></li>
+                            <li><code>currentPrice</code> <span>(Calculates deltas)</span></li>
+                        </ul>
+                    </div>
+                    <div class="collection write-mode">
+                        <div class="collection-name">InventoryMaster</div>
+                        <ul class="fields-list">
+                            <li><code>proposedPrice</code> <span>(Engine writes proposals here)</span></li>
+                            <li><code>reasoning</code> <span>(Generates why price changed)</span></li>
+                            <li><code>proposalStatus</code> <span>(Sets to 'pending' or 'approved')</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="badge">Background Worker Task</span>
+            </div>
+
+            <!-- 3: Booking Intelligence -->
+            <div class="agent-card">
+                <div class="agent-header">
+                    <div class="agent-icon">📅</div>
+                    <h2 class="agent-title">3. Booking Intelligence</h2>
+                </div>
+                <p class="agent-desc">Answers questions about historic pacing, channel breakdown, financial payout sizes, and revenue attribution across the portfolio.</p>
+                
+                <div class="db-header">Database Access Needs</div>
+                <div class="db-collections">
+                    <div class="collection">
+                        <div class="collection-name">Reservation</div>
+                        <ul class="fields-list">
+                            <li><code>status</code> <span>(Filter by "confirmed")</span></li>
+                            <li><code>checkIn</code> / <code>checkOut</code> <span>(Duration intersection)</span></li>
+                            <li><code>totalPrice</code> <span>(Revenue queries)</span></li>
+                            <li><code>guestName</code> <span>(Used for chat identity)</span></li>
+                            <li><code>channelName</code> <span>(Airbnb, Booking.com, VRBO)</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="badge">Inference-Time Context</span>
+            </div>
+
+            <!-- 4: Event Intelligence -->
+            <div class="agent-card">
+                <div class="agent-header">
+                    <div class="agent-icon">🎪</div>
+                    <h2 class="agent-title">4. Event Intelligence</h2>
+                </div>
+                <p class="agent-desc">Scans the local geography for holidays, public seasons, and mass events overlapping with unbooked calendar days to justify premium hikes.</p>
+                
+                <div class="db-header">Database Access Needs</div>
+                <div class="db-collections">
+                    <div class="collection">
+                        <div class="collection-name">MarketEvent</div>
+                        <ul class="fields-list">
+                            <li><code>name</code> <span>(Event moniker, e.g. "GITEX Global")</span></li>
+                            <li><code>startDate</code> / <code>endDate</code> <span>(Impact duration)</span></li>
+                            <li><code>impactLevel</code> <span>(critical/high/moderate)</span></li>
+                            <li><code>upliftPct</code> <span>(Required premium justification multiplier)</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="badge">Inference-Time Context</span>
+            </div>
+
+            <!-- 5: Adjustment Reviewer (PriceGuard) -->
+            <div class="agent-card">
+                <div class="agent-header">
+                    <div class="agent-icon">🛡️</div>
+                    <h2 class="agent-title">5. Adjustment Reviewer (PriceGuard)</h2>
+                </div>
+                <p class="agent-desc">Validates the optimizer's strategy by scanning against hard physical limits, last-minute discounts, floor ceilings, and strict user constraints.</p>
+                
+                <div class="db-header">Database Access Needs</div>
+                <div class="db-collections">
+                    <div class="collection">
+                        <div class="collection-name">PricingRule</div>
+                        <ul class="fields-list">
+                            <li><code>ruleType</code> <span>(DOW, LEAD_TIME, EVENT restrictions)</span></li>
+                            <li><code>priority</code> <span>(Application ordering logic)</span></li>
+                            <li><code>priceAdjPct</code> <span>(The exact percentage mod boundary)</span></li>
+                        </ul>
+                    </div>
+                    <div class="collection">
+                        <div class="collection-name">Listing</div>
+                        <ul class="fields-list">
+                            <li><code>priceFloor</code> <span>(Hard minimum)</span></li>
+                            <li><code>priceCeiling</code> <span>(Hard maximum)</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="badge">Background Worker Task</span>
+            </div>
+
+            <!-- 6: Competitor Scanner / Benchmark -->
+            <div class="agent-card">
+                <div class="agent-header">
+                    <div class="agent-icon">🕵️</div>
+                    <h2 class="agent-title">6. Competitor Scanner</h2>
+                </div>
+                <p class="agent-desc">Scrapes external API/OTA sources and correlates local competitor listing values (P25/P50/P75 percentiles) against your internal property pricing.</p>
+                
+                <div class="db-header">Database Access Needs</div>
+                <div class="db-collections">
+                    <div class="collection write-mode">
+                        <div class="collection-name">Listing</div>
+                        <ul class="fields-list">
+                            <li><code>benchmarkData</code> <span>(Updates competitive percentiles dynamically)</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="badge">Background Worker Task</span>
+            </div>
+
+            <!-- 7: Data Aggregator (Sync Agent) -->
+            <div class="agent-card">
+                <div class="agent-header">
+                    <div class="agent-icon">🔄</div>
+                    <h2 class="agent-title">7. Data Aggregator (PMS Sync)</h2>
+                </div>
+                <p class="agent-desc">Pulls in heavy calendar logic, check-ins, messages, and raw physical reservation creations down from the Hostaway Property Management System.</p>
+                
+                <div class="db-header">Database Access Needs</div>
+                <div class="db-collections">
+                    <div class="collection write-mode">
+                        <div class="collection-name">Reservation</div>
+                        <ul class="fields-list">
+                            <li><code>*</code> <span>(Full insert/upsert of bookings)</span></li>
+                        </ul>
+                    </div>
+                    <div class="collection write-mode">
+                        <div class="collection-name">InventoryMaster</div>
+                        <ul class="fields-list">
+                            <li><code>status</code> <span>(Sets dates immediately to 'booked' or 'blocked')</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="badge">Background Worker Task</span>
+            </div>
+
+            <!-- 8: Channel Sync Agent -->
+            <div class="agent-card">
+                <div class="agent-header">
+                    <div class="agent-icon">📤</div>
+                    <h2 class="agent-title">8. Channel Sync Agent</h2>
+                </div>
+                <p class="agent-desc">Listens for "approved" status on generated price proposals and pushes those prices upstream to Airbnb, VRBO, and direct booking engines via Hostaway.</p>
+                
+                <div class="db-header">Database Access Needs</div>
+                <div class="db-collections">
+                    <div class="collection">
+                        <div class="collection-name">InventoryMaster</div>
+                        <ul class="fields-list">
+                            <li><code>proposalStatus</code> <span>(Wait for 'approved')</span></li>
+                            <li><code>proposedPrice</code> <span>(The exact price payload to blast out)</span></li>
+                            <li><code>listingId</code> <span>(Mapping target destination)</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="badge">Background Worker Task</span>
+            </div>
+
+            <!-- 9: Anomaly Detector -->
+            <div class="agent-card">
+                <div class="agent-header">
+                    <div class="agent-icon">🚨</div>
+                    <h2 class="agent-title">9. Anomaly Detector</h2>
+                </div>
+                <p class="agent-desc">Post-execution monitoring. Scans for catastrophic pacing drop-offs or bad price mutations (e.g. dropping prices 50% without reason). Produces High Severity alerts.</p>
+                
+                <div class="db-header">Database Access Needs</div>
+                <div class="db-collections">
+                    <div class="collection">
+                        <div class="collection-name">InventoryMaster</div>
+                        <ul class="fields-list">
+                            <li><code>status</code> <span>(Sudden bulk cancellations check)</span></li>
+                            <li><code>currentPrice</code> vs <code>proposedPrice</code> <span>(Discrepancy validation)</span></li>
+                        </ul>
+                    </div>
+                    <div class="collection write-mode">
+                        <div class="collection-name">Insight</div>
+                        <ul class="fields-list">
+                            <li><code>severity</code> <span>('high' / 'medium')</span></li>
+                            <li><code>type</code> <span>('occupancy_drop' / 'price_anomaly')</span></li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="badge">Background Worker Task</span>
+            </div>
+
+            <!-- 10: Guest Inbox Agents -->
+            <div class="agent-card">
+                <div class="agent-header">
+                    <div class="agent-icon">💬</div>
+                    <h2 class="agent-title">10. Guest Inbox (Chat & Summary Agent)</h2>
+                </div>
+                <p class="agent-desc">Handles live Hostaway message threads. Automatically generates contextual 2-4 sentence guest replies or creates executive summaries out of long chains with action items.</p>
+                
+                <div class="db-header">Database Access Needs</div>
+                <div class="db-collections">
+                    <div class="collection">
+                        <div class="collection-name">Inbound Thread Prompt Header</div>
+                        <ul class="fields-list">
+                            <li>This agent receives data via <code>Inference-Time Local Context Injection</code>, bypassing pre-fetched DB contexts since every thread's history is isolated on-the-fly and rapidly changes.</li>
+                        </ul>
+                    </div>
+                </div>
+                <span class="badge">Inference-Time Context</span>
+            </div>
+
+        <!-- SEMANTIC DATA DICTIONARY (NO-SQL MONGO QUERIES) -->
+        <h3 class="section-header" style="margin-top: 5rem;">Agent Semantic Data Dictionary</h3>
+        <div class="intro-box" style="margin-bottom: 2rem;">
+            <p><strong>Query Context:</strong> Below are the raw fields and exact MongoDB / Mongoose JSON queries that the context-builders and background agents evaluate to assemble accurate AI context prompts. Since the transition from SQL, all data relies strictly on NoSQL MongoDB architecture.</p>
+        </div>
+
+        <div class="db-index-grid" style="grid-template-columns: 1fr;">
+            
+            <!-- Table: Listing -->
+            <div class="db-table-card">
+                <div class="collection-name">1. Listing</div>
+                <div class="db-table-desc" style="margin-bottom: 1.5rem;">The master property registry. Every short-term rental property managed by PriceOS is stored here. Each document represents one physical property. Use <code>priceFloor</code> and <code>priceCeiling</code> explicitly to ensure your pricing bounds are respected.</div>
+                
+                <ul class="fields-list" style="padding-left: 0; list-style: none;">
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">_id & orgId</strong> <br>
+                        <span>The primary key and Organization tenant isolator.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.listings.find({ orgId: ObjectId("...") })</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">hostawayId & name</strong> <br>
+                        <span>PMS identifier and the human-readable string.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.listings.find({ name: { $regex: /marina/i } })</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">bedroomsNumber & personCapacity</strong> <br>
+                        <span>Physical integers restricting booking parties.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.listings.find({ bedroomsNumber: { $gte: 2 } })</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">price, priceFloor, priceCeiling</strong> <br>
+                        <span>Base rate and strict AI boundaries in standard currency.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.listings.find({ priceFloor: { $lte: 500 } })</code>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Table: InventoryMaster -->
+            <div class="db-table-card">
+                <div class="collection-name">2. InventoryMaster</div>
+                <div class="db-table-desc" style="margin-bottom: 1.5rem;">The daily operations and pricing matrix. It consolidates both the current calendar state (booked, blocked, available) and the AI's future pricing proposals in a single row per day per listing.</div>
+                
+                <ul class="fields-list" style="padding-left: 0; list-style: none;">
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">listingId & date</strong> <br>
+                        <span>Date string (YYYY-MM-DD) mapping isolated to the parent Listing.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.inventorymasters.find({ listingId: ObjectId("..."), date: { $gte: "2026-03-01", $lte: "2026-03-31" } })</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">status</strong> <br>
+                        <span>Enum string matching "available", "booked", "blocked".</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.inventorymasters.find({ status: "available" })</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">currentPrice & proposedPrice</strong> <br>
+                        <span>Live price upstream and the AI engine's proposed change.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.inventorymasters.find({ proposedPrice: { $ne: null } })</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">proposalStatus & reasoning</strong> <br>
+                        <span>AI status gate loop ('pending', 'approved') + justification text output.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.inventorymasters.updateMany({ proposalStatus: "pending" }, { $set: { proposalStatus: "approved" } })</code>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Table: Reservation -->
+            <div class="db-table-card">
+                <div class="collection-name">3. Reservation</div>
+                <div class="db-table-desc" style="margin-bottom: 1.5rem;">The guest booking and financial ledger. Each row represents one guest reservation synced from Hostaway. Utilized primarily by Booking Intelligence for financial math.</div>
+                
+                <ul class="fields-list" style="padding-left: 0; list-style: none;">
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">guestName & channelName</strong> <br>
+                        <span>PII strings mapping client names to their origin booking site (e.g. Airbnb).</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.reservations.find({ channelName: "Airbnb" })</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">status & totalPrice</strong> <br>
+                        <span>Enum ("new", "modified", "cancelled") and float value of entire revenue sum.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.reservations.aggregate([{ $match: { status: "new" } }, { $group: { _id: "$listingId", totalRevenue: { $sum: "$totalPrice" } } }])</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">checkIn & checkOut</strong> <br>
+                        <span>Date strings verifying when the financial sum was realized.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.reservations.find({ checkIn: { $gte: "2026-03-01" } })</code>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Table: MarketEvent -->
+            <div class="db-table-card">
+                <div class="collection-name">4. MarketEvent</div>
+                <div class="db-table-desc" style="margin-bottom: 1.5rem;">Scraped holidays, conferences, and mass events shaping demand. Data injected directly into context to justify premium price hikes to users.</div>
+                
+                <ul class="fields-list" style="padding-left: 0; list-style: none;">
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">name & description</strong> <br>
+                        <span>String representations (e.g. "Dubai Airshow") and AI contextual data blocks.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.marketevents.find({ name: { $regex: /airshow/i } })</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">impactLevel & upliftPct</strong> <br>
+                        <span>Enum severity limit ('moderate', 'high', 'critical') and exact mathematical percentage to inflate prices by.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.marketevents.find({ impactLevel: "critical", upliftPct: { $gte: 25 } })</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">startDate & endDate</strong> <br>
+                        <span>String bounds restricting when the given percentage bump is legally allowed to execute.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.marketevents.find({ startDate: { $lte: "2026-11-20" }, endDate: { $gte: "2026-11-20" } })</code>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Table: PricingRule -->
+            <div class="db-table-card">
+                <div class="collection-name">5. PricingRule</div>
+                <div class="db-table-desc" style="margin-bottom: 1.5rem;">User-defined restrictions and limits over overriding behaviour such as DOW buffers, last-minute discounts, or blockout phases. Validates against PriceGuard constraints.</div>
+                
+                <ul class="fields-list" style="padding-left: 0; list-style: none;">
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">ruleType & priority</strong> <br>
+                        <span>Evaluation tree logic constraint ('DOW', 'LEAD_TIME') and integer stack resolution priority.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.pricingrules.find({ ruleType: "DOW" }).sort({ priority: 1 })</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">priceAdjPct & daysOfWeek</strong> <br>
+                        <span>Mathematical drop value (-10) and array restriction mapping for weekends e.g. [4, 5].</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.pricingrules.find({ daysOfWeek: { $in: [4, 5] }, priceAdjPct: { $lt: 0 } })</code>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Table: BenchmarkData -->
+            <div class="db-table-card">
+                <div class="collection-name">6. BenchmarkData</div>
+                <div class="db-table-desc" style="margin-bottom: 1.5rem;">Competitive Market Scanner data structure mapped across AirDNA/OTA comparisons. Drives the base intelligence of the Optimization Agents.</div>
+                
+                <ul class="fields-list" style="padding-left: 0; list-style: none;">
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">p25_rate, p50_rate, p75_rate</strong> <br>
+                        <span>Exact 25th, 50th (median), and 75th percentile statistical anchors locally sourced.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.benchmarkdatas.find({ p50_rate: { $gt: 1000 } })</code>
+                    </li>
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">percentile & verdict</strong> <br>
+                        <span>Calculated system posture e.g. 'OVERPRICED', 'UNDERPRICED'.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.benchmarkdatas.find({ verdict: "OVERPRICED" })</code>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Table: Insight -->
+            <div class="db-table-card">
+                <div class="collection-name">7. Insight</div>
+                <div class="db-table-desc" style="margin-bottom: 1.5rem;">Anomaly warning and High-Risk Notification arrays blasted to the Dashboard by background execution monitors.</div>
+                
+                <ul class="fields-list" style="padding-left: 0; list-style: none;">
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">type & severity</strong> <br>
+                        <span>The failure vector ('occupancy_drop') and threat risk ('critical', 'high').</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.insights.find({ severity: "critical", isDismissed: false })</code>
+                    </li>
+                </ul>
+            </div>
+            
+            <!-- Table: GuestSummary & Conversation -->
+            <div class="db-table-card">
+                <div class="collection-name">8. HostawayConversation & GuestSummary</div>
+                <div class="db-table-desc" style="margin-bottom: 1.5rem;">Raw guest inbox string logs and AI generated text outputs compressing conversation flows prior to dispatch.</div>
+                
+                <ul class="fields-list" style="padding-left: 0; list-style: none;">
+                    <li style="margin-bottom: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <strong style="color: #cbd5e1;">summaryText & actionItems</strong> <br>
+                        <span>Processed AI contextual output logs and task strings.</span><br>
+                        <code style="color: #8b5cf6; display: block; margin-top: 0.5rem; background: rgba(0,0,0,0.5); padding: 0.5rem; border-radius: 4px;">db.guestsummaries.find({ "actionItems.length": { $gt: 0 } })</code>
+                    </li>
+                </ul>
+            </div>
+
+        </div>
+
+    </div>
+</body>
+</html>

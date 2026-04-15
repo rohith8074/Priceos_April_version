@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/server'
+import { buildAgentContext } from '@/lib/agents/db-context-builder'
 
 const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_URL || 'http://localhost:8000'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { message, agent_id, session_id, cache } = body
+    const { message, agent_id, session_id, cache, listing_id } = body
 
     if (!message) {
       return NextResponse.json(
@@ -41,6 +42,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    let finalMessage = message;
+    if (session.orgId) {
+       try {
+          const dbContext = await buildAgentContext(session.orgId, listing_id);
+          finalMessage = `[SYSTEM CONTEXT - USE EXCLUSIVELY]\n${dbContext}\n\n[USER QUESTION]\n${message}`;
+       } catch (err) {
+          console.error("Failed to build DB context:", err);
+       }
+    }
+
     // Proxy to Python backend
     let pythonResponse: Response
     try {
@@ -48,7 +59,7 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message,
+          message: finalMessage,
           agent_id: agent_id || 'cro',
           user_id: session.userId,
           session_id: session_id || `${agent_id || 'cro'}-${session.userId}`,

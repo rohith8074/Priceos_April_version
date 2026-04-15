@@ -9,6 +9,7 @@ export interface SessionPayload {
   email: string;
   role: string;
   isApproved: boolean;
+  onboardingStep: string;
 }
 
 /**

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB, Listing, ChatMessage, InventoryMaster, MarketEvent } from "@/lib/db";
 import { getSession } from "@/lib/auth/server";
-import { addDays, format } from "date-fns";
+import { format } from "date-fns";
 import mongoose from "mongoose";
+import { buildAgentContext } from "@/lib/agents/db-context-builder";
 
 export async function POST(
     req: NextRequest,
@@ -31,50 +32,15 @@ export async function POST(
         const startDateStr = format(startDate, "yyyy-MM-dd");
         const endDateStr = format(endDate, "yyyy-MM-dd");
 
-        // 1. Fetch listing
-        const listing = await Listing.findById(listingObjectId).lean();
-        if (!listing) {
-            return NextResponse.json({ error: "Property not found" }, { status: 404 });
+        let dbContext = "";
+        try {
+            dbContext = await buildAgentContext(orgId.toString(), listingObjectId.toString(), {
+                from: startStr || format(new Date(), "yyyy-MM-dd"),
+                to: endStr || format(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), "yyyy-MM-dd"),
+            });
+        } catch (err) {
+            console.error("Failed to build DB context for property chat:", err);
         }
-
-        // 2. Fetch calendar data
-        const calendar = await InventoryMaster.find({
-            listingId: listingObjectId,
-            date: { $gte: startDateStr, $lte: endDateStr },
-        }).lean();
-
-        // 3. Fetch market events
-        const events = await MarketEvent.find({
-            endDate: { $gte: startDateStr },
-            startDate: { $lte: endDateStr },
-            isActive: true,
-        }).lean();
-
-        // 4. Build context for backend
-        const contextData = {
-            property: {
-                id: listing._id.toString(),
-                name: listing.name,
-                area: listing.area,
-                city: listing.city,
-                base_price: listing.price,
-                price_floor: listing.priceFloor,
-                price_ceiling: listing.priceCeiling,
-                amenities: listing.amenities,
-            },
-            inventory: calendar.map((c) => ({
-                date: c.date,
-                status: c.status,
-                price: c.currentPrice,
-                min_stay: c.minStay,
-            })),
-            market_events: events.map((e) => ({
-                title: e.name,
-                dates: `${e.startDate} to ${e.endDate}`,
-                impact: e.impactLevel,
-                description: e.description,
-            })),
-        };
 
         // 5. Save user message
         await ChatMessage.create({
@@ -86,16 +52,20 @@ export async function POST(
             metadata: { listingId: id },
         });
 
+        const finalMessage = dbContext 
+            ? `[SYSTEM CONTEXT - USE EXCLUSIVELY]\n${dbContext}\n\n[USER QUESTION]\n${message}`
+            : message;
+
         // 6. Proxy to Python backend
         const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
         const agentResponse = await fetch(`${backendUrl}/api/agent/`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                message,
+                message: finalMessage,
                 user_id: session?.userId || "user-1",
                 session_id: `property-${id}`,
-                cache: contextData,
+                cache: null,
             }),
         });
 

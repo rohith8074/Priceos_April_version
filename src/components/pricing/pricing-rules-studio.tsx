@@ -1571,14 +1571,14 @@ export function PricingRulesStudio({ listings }: Props) {
           <TooltipProvider>
             <TabsList 
               id="tour-pricing-rules"
-              className="flex flex-wrap gap-1 h-auto bg-white/5 p-1 rounded-lg mb-5"
+              className="flex flex-wrap gap-1.5 h-auto bg-surface-2/60 p-1.5 rounded-lg mb-5 border border-border-subtle"
             >
               {STUDIO_TABS.map(({ value, label, icon: Icon, tooltip }) => (
                 <Tooltip key={value}>
                   <TooltipTrigger asChild>
                     <TabsTrigger
                       value={value}
-                      className="gap-1.5 text-xs data-[state=active]:bg-amber data-[state=active]:text-black"
+                      className="gap-1.5 text-xs font-medium transition-all border border-transparent rounded-md px-3 py-1.5 data-[state=active]:!bg-amber data-[state=active]:!text-black data-[state=active]:!border-amber data-[state=active]:shadow-md data-[state=active]:ring-2 data-[state=active]:ring-amber/40 data-[state=active]:font-bold data-[state=inactive]:text-text-secondary data-[state=inactive]:hover:bg-surface-2 data-[state=inactive]:hover:text-text-primary"
                     >
                       <Icon className="h-3.5 w-3.5" />
                       {label}

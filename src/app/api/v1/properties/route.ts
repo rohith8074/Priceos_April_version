@@ -1,13 +1,30 @@
 import { connectDB, Listing } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api/response";
+import { verifyAccessToken } from "@/lib/auth/jwt";
 import { getPropertiesSchema, formatZodErrors } from "@/lib/validators";
 import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/api/rate-limit";
+import mongoose from "mongoose";
 
 export async function GET(request: Request) {
     const ip = getClientIp(request);
     const rateCheck = checkRateLimit(`properties-list:${ip}`, RATE_LIMITS.standard);
     if (!rateCheck.allowed) {
         return apiError("RATE_LIMITED", `Try again in ${Math.ceil(rateCheck.resetMs / 1000)}s.`, 429);
+    }
+
+    // ── Auth + orgId scoping ──────────────────────────────────────────────────
+    const req = request as any;
+    const token = req.cookies?.get?.("priceos-session")?.value
+        ?? request.headers.get("cookie")?.match(/priceos-session=([^;]+)/)?.[1];
+
+    if (!token) return apiError("UNAUTHORIZED", "Authentication required", 401);
+
+    let orgObjectId: mongoose.Types.ObjectId;
+    try {
+        const payload = verifyAccessToken(token);
+        orgObjectId = new mongoose.Types.ObjectId(payload.orgId);
+    } catch {
+        return apiError("UNAUTHORIZED", "Invalid session", 401);
     }
 
     const { searchParams } = new URL(request.url);
@@ -25,7 +42,8 @@ export async function GET(request: Request) {
     try {
         await connectDB();
 
-        const filter: Record<string, unknown> = { isActive: true };
+        // Always scope to the current org
+        const filter: Record<string, unknown> = { isActive: true, orgId: orgObjectId };
         if (search) {
             filter.name = { $regex: search, $options: "i" };
         }

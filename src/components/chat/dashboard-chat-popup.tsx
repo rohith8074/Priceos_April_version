@@ -15,6 +15,7 @@ import { Bot, Send, Loader2, RefreshCw, User, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
+import { readSSEStream } from "@/lib/chat/sse-reader";
 
 interface Message {
   id: string;
@@ -32,6 +33,7 @@ export function DashboardChatPopup({ isOpen, onOpenChange }: DashboardChatPopupP
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [statusText, setStatusText] = useState("");
   const [sessionId, setSessionId] = useState<string>("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -76,6 +78,7 @@ export function DashboardChatPopup({ isOpen, onOpenChange }: DashboardChatPopupP
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setStatusText("Connecting to PriceOS…");
 
     try {
       const response = await fetch("/api/chat/global", {
@@ -89,21 +92,28 @@ export function DashboardChatPopup({ isOpen, onOpenChange }: DashboardChatPopupP
 
       if (!response.ok) throw new Error("Failed to get response");
 
-      const data = await response.json();
-      
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.message || "I couldn't process that request. Please try again.",
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
+      await readSSEStream(
+        response,
+        (msg) => setStatusText(msg),
+        (data) => {
+          const assistantMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: data.message || "I couldn't process that request. Please try again.",
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        },
+        (errMsg) => {
+          toast.error(errMsg || "Failed to connect to the assistant.");
+        },
+      );
     } catch (error) {
       console.error("Chat error:", error);
       toast.error("Failed to connect to the assistant.");
     } finally {
       setIsLoading(false);
+      setStatusText("");
     }
   };
 
@@ -164,8 +174,8 @@ export function DashboardChatPopup({ isOpen, onOpenChange }: DashboardChatPopupP
             ))}
             {isLoading && (
               <div className="flex items-center gap-2 text-text-tertiary">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span className="text-xs font-medium">Agent is thinking...</span>
+                <Loader2 className="h-4 w-4 animate-spin text-amber" />
+                <span className="text-xs font-medium animate-pulse">{statusText || "Agent is thinking…"}</span>
               </div>
             )}
             <div ref={scrollRef} />
