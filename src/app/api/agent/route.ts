@@ -1,24 +1,108 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/server'
 import { buildAgentContext } from '@/lib/agents/db-context-builder'
-import { requirePythonBackendUrl } from '@/lib/env'
+import { callLyzrAgent } from '@/lib/lyzr/client'
+
+interface NormalizedAgentResponse {
+  status: 'success' | 'error'
+  result: Record<string, any>
+  message?: string
+  metadata?: {
+    agent_name?: string
+    timestamp?: string
+    [key: string]: any
+  }
+}
+
+function normalizeResponse(parsed: any): NormalizedAgentResponse {
+  if (!parsed) {
+    return {
+      status: 'error',
+      result: {},
+      message: 'Empty response from agent',
+    }
+  }
+
+  if (typeof parsed === 'string') {
+    return {
+      status: 'success',
+      result: { text: parsed },
+      message: parsed,
+    }
+  }
+
+  if (typeof parsed !== 'object') {
+    return {
+      status: 'success',
+      result: { value: parsed },
+      message: String(parsed),
+    }
+  }
+
+  if ('status' in parsed && 'result' in parsed) {
+    return {
+      status: parsed.status === 'error' ? 'error' : 'success',
+      result: parsed.result || {},
+      message: parsed.message,
+      metadata: parsed.metadata,
+    }
+  }
+
+  if ('status' in parsed) {
+    const { status, message, metadata, ...rest } = parsed
+    return {
+      status: status === 'error' ? 'error' : 'success',
+      result: Object.keys(rest).length > 0 ? rest : {},
+      message,
+      metadata,
+    }
+  }
+
+  if ('result' in parsed) {
+    return {
+      status: 'success',
+      result: parsed.result,
+      message: parsed.message,
+      metadata: parsed.metadata,
+    }
+  }
+
+  if ('message' in parsed && typeof parsed.message === 'string') {
+    return {
+      status: 'success',
+      result: { text: parsed.message },
+      message: parsed.message,
+    }
+  }
+
+  if ('response' in parsed) {
+    return normalizeResponse(parsed.response)
+  }
+
+  return {
+    status: 'success',
+    result: parsed,
+    message: undefined,
+    metadata: undefined,
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const PYTHON_BACKEND_URL = requirePythonBackendUrl()
     const body = await request.json()
     const { message, agent_id, session_id, cache, listing_id } = body
+    const resolvedAgentId = agent_id || process.env.AGENT_ID
 
-    if (!message) {
+    if (!message || !resolvedAgentId) {
       return NextResponse.json(
         {
           success: false,
           response: {
             status: 'error',
             result: {},
-            message: 'message is required',
+            message: 'message and agent_id are required',
           },
-          error: 'message is required',
+          error: 'message and agent_id are required',
         },
         { status: 400 }
       )
@@ -52,82 +136,40 @@ export async function POST(request: NextRequest) {
        }
     }
 
-    // Proxy to Python backend
-    let pythonResponse: Response
-    try {
-      pythonResponse = await fetch(`${PYTHON_BACKEND_URL}/api/agent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: finalMessage,
-          agent_id: agent_id || 'cro',
-          user_id: session.userId,
-          session_id: session_id || `${agent_id || 'cro'}-${session.userId}`,
-          cache: cache || null,
-        }),
-      })
-    } catch (fetchErr) {
-      // Connection refused or DNS failure — backend is not running
-      const isConnRefused =
-        fetchErr instanceof Error &&
-        (fetchErr.message.includes('ECONNREFUSED') ||
-          fetchErr.message.includes('fetch failed') ||
-          fetchErr.message.includes('ENOTFOUND'))
+    const finalSessionId = session_id || `${resolvedAgentId}-${session.userId}`
+    const lyzrResult = await callLyzrAgent({
+      message: finalMessage,
+      agentId: resolvedAgentId,
+      userId: session.userId,
+      sessionId: finalSessionId,
+    })
 
-      const userMessage = isConnRefused
-        ? `The AI backend is currently offline (could not reach ${PYTHON_BACKEND_URL}). Please ensure the Python backend is running and try again.`
-        : `Failed to reach the AI backend: ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`
-
-      return NextResponse.json(
-        {
-          success: false,
-          response: { status: 'error', result: {}, message: userMessage },
-          error: userMessage,
-        },
-        { status: 503 }
-      )
-    }
-
-    const pythonData = await pythonResponse.json()
-
-    if (!pythonResponse.ok) {
+    if (!lyzrResult.ok) {
       return NextResponse.json(
         {
           success: false,
           response: {
             status: 'error',
             result: {},
-            message: pythonData.detail || 'Python backend error',
+            message: lyzrResult.error || 'Lyzr agent error',
           },
-          error: pythonData.detail || 'Python backend error',
+          error: lyzrResult.error || 'Lyzr agent error',
         },
-        { status: pythonResponse.status }
+        { status: 502 }
       )
     }
 
-    // Detect tool-loop error from Lyzr and replace with a clean user-facing message.
-    // This happens when the agent has tools attached but should be using injected context.
-    const rawMessage: string =
-      pythonData?.response?.message ||
-      pythonData?.message ||
-      pythonData?.result?.chat_response ||
-      ''
-    const isToolLoopError =
-      typeof rawMessage === 'string' &&
-      (rawMessage.toLowerCase().includes('maximum number of tool calls') ||
-        rawMessage.toLowerCase().includes("i've reached the maximum") ||
-        rawMessage.toLowerCase().includes('reached the maximum number of tool calls'))
+    const normalized = normalizeResponse(lyzrResult.parsedJson || lyzrResult.response)
 
-    if (isToolLoopError) {
-      const retryMessage =
-        "I hit a processing limit on that request. Could you rephrase or ask a simpler question? For example: \"What's my occupancy?\" or \"Show revenue by channel.\""
-      if (pythonData?.response?.message) pythonData.response.message = retryMessage
-      if (pythonData?.message) pythonData.message = retryMessage
-      if (pythonData?.result?.chat_response) pythonData.result.chat_response = retryMessage
-    }
-
-    // Return Python backend response
-    return NextResponse.json(pythonData)
+    return NextResponse.json({
+      success: true,
+      response: normalized,
+      agent_id: resolvedAgentId,
+      user_id: session.userId,
+      session_id: finalSessionId,
+      timestamp: new Date().toISOString(),
+      raw_response: lyzrResult.response,
+    })
 
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : 'Server error'

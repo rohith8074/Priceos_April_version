@@ -1,7 +1,7 @@
 import { apiSuccess, apiError } from "@/lib/api/response";
 import { triggerSyncSchema, formatZodErrors } from "@/lib/validators";
 import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/api/rate-limit";
-import { requirePythonBackendUrl } from "@/lib/env";
+import { startBackgroundSync } from "@/lib/sync/background-sync";
 
 /**
  * POST /api/v1/system/sync
@@ -9,7 +9,6 @@ import { requirePythonBackendUrl } from "@/lib/env";
  * Proxies a sync request to the Python backend.
  */
 export async function POST(req: Request) {
-    const PYTHON_BACKEND_URL = requirePythonBackendUrl();
     const ip = getClientIp(req);
 
     // ── Rate Limiting (Heavy Tier) ──
@@ -28,28 +27,20 @@ export async function POST(req: Request) {
 
         const { entity, listingId } = validation.data;
 
-        // Proxy to Python backend
-        const pythonResponse = await fetch(`${PYTHON_BACKEND_URL}/api/sync`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                user_id: "system", // Should be identified by JWT in future
-                listing_id: listingId || null,
-                context: entity,
-            }),
-        });
-
-        const pythonData = await pythonResponse.json();
-
-        if (!pythonResponse.ok) {
-            return apiError("AI_SERVICE_ERROR", pythonData.detail || "Python backend error", 502);
+        const result = startBackgroundSync();
+        if (!result.started) {
+            return apiError("SYNC_ALREADY_RUNNING", result.message, 409);
         }
 
         return apiSuccess({
-            message: "Sync task strictly initiated in the background.",
-            jobId: pythonData.job_id || "sync_started",
-            details: pythonData
-        });
+            message: "Sync task initiated in the background.",
+            jobId: "sync_started",
+            details: {
+                status: result.status,
+                requestedEntity: entity,
+                requestedListingId: listingId || null,
+            },
+        }, undefined, 202);
 
     } catch (error: any) {
         console.error("❌ [v1/system/sync POST] Error:", error);

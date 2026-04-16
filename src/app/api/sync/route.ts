@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from '@/lib/auth/server'
-import { requirePythonBackendUrl } from "@/lib/env";
+import { startBackgroundSync } from "@/lib/sync/background-sync";
 
 export async function POST(req: NextRequest) {
   try {
-    const PYTHON_BACKEND_URL = requirePythonBackendUrl()
     const { context, propertyId } = await req.json();
 
     if (!context) {
@@ -24,30 +23,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Proxy to Python backend
-    const pythonResponse = await fetch(`${PYTHON_BACKEND_URL}/api/sync`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        user_id: session.user.id,
-        listing_id: propertyId || null,
-        context: context,
-      }),
-    })
-
-    const pythonData = await pythonResponse.json()
-
-    if (!pythonResponse.ok) {
+    const result = startBackgroundSync();
+    if (!result.started) {
       return NextResponse.json(
-        { success: false, error: pythonData.detail || 'Python backend error' },
-        { status: pythonResponse.status }
+        { success: false, error: result.message },
+        { status: 409 }
       );
     }
 
-    // Return Python backend response
-    return NextResponse.json(pythonData)
+    return NextResponse.json({
+      success: true,
+      status: result.status,
+      message: result.message,
+      requestedContext: context,
+      requestedPropertyId: propertyId || null,
+    }, { status: 202 })
 
   } catch (error) {
     console.error("Sync error:", error);

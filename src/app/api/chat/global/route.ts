@@ -3,8 +3,7 @@ import { connectDB, ChatMessage } from "@/lib/db";
 import { getSession } from "@/lib/auth/server";
 import mongoose from "mongoose";
 import { buildAgentContext } from "@/lib/agents/db-context-builder";
-import { requirePythonBackendUrl } from "@/lib/env";
-import { callLyzrAgent, extractLyzrMessage } from "@/lib/lyzr/client";
+import { callLyzrAgent } from "@/lib/lyzr/client";
 
 const LOG_PREFIX = "[DashboardAgent]";
 
@@ -95,12 +94,8 @@ Use exactly this orgId. Do not use placeholder, example, or cached org ids from 
 
                 send("status", { step: "agent", message: "Portfolio agent is analyzing…" });
 
-                // Align with src/app/api/agent/route.ts (PYTHON_BACKEND_URL); BACKEND_URL kept for backwards compatibility.
-                const backendUrl = requirePythonBackendUrl();
                 let responseMessage = "";
-                let usedFallback = false;
-                let responseSource: "python_backend" | "lyzr_direct" = "python_backend";
-                let result: any;
+                let responseSource: "lyzr_direct" = "lyzr_direct";
 
                 // Progress timer for long-running agent calls
                 let statusIdx = 0;
@@ -116,71 +111,29 @@ Use exactly this orgId. Do not use placeholder, example, or cached org ids from 
                     }
                 }, 4000);
 
-                try {
-                    const agentResponse = await fetch(`${backendUrl}/api/agent`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            message: finalMessage,
-                            agent_id: dashboardAgentId,
-                            user_id: session?.userId || "user-1",
-                            session_id: sessionId,
-                            cache: null,
-                        }),
-                    });
-                    if (!agentResponse.ok) {
-                        const errBody = await agentResponse.text();
-                        console.warn(`${LOG_PREFIX} python_backend HTTP error`, {
-                            status: agentResponse.status,
-                            backendUrl,
-                            bodyPreview: logPreview(errBody, 400),
-                        });
-                        throw new Error(`Backend HTTP ${agentResponse.status}`);
-                    }
-                    result = await agentResponse.json();
-                    responseMessage = result.response?.response || result.response?.message || "";
-                    if (responseMessage) {
-                        console.log(`${LOG_PREFIX} python_backend reply`, {
-                            chars: responseMessage.length,
-                            preview: logPreview(responseMessage, 600),
-                        });
-                    }
-                } catch (err) {
-                    usedFallback = true;
-                    console.warn(`${LOG_PREFIX} python_backend failed; falling back to Lyzr direct`, {
-                        backendUrl,
-                        reason: err instanceof Error ? err.message : String(err),
-                    });
-                }
-
                 let metadata: Record<string, number | string> = {};
 
-                if (usedFallback || !responseMessage) {
-                    send("status", { step: "fallback", message: "Connecting to Lyzr agent directly…" });
+                const directResult = await callLyzrAgent({
+                    agentId: dashboardAgentId || "",
+                    message: finalMessage,
+                    userId: session?.userId || "priceos-user",
+                    sessionId: sessionId,
+                });
 
-                    const directResult = await callLyzrAgent({
-                        agentId: dashboardAgentId || "",
-                        message: finalMessage,
-                        userId: session?.userId || "priceos-user",
-                        sessionId: sessionId,
-                    });
-
-                    if (!directResult.ok) {
-                        clearInterval(progressTimer);
-                        send("error", { message: `Dashboard agent unavailable (${directResult.error})` });
-                        console.error(`${LOG_PREFIX} lyzr_direct error`, { error: directResult.error });
-                        controller.close();
-                        return;
-                    }
-
-                    responseMessage = directResult.response || "No response from dashboard agent.";
-                    metadata = { source: "lyzr_direct" };
-                    responseSource = "lyzr_direct";
-                    console.log(`${LOG_PREFIX} lyzr_direct reply`, {
-                        chars: responseMessage.length,
-                        preview: logPreview(responseMessage, 600),
-                    });
+                if (!directResult.ok) {
+                    clearInterval(progressTimer);
+                    send("error", { message: `Dashboard agent unavailable (${directResult.error})` });
+                    console.error(`${LOG_PREFIX} lyzr_direct error`, { error: directResult.error });
+                    controller.close();
+                    return;
                 }
+
+                responseMessage = directResult.response || "No response from dashboard agent.";
+                metadata = { source: "lyzr_direct" };
+                console.log(`${LOG_PREFIX} lyzr_direct reply`, {
+                    chars: responseMessage.length,
+                    preview: logPreview(responseMessage, 600),
+                });
 
                 clearInterval(progressTimer);
 
@@ -193,7 +146,7 @@ Use exactly this orgId. Do not use placeholder, example, or cached org ids from 
                     role: "assistant",
                     content: responseMessage,
                     context: { type: "portfolio" },
-                    metadata: { ...metadata, backend_result: result?.response },
+                    metadata,
                 }).catch((err) => console.error("Failed to save reply:", err));
 
                 const duration = Math.round(performance.now() - startTime);

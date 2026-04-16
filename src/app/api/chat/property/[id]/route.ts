@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth/server";
 import { format, addDays } from "date-fns";
 import mongoose from "mongoose";
 import { buildAgentContext } from "@/lib/agents/db-context-builder";
-import { requirePythonBackendUrl } from "@/lib/env";
+import { callLyzrAgent } from "@/lib/lyzr/client";
 
 export async function POST(
     req: NextRequest,
@@ -57,26 +57,23 @@ export async function POST(
             ? `[SYSTEM CONTEXT - USE EXCLUSIVELY]\n${dbContext}\n\n[USER QUESTION]\n${message}`
             : message;
 
-        // 6. Proxy to Python backend
-        const backendUrl = requirePythonBackendUrl();
-        const agentResponse = await fetch(`${backendUrl}/api/agent`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                message: finalMessage,
-                user_id: session?.userId || "user-1",
-                session_id: `property-${id}`,
-                cache: null,
-            }),
-        });
-
-        if (!agentResponse.ok) {
-            const errText = await agentResponse.text();
-            throw new Error(`Backend Error: ${errText}`);
+        const agentId = process.env.AGENT_ID;
+        if (!agentId) {
+            throw new Error("AGENT_ID is not configured");
         }
 
-        const result = await agentResponse.json();
-        const responseMessage = result.response?.response || "I couldn't generate a report right now.";
+        const result = await callLyzrAgent({
+            agentId,
+            message: finalMessage,
+            userId: session?.userId || "user-1",
+            sessionId: `property-${id}`,
+        });
+
+        if (!result.ok) {
+            throw new Error(result.error || "Lyzr agent unavailable");
+        }
+
+        const responseMessage = result.response || "I couldn't generate a report right now.";
 
         // 7. Save assistant message
         await ChatMessage.create({
@@ -85,7 +82,7 @@ export async function POST(
             role: "assistant",
             content: responseMessage,
             context: { type: "property", propertyId: listingObjectId },
-            metadata: { listingId: id, backend_result: result.response },
+            metadata: { listingId: id, source: "lyzr_direct" },
         });
 
         return NextResponse.json({ message: responseMessage, proposals: [] });

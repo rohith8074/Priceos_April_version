@@ -10,7 +10,6 @@ export async function register() {
     MONGODB_URI: "MongoDB connection string",
     JWT_SECRET: "JWT signing secret (access tokens)",
     JWT_REFRESH_SECRET: "JWT signing secret (refresh tokens)",
-    PYTHON_BACKEND_URL: "Python AI backend base URL",
     LYZR_API_KEY: "Lyzr AI platform API key",
     LYZR_API_URL: "Lyzr chat completions endpoint",
   };

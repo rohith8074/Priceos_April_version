@@ -63,10 +63,6 @@ export function getAgentId(name: string, ...legacyNames: string[]) {
   return getEnv(name, ...legacyNames);
 }
 
-export function requirePythonBackendUrl() {
-  return requireEnv("PYTHON_BACKEND_URL");
-}
-
 export function requireHostawayApiBaseUrl() {
   return requireEnv("HOSTAWAY_API_BASE_URL");
 }
