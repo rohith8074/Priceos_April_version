@@ -20,7 +20,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
 import {
   Tooltip,
   TooltipContent,
@@ -134,27 +133,6 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
       return true;
     });
   }, [events, filterImpact, filterCategory, filterArea]);
-
-  const handleRunAnalysis = async () => {
-    setScanning(true);
-    try {
-      const res = await fetch("/api/sync/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "market" }),
-      });
-      if (res.ok) {
-        setLastScan(new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }));
-        toast.success("Market analysis triggered — data will refresh shortly.");
-      } else {
-        toast.error("Failed to trigger market analysis.");
-      }
-    } catch {
-      toast.error("Network error — please try again.");
-    } finally {
-      setScanning(false);
-    }
-  };
 
   const upcomingHigh = events.filter((e) => e.impact === "high");
   const upcomingMedium = events.filter((e) => e.impact === "medium");

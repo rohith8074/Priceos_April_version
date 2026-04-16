@@ -951,51 +951,70 @@ function PropertyAnalyticsPanel({
           </ChartCard>
 
           <ChartCard title="Revenue by Channel" subtitle="Booking and revenue contribution by channel">
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <RechartTooltip
-                  contentStyle={CHART_TOOLTIP_STYLE}
-                  formatter={(value: number, name: string) =>
-                    name === "Revenue"
-                      ? [`${property.currency} ${value.toLocaleString("en-US")}`, name]
-                      : [value, name]
-                  }
-                />
-                <Legend />
-                <Pie
-                  data={channelMixWithFill}
-                  dataKey="revenue"
-                  nameKey="channel"
-                  name="Revenue"
-                  cx="35%"
-                  cy="50%"
-                  innerRadius={40}
-                  outerRadius={72}
-                  paddingAngle={4}
-                  stroke="none"
-                >
-                  {channelMixWithFill.map((entry, index) => (
-                    <Cell key={`${entry.channel}-${index}`} fill={entry.fill} />
-                  ))}
-                </Pie>
-                <Pie
-                  data={channelMixWithFill}
-                  dataKey="bookings"
-                  nameKey="channel"
-                  name="Bookings"
-                  cx="74%"
-                  cy="50%"
-                  innerRadius={28}
-                  outerRadius={54}
-                  paddingAngle={3}
-                  stroke="none"
-                >
-                  {channelMixWithFill.map((entry, index) => (
-                    <Cell key={`${entry.channel}-bookings-${index}`} fill={entry.fill} fillOpacity={0.85} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="space-y-4">
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <RechartTooltip
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                    formatter={(value: number, _name: string, item: any) => {
+                      const metric = item?.dataKey === "revenue" ? "Revenue" : "Bookings";
+                      return metric === "Revenue"
+                        ? [`${property.currency} ${value.toLocaleString("en-US")}`, metric]
+                        : [value, metric];
+                    }}
+                    labelFormatter={(_label: string, payload: any[]) => payload?.[0]?.payload?.channel || ""}
+                  />
+                  <Pie
+                    data={channelMixWithFill}
+                    dataKey="revenue"
+                    nameKey="channel"
+                    cx="32%"
+                    cy="52%"
+                    innerRadius={38}
+                    outerRadius={70}
+                    paddingAngle={4}
+                    stroke="none"
+                  >
+                    {channelMixWithFill.map((entry, index) => (
+                      <Cell key={`${entry.channel}-${index}`} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <Pie
+                    data={channelMixWithFill}
+                    dataKey="bookings"
+                    nameKey="channel"
+                    cx="72%"
+                    cy="52%"
+                    innerRadius={26}
+                    outerRadius={48}
+                    paddingAngle={3}
+                    stroke="none"
+                  >
+                    {channelMixWithFill.map((entry, index) => (
+                      <Cell key={`${entry.channel}-bookings-${index}`} fill={entry.fill} fillOpacity={0.9} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex items-center justify-center gap-10 text-[11px] font-medium text-muted-foreground">
+                <span>Revenue</span>
+                <span>Bookings</span>
+              </div>
+              <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-[11px]">
+                {channelMixWithFill.map((entry) => (
+                  <div key={entry.channel} className="flex items-center gap-1.5 text-muted-foreground">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: entry.fill }}
+                    />
+                    <span className="font-medium text-foreground">{entry.channel}</span>
+                    <span>
+                      {entry.revenuePct}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </ChartCard>
         </>
       )}

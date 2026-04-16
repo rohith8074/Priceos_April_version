@@ -305,7 +305,7 @@ function GuardrailsTab({
               placeholder="e.g. 300"
               className="h-9 bg-white/5 border-white/10 text-sm"
             />
-            <p className="text-[10px] text-text-disabled mt-1">Minimum price — engine never goes below this</p>
+            <p className="text-[10px] text-muted-foreground/80 mt-1">Minimum price — engine never goes below this</p>
           </div>
           <div>
             <Label className="text-xs text-text-tertiary mb-1.5 block">Ceiling Price ({currency})</Label>
@@ -316,7 +316,7 @@ function GuardrailsTab({
               placeholder="e.g. 3000"
               className="h-9 bg-white/5 border-white/10 text-sm"
             />
-            <p className="text-[10px] text-text-disabled mt-1">Maximum price — engine never exceeds this</p>
+            <p className="text-[10px] text-muted-foreground/80 mt-1">Maximum price — engine never exceeds this</p>
           </div>
         </div>
       </div>
@@ -334,7 +334,7 @@ function GuardrailsTab({
               onChange={(e) => onConfigChange({ lowestMinStayAllowed: Number(e.target.value) })}
               className="h-9 bg-white/5 border-white/10 text-sm"
             />
-            <p className="text-[10px] text-text-disabled mt-1">Gap rules can never lower min stay below this</p>
+            <p className="text-[10px] text-muted-foreground/80 mt-1">Gap rules can never lower min stay below this</p>
           </div>
           <div>
             <Label className="text-xs text-text-tertiary mb-1.5 block">Default Max Stay (nights)</Label>
@@ -373,7 +373,7 @@ function GuardrailsTab({
                         "text-xs px-3 py-1.5 rounded-full border transition-colors",
                         days[i] === 1
                           ? "bg-amber/10 border-amber/30 text-amber"
-                          : "border-white/10 text-text-disabled hover:border-white/20"
+                          : "border-border/70 text-muted-foreground hover:border-border dark:border-white/15 dark:hover:border-white/25"
                       )}
                     >
                       {day}
@@ -403,7 +403,7 @@ function GuardrailsTab({
               placeholder="e.g. 600"
               className="h-9 bg-white/5 border-white/10 text-sm"
             />
-            <p className="text-[10px] text-text-disabled mt-1">Set 0 to disable weekend minimum</p>
+            <p className="text-[10px] text-muted-foreground/80 mt-1">Set 0 to disable weekend minimum</p>
           </div>
           <div>
             <Label className="text-xs text-text-tertiary mb-2 block">Weekend Days</Label>
@@ -416,7 +416,7 @@ function GuardrailsTab({
                     "text-xs px-3 py-1.5 rounded-full border transition-colors",
                     (config.weekendDays ?? []).includes(i)
                       ? "bg-amber/10 border-amber/30 text-amber"
-                      : "border-white/10 text-text-disabled hover:border-white/20"
+                      : "border-border/70 text-muted-foreground hover:border-border dark:border-white/15 dark:hover:border-white/25"
                   )}
                 >
                   {day}
@@ -557,7 +557,7 @@ function SeasonsTab({
                 size="icon"
                 disabled={deletingId === rule._id}
                 onClick={() => handleDelete(rule)}
-                className="h-7 w-7 text-text-disabled hover:text-red-400 shrink-0"
+                className="h-7 w-7 text-muted-foreground hover:text-red-400 shrink-0"
               >
                 {deletingId === rule._id
                   ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -569,7 +569,7 @@ function SeasonsTab({
       )}
 
       {seasonRules.length === 0 && (
-        <p className="text-xs text-text-disabled py-2">No season rules yet. Add one below.</p>
+        <p className="text-xs text-muted-foreground py-2">No season rules yet. Add one below.</p>
       )}
 
       {/* Add new */}
@@ -605,7 +605,7 @@ function SeasonsTab({
           </div>
           <div className="w-44">
             <Label className="text-xs text-text-tertiary mb-1 block">
-              Price Adjustment: <span className={cn("font-bold", newAdj > 0 ? "text-green-400" : newAdj < 0 ? "text-red-400" : "text-text-disabled")}>{newAdj > 0 ? "+" : ""}{newAdj}%</span>
+              Price Adjustment: <span className={cn("font-bold", newAdj > 0 ? "text-green-400" : newAdj < 0 ? "text-red-400" : "text-muted-foreground")}>{newAdj > 0 ? "+" : ""}{newAdj}%</span>
             </Label>
             <Slider min={-60} max={100} step={5} value={[newAdj]} onValueChange={([v]) => setNewAdj(v)} className="mt-2" />
           </div>
@@ -710,7 +710,7 @@ function LeadTimeTab({
                       "text-xs px-3 py-1.5 rounded-full border transition-colors",
                       (config.dowDays ?? []).includes(i)
                         ? "bg-amber/10 border-amber/30 text-amber"
-                        : "border-white/10 text-text-disabled hover:border-white/20"
+                        : "border-border/70 text-muted-foreground hover:border-border dark:border-white/15 dark:hover:border-white/25"
                     )}
                   >
                     {day}
@@ -766,7 +766,7 @@ function LeadTimeTab({
               />
               <span>
                 <span className="font-medium">Gradual Ramp Curve</span>
-                <span className="text-text-disabled ml-1">(KB Tier 1 #3 — tapers from max% at day 1 to min% at day N)</span>
+                <span className="text-muted-foreground/80 ml-1">(KB Tier 1 #3 — tapers from max% at day 1 to min% at day N)</span>
               </span>
             </label>
 
@@ -783,7 +783,7 @@ function LeadTimeTab({
                       value={[config.lastMinuteMaxDiscountPct]}
                       onValueChange={([v]) => onConfigChange({ lastMinuteMaxDiscountPct: v })}
                     />
-                    <p className="text-[10px] text-text-disabled mt-1">Deepest discount applied on day of check-in</p>
+                    <p className="text-[10px] text-muted-foreground/80 mt-1">Deepest discount applied on day of check-in</p>
                   </div>
                   <div>
                     <Label className="text-xs text-text-tertiary mb-1 block">
@@ -794,7 +794,7 @@ function LeadTimeTab({
                       value={[config.lastMinuteMinDiscountPct]}
                       onValueChange={([v]) => onConfigChange({ lastMinuteMinDiscountPct: v })}
                     />
-                    <p className="text-[10px] text-text-disabled mt-1">Discount starts tapering from this day</p>
+                    <p className="text-[10px] text-muted-foreground/80 mt-1">Discount starts tapering from this day</p>
                   </div>
                 </div>
                 <div className="w-64">
@@ -998,7 +998,7 @@ function GapLogicTab({
                     onChange={(e) => onConfigChange({ gapFillLengthMin: Number(e.target.value) })}
                     className="h-8 w-20 text-sm bg-white/5 border-white/10"
                   />
-                  <span className="text-text-disabled text-xs">to</span>
+                  <span className="text-muted-foreground text-xs">to</span>
                   <Input
                     type="number" min={1}
                     value={config.gapFillLengthMax}
@@ -1199,7 +1199,7 @@ function LOSTab({
                 variant="ghost" size="icon"
                 disabled={deletingId === rule._id}
                 onClick={() => handleDelete(rule)}
-                className="h-7 w-7 text-text-disabled hover:text-red-400"
+                className="h-7 w-7 text-muted-foreground hover:text-red-400"
               >
                 {deletingId === rule._id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
               </Button>
@@ -1337,7 +1337,7 @@ function DateOverridesTab({
                 variant="ghost" size="icon"
                 disabled={deletingId === rule._id}
                 onClick={() => handleDelete(rule)}
-                className="h-7 w-7 text-text-disabled hover:text-red-400"
+                className="h-7 w-7 text-muted-foreground hover:text-red-400"
               >
                 {deletingId === rule._id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
               </Button>
@@ -1576,7 +1576,7 @@ function OccupancyTab({
                   value={[config.occupancyTargetPct]}
                   onValueChange={([v]) => onConfigChange({ occupancyTargetPct: v })}
                 />
-                <p className="text-[10px] text-text-disabled mt-1">Ideal occupancy rate to maintain</p>
+                <p className="text-[10px] text-muted-foreground/80 mt-1">Ideal occupancy rate to maintain</p>
               </div>
               <div>
                 <Label className="text-xs text-text-tertiary mb-1 block">
@@ -1587,7 +1587,7 @@ function OccupancyTab({
                   value={[config.occupancyLookbackDays]}
                   onValueChange={([v]) => onConfigChange({ occupancyLookbackDays: v })}
                 />
-                <p className="text-[10px] text-text-disabled mt-1">Historical window for occupancy calculation</p>
+                <p className="text-[10px] text-muted-foreground/80 mt-1">Historical window for occupancy calculation</p>
               </div>
             </div>
           </div>
@@ -1665,7 +1665,7 @@ function OccupancyTab({
                 <span>occupancy &gt; <strong className="text-green-400">{config.occupancyHighThresholdPct}%</strong> → raise price by <strong className="text-green-400">+{config.occupancyHighAdjPct}%</strong></span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-text-disabled">●</span>
+                <span className="text-muted-foreground">●</span>
                 <span><strong>{config.occupancyLowThresholdPct}%</strong> ≤ occupancy ≤ <strong>{config.occupancyHighThresholdPct}%</strong> → hold price (target zone)</span>
               </div>
               <div className="flex items-center gap-2">
@@ -1673,7 +1673,7 @@ function OccupancyTab({
                 <span>occupancy &lt; <strong className="text-red-400">{config.occupancyLowThresholdPct}%</strong> → lower price by <strong className="text-red-400">{config.occupancyLowAdjPct}%</strong></span>
               </div>
             </div>
-            <p className="text-[10px] text-text-disabled mt-3">
+            <p className="text-[10px] text-muted-foreground/80 mt-3">
               Calculated over past {config.occupancyLookbackDays} days · Applied at Pass 2 (Strategy) of the waterfall · Bounded by floor/ceiling guardrails
             </p>
           </div>
@@ -1761,31 +1761,31 @@ export function PricingRulesStudio({ listings }: Props) {
 
   if (listings.length === 0) {
     return (
-      <div className="rounded-xl border border-white/5 bg-white/[0.02] p-12 text-center">
-        <p className="text-text-secondary text-sm">No active listings found.</p>
+      <div className="rounded-xl border border-border/70 bg-card p-12 text-center shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+        <p className="text-muted-foreground text-sm">No active listings found.</p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden">
+    <div className="rounded-xl border border-border/70 bg-card text-card-foreground overflow-hidden shadow-sm dark:border-white/10 dark:bg-white/[0.03] [&_input]:bg-background [&_input]:border-border/70 [&_input]:text-foreground [&_input]:placeholder:text-muted-foreground dark:[&_input]:bg-white/[0.04] dark:[&_input]:border-white/15 [&_label]:text-foreground [&_h3]:text-foreground [&_p]:text-muted-foreground">
       {/* Header with listing selector */}
-      <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between gap-4">
+      <div className="px-5 py-4 border-b border-border/70 flex items-center justify-between gap-4 dark:border-white/10">
         <div>
-          <h2 className="text-sm font-semibold text-text-primary">Pricing Rules Studio</h2>
-          <p className="text-xs text-text-tertiary mt-0.5">
+          <h2 className="text-sm font-semibold text-foreground">Pricing Rules Studio</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
             4-pass waterfall engine — guardrails always win. Changes save directly to MongoDB.
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
-          {loading && <Loader2 className="h-4 w-4 animate-spin text-text-tertiary" />}
+          {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
           {!loading && selectedListingId && (
             <span className="flex items-center gap-1 text-xs text-green-400">
               <CheckCircle2 className="h-3.5 w-3.5" /> Loaded
             </span>
           )}
           <Select value={selectedListingId} onValueChange={setSelectedListingId}>
-            <SelectTrigger className="w-56 h-8 text-xs bg-white/5 border-white/10">
+            <SelectTrigger className="w-56 h-8 text-xs bg-background border-border/70 text-foreground shadow-sm dark:bg-white/[0.04] dark:border-white/15">
               <SelectValue placeholder="Select property…" />
             </SelectTrigger>
             <SelectContent>
@@ -1802,14 +1802,14 @@ export function PricingRulesStudio({ listings }: Props) {
       {loading ? (
         <div className="flex items-center justify-center py-20 gap-3">
           <Loader2 className="h-6 w-6 animate-spin text-text-tertiary" />
-          <span className="text-text-tertiary text-sm">Loading configuration…</span>
+          <span className="text-muted-foreground text-sm">Loading configuration…</span>
         </div>
       ) : (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="p-5">
           <TooltipProvider>
             <TabsList 
               id="tour-pricing-rules"
-              className="flex flex-wrap gap-1.5 h-auto bg-surface-2/60 p-1.5 rounded-lg mb-5 border border-border-subtle"
+              className="flex flex-wrap gap-1.5 h-auto bg-muted/40 p-1.5 rounded-lg mb-5 border border-border/70 dark:border-white/10 dark:bg-white/[0.04]"
             >
               {STUDIO_TABS.map(({ value, label, icon: Icon, tooltip }) => (
                 <Tooltip key={value}>
@@ -1817,9 +1817,10 @@ export function PricingRulesStudio({ listings }: Props) {
                     <TabsTrigger
                       value={value}
                       className={cn(
-                        "gap-1.5 text-xs font-medium transition-all rounded-md px-3 py-1.5 border",
-                        "data-[state=active]:bg-amber-500 data-[state=active]:text-black data-[state=active]:border-amber-500 data-[state=active]:shadow-md data-[state=active]:ring-2 data-[state=active]:ring-amber-500/40",
-                        "data-[state=inactive]:bg-transparent data-[state=inactive]:text-text-secondary data-[state=inactive]:border-transparent data-[state=inactive]:hover:bg-surface-2 data-[state=inactive]:hover:text-text-primary"
+                        "gap-1.5 text-xs font-semibold transition-all rounded-md px-3 py-1.5 border relative",
+                        "data-[state=active]:bg-amber-500 data-[state=active]:text-black data-[state=active]:border-amber-500 data-[state=active]:shadow-lg data-[state=active]:ring-2 data-[state=active]:ring-amber-500/40 data-[state=active]:scale-[1.02]",
+                        "data-[state=active]:before:absolute data-[state=active]:before:inset-x-2 data-[state=active]:before:-bottom-1 data-[state=active]:before:h-0.5 data-[state=active]:before:rounded-full data-[state=active]:before:bg-amber-400",
+                        "data-[state=inactive]:bg-transparent data-[state=inactive]:text-muted-foreground data-[state=inactive]:border-transparent data-[state=inactive]:hover:bg-background data-[state=inactive]:hover:text-foreground dark:data-[state=inactive]:hover:bg-white/[0.05]"
                       )}
                     >
                       <Icon className="h-3.5 w-3.5" />
