@@ -1818,9 +1818,9 @@ export function PricingRulesStudio({ listings }: Props) {
                       value={value}
                       className={cn(
                         "gap-1.5 text-xs font-semibold transition-all rounded-md px-3 py-1.5 border relative",
-                        "data-[state=active]:bg-amber-500 data-[state=active]:text-black data-[state=active]:border-amber-500 data-[state=active]:shadow-lg data-[state=active]:ring-2 data-[state=active]:ring-amber-500/40 data-[state=active]:scale-[1.02]",
-                        "data-[state=active]:before:absolute data-[state=active]:before:inset-x-2 data-[state=active]:before:-bottom-1 data-[state=active]:before:h-0.5 data-[state=active]:before:rounded-full data-[state=active]:before:bg-amber-400",
-                        "data-[state=inactive]:bg-transparent data-[state=inactive]:text-muted-foreground data-[state=inactive]:border-transparent data-[state=inactive]:hover:bg-background data-[state=inactive]:hover:text-foreground dark:data-[state=inactive]:hover:bg-white/[0.05]"
+                        activeTab === value
+                          ? "bg-amber-500 text-black border-amber-500 shadow-lg ring-2 ring-amber-500/40 scale-[1.02] before:absolute before:inset-x-2 before:-bottom-1 before:h-0.5 before:rounded-full before:bg-amber-400"
+                          : "bg-transparent text-muted-foreground border-transparent hover:bg-background hover:text-foreground dark:hover:bg-white/[0.05]"
                       )}
                     >
                       <Icon className="h-3.5 w-3.5" />

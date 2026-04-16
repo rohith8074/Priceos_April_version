@@ -387,9 +387,9 @@ export function GuestChatInterface({
                 </div>
             </div>
 
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex overflow-hidden min-w-0">
                 {/* Guest Inbox Sidebar — collapsible */}
-                <div className={`border-r bg-muted/10 flex flex-col border-border/50 transition-all duration-200 ${isInboxCollapsed ? 'w-0 overflow-hidden border-r-0' : activeConversationId ? 'hidden md:flex w-1/3' : 'flex w-1/3'}`}>
+                <div className={`border-r bg-muted/10 flex flex-col border-border/50 transition-all duration-200 shrink-0 ${isInboxCollapsed ? 'w-0 overflow-hidden border-r-0' : activeConversationId ? 'hidden md:flex w-[320px] lg:w-[360px]' : 'flex w-[320px] lg:w-[360px]'}`}>
                     <div className="p-4 border-b bg-background border-border/50 flex items-center justify-between">
                         <h3 className="font-black uppercase tracking-widest text-xs text-muted-foreground">Guest Inbox</h3>
                         <div className="flex items-center gap-1">
@@ -481,7 +481,7 @@ export function GuestChatInterface({
                     </div>
                 )}
 
-                <div className={`flex-1 flex flex-col bg-background relative ${!activeConversationId ? 'hidden md:flex' : 'flex'}`}>
+                <div className={`flex-1 min-w-0 flex flex-col bg-background relative ${!activeConversationId ? 'hidden md:flex' : 'flex'}`}>
                     {activeConversation ? (
                         <>
                             <div className="flex items-center p-4 border-b border-border/50 bg-background shadow-sm z-10">
@@ -500,13 +500,13 @@ export function GuestChatInterface({
                                     </div>
                                 </div>
                             </div>
-                            <div className={`flex-1 overflow-y-auto p-6 space-y-4 transition-colors ${
+                            <div className={`flex-1 min-w-0 overflow-y-auto p-4 md:p-6 space-y-4 transition-colors ${
                                 highlightConversationId === activeConversationId ? 'bg-amber-500/5' : ''
                             }`}>
                                 {activeConversation.messages.map((msg) => (
-                                    <div key={msg.id} className={`flex flex-col max-w-[85%] ${msg.sender === 'admin' ? 'ml-auto items-end' : 'mr-auto items-start'}`}>
+                                    <div key={msg.id} className={`flex flex-col max-w-[92%] md:max-w-[85%] ${msg.sender === 'admin' ? 'ml-auto items-end' : 'mr-auto items-start'}`}>
                                         <div className={`px-4 py-2.5 rounded-2xl overflow-hidden ${msg.sender === 'admin' ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-muted border border-border/50 rounded-bl-sm'}`}>
-                                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
+                                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-all">{msg.text}</p>
                                         </div>
                                         <span className="text-[9px] font-bold text-muted-foreground mt-1 px-1 tracking-wider uppercase">{msg.time}</span>
                                     </div>
@@ -563,8 +563,8 @@ export function GuestChatInterface({
 
                 {/* Right Sidebar Summary Panel */}
                 <div
-                    className={`hidden xl:flex border-l border-border/50 bg-muted/10 transition-all duration-200 ${
-                        isSummaryCollapsed ? "w-12 p-2" : "w-80 p-4"
+                    className={`hidden 2xl:flex border-l border-border/50 bg-muted/10 transition-all duration-200 shrink-0 ${
+                        isSummaryCollapsed ? "w-12 p-2" : "w-[300px] p-3"
                     }`}
                 >
                     {isSummaryCollapsed ? (
@@ -579,7 +579,7 @@ export function GuestChatInterface({
                             </Button>
                         </div>
                     ) : (
-                        <div className="w-full rounded-2xl border border-border/50 bg-background shadow-sm p-4 space-y-3 h-fit">
+                        <div className="w-full min-w-0 rounded-2xl border border-border/50 bg-background shadow-sm p-4 space-y-3 h-fit overflow-hidden">
                             <div className="flex items-center justify-between gap-2">
                                 <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-600">
                                     Conversation Summary
@@ -600,7 +600,7 @@ export function GuestChatInterface({
                                         <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
                                             {activeConversation.guestName}
                                         </p>
-                                        <p className="text-[11px] text-foreground/90 line-clamp-4">
+                                        <p className="text-[11px] text-foreground/90 line-clamp-4 break-words">
                                             {activeConversation.lastMessage || "No message preview available."}
                                         </p>
                                     </div>
@@ -620,7 +620,7 @@ export function GuestChatInterface({
                                             {!!structuredSummary.themes?.length && (
                                                 <div className="rounded-lg border border-border/50 p-2">
                                                     <p className="text-[9px] uppercase text-muted-foreground mb-1">Themes</p>
-                                                    <p className="text-[11px] text-foreground/90 line-clamp-3">
+                                                    <p className="text-[11px] text-foreground/90 line-clamp-3 break-words">
                                                         {structuredSummary.themes.join(", ")}
                                                     </p>
                                                 </div>
@@ -628,7 +628,7 @@ export function GuestChatInterface({
                                             {!!structuredSummary.actionItems?.length && (
                                                 <div className="rounded-lg border border-border/50 p-2">
                                                     <p className="text-[9px] uppercase text-muted-foreground mb-1">Action Items</p>
-                                                    <p className="text-[11px] text-foreground/90 line-clamp-4">
+                                                    <p className="text-[11px] text-foreground/90 line-clamp-4 break-words">
                                                         {structuredSummary.actionItems.join(" • ")}
                                                     </p>
                                                 </div>

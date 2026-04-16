@@ -199,13 +199,22 @@ export async function POST(request: Request) {
             filter.proposalStatus = "approved";
         }
 
+        let docsToPush: Array<{
+            _id: mongoose.Types.ObjectId;
+            currentPrice?: number | null;
+            proposedPrice?: number | null;
+        }> = [];
+        if (newStatus === "pushed") {
+            docsToPush = await InventoryMaster.find(filter).lean();
+        }
+
         const result = await InventoryMaster.updateMany(filter, {
             $set: { proposalStatus: newStatus },
         });
 
         // If pushing: save previousPrice, then copy proposedPrice → currentPrice
         if (newStatus === "pushed") {
-            const toPush = await InventoryMaster.find(filter).lean();
+            const toPush = docsToPush;
             for (const doc of toPush) {
                 if (doc.proposedPrice != null) {
                     await InventoryMaster.updateOne(

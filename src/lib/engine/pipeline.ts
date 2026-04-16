@@ -245,12 +245,12 @@ export async function runPipeline(
               }).sort({ priority: 1 }).lean()
             : [];
 
-        // Merge: listing rules take precedence over group rules.
-        // Group rules get a priority offset (+1000) so they sort after listing rules
+        // Merge: group rules take precedence over listing rules.
+        // Group rules get a priority offset (-1000) so they sort before listing rules
         // when the waterfall picks the highest-priority matching rule.
         const ruleRows = [
+            ...groupRuleRows.map((r) => ({ ...r, priority: (r.priority ?? 0) - 1000 })),
             ...listingRuleRows,
-            ...groupRuleRows.map((r) => ({ ...r, priority: (r.priority ?? 0) + 1000 })),
         ];
 
         const allRules: Rule[] = ruleRows.map((r) => ({

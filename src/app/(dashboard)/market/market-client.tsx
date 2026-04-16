@@ -64,34 +64,6 @@ const FILTER_SELECT_CLASS =
   "focus:outline-none focus:ring-2 focus:ring-amber-500/35 focus:ring-offset-2 focus:ring-offset-background " +
   "dark:border-white/15 dark:bg-white/[0.06] dark:text-foreground";
 
-const SOURCE_META: Record<string, { agent: string; api: string; link?: string }> = {
-  ai_detected: {
-    agent: "Market Intelligence Agent",
-    api: "PriceOS Agent Pipeline",
-    // no external link — internal pipeline
-  },
-  ticketmaster: {
-    agent: "Market Intelligence Agent",
-    api: "Ticketmaster Discovery API",
-    link: "https://developer.ticketmaster.com/products-and-docs/apis/discovery-api/v2/",
-  },
-  eventbrite: {
-    agent: "Market Intelligence Agent",
-    api: "Eventbrite Events API",
-    link: "https://www.eventbrite.com/platform/api",
-  },
-  market_template: {
-    agent: "Market Template Seeder",
-    api: "PriceOS Internal Templates",
-    // no external link — internal data
-  },
-  manual: {
-    agent: "Manual Entry",
-    api: "PriceOS Dashboard",
-    // no external link
-  },
-};
-
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -109,14 +81,7 @@ function daysUntil(dateStr: string) {
 export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, listings }: Props) {
   const [selectedListingId, setSelectedListingId] = useState<string>(listings[0]?.id ?? "");
   const [filterImpact, setFilterImpact] = useState<"all" | "high" | "medium" | "low">("all");
-  const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterArea, setFilterArea] = useState<string>("all");
-
-  // Derive unique category + area values from events
-  const categories = useMemo(() => {
-    const cats = Array.from(new Set(events.map((e) => e.category).filter(Boolean)));
-    return cats.sort();
-  }, [events]);
 
   const areas = useMemo(() => {
     const fromEvents = events.flatMap((e) => (e.area ? [e.area] : []));
@@ -128,11 +93,10 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
   const filteredEvents = useMemo(() => {
     return events.filter((e) => {
       if (filterImpact !== "all" && e.impact !== filterImpact) return false;
-      if (filterCategory !== "all" && e.category !== filterCategory) return false;
       if (filterArea !== "all" && e.area !== filterArea) return false;
       return true;
     });
-  }, [events, filterImpact, filterCategory, filterArea]);
+  }, [events, filterImpact, filterArea]);
 
   const upcomingHigh = events.filter((e) => e.impact === "high");
   const upcomingMedium = events.filter((e) => e.impact === "medium");
@@ -253,20 +217,6 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
               ))}
             </div>
 
-            {/* Category filter */}
-            {categories.length > 0 && (
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className={FILTER_SELECT_CLASS}
-              >
-                <option value="all">All categories</option>
-                {categories.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            )}
-
             {/* Area filter */}
             {areas.length > 0 && (
               <select
@@ -281,10 +231,10 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
               </select>
             )}
 
-            {(filterImpact !== "all" || filterCategory !== "all" || filterArea !== "all") && (
+            {(filterImpact !== "all" || filterArea !== "all") && (
               <button
                 type="button"
-                onClick={() => { setFilterImpact("all"); setFilterCategory("all"); setFilterArea("all"); }}
+                onClick={() => { setFilterImpact("all"); setFilterArea("all"); }}
                 className="text-xs font-medium text-amber-700 hover:text-amber-900 underline-offset-2 hover:underline ml-auto dark:text-amber dark:hover:text-amber/90"
               >
                 Clear filters
@@ -306,7 +256,7 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
                 <p className="text-muted-foreground text-sm">No events match the current filters.</p>
                 <button
                   type="button"
-                  onClick={() => { setFilterImpact("all"); setFilterCategory("all"); setFilterArea("all"); }}
+                  onClick={() => { setFilterImpact("all"); setFilterArea("all"); }}
                   className="text-xs font-medium text-amber-700 hover:underline dark:text-amber"
                 >
                   Clear filters
@@ -321,18 +271,14 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
                 <TableRow className="border-border hover:bg-transparent dark:border-white/10">
                   <TableHead className="min-w-[120px] pl-4 text-xs font-semibold text-foreground">Date range</TableHead>
                   <TableHead className="min-w-[200px] text-xs font-semibold text-foreground">Event</TableHead>
-                  <TableHead className="hidden md:table-cell w-[100px] text-xs font-semibold text-foreground">Category</TableHead>
                   <TableHead className="w-[100px] text-xs font-semibold text-foreground">Impact</TableHead>
                   <TableHead className="w-[88px] text-xs font-semibold text-foreground">Timeline</TableHead>
                   <TableHead className="w-[72px] text-right text-xs font-semibold text-foreground">Uplift</TableHead>
                   <TableHead className="hidden sm:table-cell w-[88px] text-xs font-semibold text-foreground">Area</TableHead>
-                  <TableHead className="hidden lg:table-cell min-w-[240px] text-xs font-semibold text-foreground">Source / Agent / API</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredEvents.map((event) => {
-                  const sourceKey = (event.source || "").toLowerCase();
-                  const sourceMeta = SOURCE_META[sourceKey] || SOURCE_META.ai_detected;
                   return (
                   <TableRow
                     key={event.id}
@@ -349,9 +295,6 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
                       {event.description && (
                         <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{event.description}</div>
                       )}
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell align-top py-3 text-sm text-foreground capitalize">
-                      {event.category || "—"}
                     </TableCell>
                     <TableCell className="align-top py-3">
                       <span
@@ -390,22 +333,6 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
                       ) : (
                         <span className="text-muted-foreground text-sm">—</span>
                       )}
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell align-top py-3">
-                      <div className="text-xs text-foreground space-y-0.5">
-                        <div className="font-medium">{sourceMeta.agent}</div>
-                        <div className="text-muted-foreground">{sourceMeta.api}</div>
-                        {sourceMeta.link && (
-                          <a
-                            href={sourceMeta.link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-amber-700 hover:text-amber-900 hover:underline dark:text-amber dark:hover:text-amber/90"
-                          >
-                            Source link ↗
-                          </a>
-                        )}
-                      </div>
                     </TableCell>
                   </TableRow>
                   );

@@ -6,6 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -596,60 +604,63 @@ export function PricingClient({
         </div>
       ) : (
         <div className="rounded-2xl border border-border/70 overflow-hidden bg-card shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
-          {/* Table Header */}
-          <div className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-x-4 px-4 py-3 bg-muted/40 border-b border-border/70 text-[10px] text-muted-foreground uppercase tracking-[0.18em] dark:border-white/10 dark:bg-white/[0.04]">
-            {activeTab === "pending" && <div className="w-4" />}
-            <div>Date · Property</div>
-            <div className="text-right">Price</div>
-            <div className="text-center">Risk</div>
-            <div>Reasoning</div>
-            {(activeTab === "pending" || activeTab === "approved") && <div>Actions</div>}
-          </div>
-
-          <div className="divide-y divide-border/60 dark:divide-white/[0.06]">
+          <Table>
+            <TableHeader className="bg-muted/50 dark:bg-white/[0.04]">
+              <TableRow className="border-border/70 dark:border-white/10 hover:bg-transparent">
+                {activeTab === "pending" && <TableHead className="w-10 pl-4" />}
+                <TableHead className="w-[110px] text-xs font-semibold text-foreground pl-4">Date</TableHead>
+                <TableHead className="min-w-[180px] text-xs font-semibold text-foreground">Property</TableHead>
+                <TableHead className="w-[180px] text-xs font-semibold text-foreground">Price</TableHead>
+                <TableHead className="w-[80px] text-center text-xs font-semibold text-foreground">Risk</TableHead>
+                <TableHead className="text-xs font-semibold text-foreground">Reasoning</TableHead>
+                {(activeTab === "pending" || activeTab === "approved") && (
+                  <TableHead className="w-[200px] text-right text-xs font-semibold text-foreground pr-4">Actions</TableHead>
+                )}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
             {displayProposals.map((row) => {
               const stale = activeTab === "pending" && isStale(row.date);
 
               return (
-                <div
+                <TableRow
                   key={row.id}
                   className={cn(
-                    "grid gap-x-4 px-4 py-3.5 hover:bg-muted/35 transition-colors dark:hover:bg-white/[0.03]",
-                    activeTab === "pending" || activeTab === "approved"
-                      ? "grid-cols-[auto_1fr_auto_auto_auto_auto]"
-                      : "grid-cols-[1fr_auto_auto_auto]",
+                    "border-border/60 hover:bg-muted/35 dark:border-white/[0.06] dark:hover:bg-white/[0.03] align-middle",
                     stale && "border-l-2 border-l-amber/40"
                   )}
                 >
                   {/* Checkbox */}
                   {activeTab === "pending" && (
-                    <div className="flex items-center">
+                    <TableCell className="w-10 pl-4">
                       <Checkbox
                         checked={selectedIds.has(row.id)}
                         onCheckedChange={() => toggleSelect(row.id)}
                       />
-                    </div>
+                    </TableCell>
                   )}
 
-                  {/* Date + Property */}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-foreground">
-                        {fmtDate(row.date)}
-                      </span>
-                      {stale && (
-                        <span className="flex items-center gap-0.5 text-[9px] text-amber">
-                          <Clock className="h-2.5 w-2.5" />
-                          Expiring
-                        </span>
-                      )}
+                  {/* Date */}
+                  <TableCell className="w-[110px] py-4 pl-4 align-top">
+                    <div className="text-sm font-medium text-foreground tabular-nums whitespace-nowrap">
+                      {fmtDate(row.date)}
                     </div>
-                    <div className="text-[11px] text-muted-foreground truncate">{row.listingName}</div>
+                    {stale && (
+                      <span className="flex items-center gap-0.5 text-[10px] text-amber mt-1">
+                        <Clock className="h-2.5 w-2.5" />
+                        Expiring
+                      </span>
+                    )}
+                  </TableCell>
+
+                  {/* Property */}
+                  <TableCell className="min-w-[180px] py-4 align-top">
+                    <div className="text-sm font-medium text-foreground leading-tight">{row.listingName}</div>
                     <ConstraintBadges row={row} />
-                  </div>
+                  </TableCell>
 
                   {/* Price */}
-                  <div className="text-right shrink-0">
+                  <TableCell className="w-[180px] py-4 align-top">
                     {activeTab === "pending" && row.proposedPrice ? (
                       <div className="space-y-0.5">
                         <div className="text-xs text-muted-foreground line-through">
@@ -661,12 +672,12 @@ export function PricingClient({
                         <DeltaBadge pct={row.changePct} />
                       </div>
                     ) : (
-                      <div>
+                      <div className="space-y-0.5">
                         <div className="text-sm font-bold text-foreground">
                           {row.currencyCode || "AED"} {Number(row.currentPrice).toLocaleString("en-US")}
                         </div>
                         <span className={cn(
-                          "text-[10px] font-medium",
+                          "text-[10px] font-semibold",
                           activeTab === "approved" ? "text-green-400" :
                           activeTab === "rejected" ? "text-red-400" :
                           "text-blue-400"
@@ -675,10 +686,10 @@ export function PricingClient({
                         </span>
                       </div>
                     )}
-                  </div>
+                  </TableCell>
 
                   {/* Risk */}
-                  <div className="flex items-start pt-0.5 shrink-0">
+                  <TableCell className="w-[80px] py-4 text-center align-top">
                     {activeTab === "pending" ? (
                       <RiskBadge pct={row.changePct} />
                     ) : (
@@ -695,19 +706,18 @@ export function PricingClient({
                         {activeTab}
                       </Badge>
                     )}
-                  </div>
+                  </TableCell>
 
                   {/* Reasoning */}
-                  <div className="min-w-0 max-w-xs">
+                  <TableCell className="min-w-[200px] max-w-[340px] py-4 align-top">
                     <ReasoningCell reasoning={row.reasoning} />
-                  </div>
+                  </TableCell>
 
-                  {/* Row Actions (pending only) */}
+                  {/* Row Actions */}
                   {(activeTab === "pending" || activeTab === "approved") && (
-                    <div className="flex flex-col gap-1 shrink-0">
+                    <TableCell className="py-4 text-right align-top pr-4">
                       {activeTab === "pending" && modifyingId === row.id ? (
-                        // ── Inline modify form ──
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center justify-end gap-1">
                           <span className="text-[10px] text-muted-foreground">{row.currencyCode || "AED"}</span>
                           <Input
                             type="number"
@@ -717,76 +727,74 @@ export function PricingClient({
                               if (e.key === "Enter") handleModify(row.id);
                               if (e.key === "Escape") cancelModify();
                             }}
-                            className="h-6 w-20 text-xs bg-background border-border/70 px-1.5 text-foreground dark:bg-white/[0.04] dark:border-white/15"
+                            className="h-7 w-20 text-xs bg-background border-border/70 px-1.5 text-foreground dark:bg-white/[0.04] dark:border-white/15"
                             autoFocus
                           />
                           <Button
                             size="sm"
                             disabled={isSavingModify}
                             onClick={() => handleModify(row.id)}
-                            className="h-6 px-2 text-[10px] bg-amber text-black hover:bg-amber/90"
+                            className="h-7 px-2.5 text-xs bg-amber text-black hover:bg-amber/90"
                           >
-                            {isSavingModify ? <RefreshCcw className="h-2.5 w-2.5 animate-spin" /> : "Save"}
+                            {isSavingModify ? <RefreshCcw className="h-3 w-3 animate-spin" /> : "Save"}
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={cancelModify}
-                            className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
                           >
-                            <X className="h-3 w-3" />
+                            <X className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       ) : activeTab === "pending" ? (
-                        // ── Default action buttons ──
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center justify-end gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleSingleAction(row.id, "approve")}
-                            className="h-7 px-2 text-[11px] text-green-400 hover:bg-green-500/10 hover:text-green-300 gap-1"
+                            className="h-7 px-2.5 text-xs text-green-500 hover:bg-green-500/10 hover:text-green-400 gap-1"
                           >
-                            <CheckCircle2 className="h-3 w-3" />
+                            <CheckCircle2 className="h-3.5 w-3.5" />
                             Approve
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => openModify(row)}
-                            className="h-7 px-2 text-[11px] text-amber/80 hover:bg-amber/10 hover:text-amber gap-1"
+                            className="h-7 px-2.5 text-xs text-amber/80 hover:bg-amber/10 hover:text-amber gap-1"
                           >
-                            <Pencil className="h-3 w-3" />
+                            <Pencil className="h-3.5 w-3.5" />
                             Modify
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleSingleAction(row.id, "reject")}
-                            className="h-7 px-2 text-[11px] text-red-400 hover:bg-red-500/10 hover:text-red-300 gap-1"
+                            className="h-7 px-2.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 gap-1"
                           >
-                            <XCircle className="h-3 w-3" />
+                            <XCircle className="h-3.5 w-3.5" />
                             Reject
                           </Button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            disabled={isProcessing}
-                            onClick={() => handlePushAction([row.id])}
-                            className="h-7 px-2.5 text-[11px] bg-blue-600 text-white hover:bg-blue-500 gap-1"
-                          >
-                            <Upload className="h-3 w-3" />
-                            Push
-                          </Button>
-                        </div>
+                        <Button
+                          size="sm"
+                          disabled={isProcessing}
+                          onClick={() => handlePushAction([row.id])}
+                          className="h-7 px-3 text-xs bg-blue-600 text-white hover:bg-blue-500 gap-1"
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          Push
+                        </Button>
                       )}
-                    </div>
+                    </TableCell>
                   )}
-                </div>
+                </TableRow>
               );
             })}
-          </div>
+            </TableBody>
+          </Table>
 
           {/* High-risk warning */}
           {activeTab === "pending" && displayProposals.filter((p) => riskLevel(p.changePct) === "high").length > 0 && (

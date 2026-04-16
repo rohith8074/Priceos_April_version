@@ -1,4 +1,5 @@
 import { connectDB, InventoryMaster, Listing } from "@/lib/db";
+import { getSession } from "@/lib/auth/server";
 import { PricingPageTabs } from "./pricing-page-tabs";
 import { format } from "date-fns";
 import mongoose from "mongoose";
@@ -7,6 +8,11 @@ export const dynamic = "force-dynamic";
 
 export default async function PricingPage() {
   await connectDB();
+  const session = await getSession();
+  if (!session?.orgId) {
+    return null;
+  }
+  const orgId = new mongoose.Types.ObjectId(session.orgId);
 
   const today = format(new Date(), "yyyy-MM-dd");
 
@@ -17,6 +23,7 @@ export default async function PricingPage() {
 
   // Fetch all proposals: pending (today+) and recent history (past 14d)
   const rawDocs = await InventoryMaster.find({
+    orgId,
     $or: [
       { proposalStatus: "pending", date: { $gte: today } },
       { proposalStatus: { $in: ["approved", "rejected", "pushed"] }, date: { $gte: past14Str } },
@@ -28,6 +35,7 @@ export default async function PricingPage() {
   // Build listing name + currency map from returned docs
   const listingIds = [...new Set(rawDocs.map((r) => r.listingId.toString()))];
   const listingDocs = await Listing.find({
+    orgId,
     _id: { $in: listingIds.map((id) => new mongoose.Types.ObjectId(id)) },
   })
     .select("name currencyCode")
@@ -41,7 +49,7 @@ export default async function PricingPage() {
   );
 
   // All active listings for Rules Studio listing selector
-  const allListingDocs = await Listing.find({ isActive: true })
+  const allListingDocs = await Listing.find({ orgId, isActive: true })
     .select("_id name currencyCode")
     .lean();
 

@@ -31,6 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -57,10 +58,18 @@ interface PricingRule {
   priority: number;
   startDate?: string;
   endDate?: string;
+  daysOfWeek?: number[];
+  minNights?: number;
   priceAdjPct?: number;
   priceOverride?: number;
+  minPriceOverride?: number;
+  maxPriceOverride?: number;
   minStayOverride?: number;
   isBlocked?: boolean;
+  closedToArrival?: boolean;
+  closedToDeparture?: boolean;
+  suspendLastMinute?: boolean;
+  suspendGapFill?: boolean;
 }
 
 interface PropertyGroup {
@@ -117,6 +126,16 @@ function fallbackCategoryFromRuleType(ruleType: PricingRule["ruleType"]) {
   if (ruleType === "LOS_DISCOUNT") return "LOS_DISCOUNTS";
   return "LEAD_TIME";
 }
+
+const WEEKDAY_OPTIONS = [
+  { value: 0, label: "Mon" },
+  { value: 1, label: "Tue" },
+  { value: 2, label: "Wed" },
+  { value: 3, label: "Thu" },
+  { value: 4, label: "Fri" },
+  { value: 5, label: "Sat" },
+  { value: 6, label: "Sun" },
+];
 
 // ── API helpers ────────────────────────────────────────────────────────────────
 
@@ -344,19 +363,38 @@ function RuleRow({
 
 function AddRuleForm({
   groupId,
+  initialCategory,
   onAdded,
   onCancel,
 }: {
   groupId: string;
+  initialCategory: NonNullable<PricingRule["ruleCategory"]>;
   onAdded: (r: PricingRule) => void;
   onCancel: () => void;
 }) {
-  const [ruleCategory, setRuleCategory] = useState<NonNullable<PricingRule["ruleCategory"]>>("SEASONS");
+  const [ruleCategory] = useState<NonNullable<PricingRule["ruleCategory"]>>(initialCategory);
   const [name, setName] = useState("");
   const [priceAdjPct, setPriceAdjPct] = useState("");
+  const [priceOverride, setPriceOverride] = useState("");
+  const [minPriceOverride, setMinPriceOverride] = useState("");
+  const [maxPriceOverride, setMaxPriceOverride] = useState("");
+  const [minStayOverride, setMinStayOverride] = useState("");
+  const [minNights, setMinNights] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
+  const [isBlocked, setIsBlocked] = useState(ruleCategory === "DATE_OVERRIDES");
+  const [closedToArrival, setClosedToArrival] = useState(false);
+  const [closedToDeparture, setClosedToDeparture] = useState(false);
+  const [suspendLastMinute, setSuspendLastMinute] = useState(ruleCategory === "GAP_LOGIC");
+  const [suspendGapFill, setSuspendGapFill] = useState(ruleCategory === "GAP_LOGIC");
   const [saving, setSaving] = useState(false);
+
+  const toggleDay = (day: number) => {
+    setDaysOfWeek((prev) =>
+      prev.includes(day) ? prev.filter((value) => value !== day) : [...prev, day].sort((a, b) => a - b)
+    );
+  };
 
   const handleSave = async () => {
     if (!name.trim()) { toast.error("Rule name is required"); return; }
@@ -368,15 +406,21 @@ function AddRuleForm({
         name: name.trim(),
         enabled: true,
         priority: 0,
-        isBlocked: false,
-        closedToArrival: false,
-        closedToDeparture: false,
-        suspendLastMinute: false,
-        suspendGapFill: false,
+        isBlocked,
+        closedToArrival,
+        closedToDeparture,
+        suspendLastMinute,
+        suspendGapFill,
       };
       if (priceAdjPct !== "") payload.priceAdjPct = Number(priceAdjPct);
+      if (priceOverride !== "") payload.priceOverride = Number(priceOverride);
+      if (minPriceOverride !== "") payload.minPriceOverride = Number(minPriceOverride);
+      if (maxPriceOverride !== "") payload.maxPriceOverride = Number(maxPriceOverride);
+      if (minStayOverride !== "") payload.minStayOverride = Number(minStayOverride);
+      if (minNights !== "") payload.minNights = Number(minNights);
       if (startDate) payload.startDate = startDate;
       if (endDate) payload.endDate = endDate;
+      if (daysOfWeek.length > 0) payload.daysOfWeek = daysOfWeek;
 
       const rule = await api(`/api/groups/${groupId}/rules`, {
         method: "POST",
@@ -391,35 +435,39 @@ function AddRuleForm({
   };
 
   return (
-    <div className="border border-dashed border-border-default rounded-lg p-3 space-y-3 bg-surface-0">
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <Label className="text-xs">Category</Label>
-          <Select value={ruleCategory} onValueChange={(v) => setRuleCategory(v as any)}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="GUARDRAILS">Guardrails</SelectItem>
-              <SelectItem value="SEASONS">Seasons</SelectItem>
-              <SelectItem value="LEAD_TIME">Lead Time</SelectItem>
-              <SelectItem value="GAP_LOGIC">Gap Logic</SelectItem>
-              <SelectItem value="LOS_DISCOUNTS">LOS Discounts</SelectItem>
-              <SelectItem value="DATE_OVERRIDES">Date Overrides</SelectItem>
-              <SelectItem value="OCCUPANCY">Occupancy</SelectItem>
-            </SelectContent>
-          </Select>
+    <div className="rounded-xl border border-border-default bg-surface-0 p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold text-text-primary">
+            Add {RULE_CATEGORY_LABELS[ruleCategory]}
+          </p>
+          <p className="text-[11px] text-text-tertiary">
+            This group rule applies to all properties in the selected group and overrides overlapping property rules.
+          </p>
         </div>
+        <Badge variant="secondary" className="text-[10px]">
+          {RULE_CATEGORY_LABELS[ruleCategory]}
+        </Badge>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <div className="space-y-1">
           <Label className="text-xs">Name</Label>
           <Input className="h-8 text-xs" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Eid Uplift" />
         </div>
+        {(ruleCategory === "SEASONS" || ruleCategory === "LEAD_TIME" || ruleCategory === "LOS_DISCOUNTS" || ruleCategory === "OCCUPANCY") && (
+          <div className="space-y-1">
+            <Label className="text-xs">Price adj %</Label>
+            <Input className="h-8 text-xs" type="number" value={priceAdjPct} onChange={(e) => setPriceAdjPct(e.target.value)} placeholder="e.g. 20" />
+          </div>
+        )}
+        {(ruleCategory === "DATE_OVERRIDES" || ruleCategory === "GUARDRAILS") && (
+          <div className="space-y-1">
+            <Label className="text-xs">Fixed price</Label>
+            <Input className="h-8 text-xs" type="number" value={priceOverride} onChange={(e) => setPriceOverride(e.target.value)} placeholder="e.g. 950" />
+          </div>
+        )}
       </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div className="space-y-1">
-          <Label className="text-xs">Price adj %</Label>
-          <Input className="h-8 text-xs" type="number" value={priceAdjPct} onChange={(e) => setPriceAdjPct(e.target.value)} placeholder="e.g. 20" />
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
         <div className="space-y-1">
           <Label className="text-xs">Start date</Label>
           <Input className="h-8 text-xs" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
@@ -428,6 +476,105 @@ function AddRuleForm({
           <Label className="text-xs">End date</Label>
           <Input className="h-8 text-xs" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         </div>
+        {(ruleCategory === "SEASONS" || ruleCategory === "LOS_DISCOUNTS" || ruleCategory === "DATE_OVERRIDES" || ruleCategory === "GUARDRAILS") && (
+          <div className="space-y-1">
+            <Label className="text-xs">Min stay override</Label>
+            <Input className="h-8 text-xs" type="number" value={minStayOverride} onChange={(e) => setMinStayOverride(e.target.value)} placeholder="e.g. 3" />
+          </div>
+        )}
+      </div>
+
+      {ruleCategory === "GUARDRAILS" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label className="text-xs">Min price override</Label>
+            <Input className="h-8 text-xs" type="number" value={minPriceOverride} onChange={(e) => setMinPriceOverride(e.target.value)} placeholder="e.g. 400" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Max price override</Label>
+            <Input className="h-8 text-xs" type="number" value={maxPriceOverride} onChange={(e) => setMaxPriceOverride(e.target.value)} placeholder="e.g. 2500" />
+          </div>
+        </div>
+      )}
+
+      {(ruleCategory === "LOS_DISCOUNTS" || ruleCategory === "LEAD_TIME" || ruleCategory === "GAP_LOGIC") && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label className="text-xs">Minimum nights</Label>
+            <Input className="h-8 text-xs" type="number" value={minNights} onChange={(e) => setMinNights(e.target.value)} placeholder="e.g. 2" />
+          </div>
+          {ruleCategory === "GAP_LOGIC" && (
+            <div className="space-y-1">
+              <Label className="text-xs">Min stay override</Label>
+              <Input className="h-8 text-xs" type="number" value={minStayOverride} onChange={(e) => setMinStayOverride(e.target.value)} placeholder="e.g. 1" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {(ruleCategory === "LEAD_TIME" || ruleCategory === "OCCUPANCY") && (
+        <div className="space-y-2">
+          <Label className="text-xs">Days of week</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {WEEKDAY_OPTIONS.map((day) => {
+              const active = daysOfWeek.includes(day.value);
+              return (
+                <button
+                  key={day.value}
+                  type="button"
+                  onClick={() => toggleDay(day.value)}
+                  className={cn(
+                    "rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                    active
+                      ? "border-amber-500 bg-amber-500 text-black"
+                      : "border-border-default bg-background text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {day.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {(ruleCategory === "GAP_LOGIC" || ruleCategory === "DATE_OVERRIDES") && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label className="flex items-center justify-between rounded-lg border border-border-default bg-background px-3 py-2">
+            <span className="text-xs text-foreground">Block date</span>
+            <Switch checked={isBlocked} onCheckedChange={setIsBlocked} />
+          </label>
+          <label className="flex items-center justify-between rounded-lg border border-border-default bg-background px-3 py-2">
+            <span className="text-xs text-foreground">Closed to arrival</span>
+            <Switch checked={closedToArrival} onCheckedChange={setClosedToArrival} />
+          </label>
+          <label className="flex items-center justify-between rounded-lg border border-border-default bg-background px-3 py-2">
+            <span className="text-xs text-foreground">Closed to departure</span>
+            <Switch checked={closedToDeparture} onCheckedChange={setClosedToDeparture} />
+          </label>
+          {ruleCategory === "GAP_LOGIC" && (
+            <>
+              <label className="flex items-center justify-between rounded-lg border border-border-default bg-background px-3 py-2">
+                <span className="text-xs text-foreground">Suspend last-minute logic</span>
+                <Switch checked={suspendLastMinute} onCheckedChange={setSuspendLastMinute} />
+              </label>
+              <label className="flex items-center justify-between rounded-lg border border-border-default bg-background px-3 py-2">
+                <span className="text-xs text-foreground">Suspend gap-fill logic</span>
+                <Switch checked={suspendGapFill} onCheckedChange={setSuspendGapFill} />
+              </label>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="rounded-lg border border-border-default bg-background px-3 py-2 text-[11px] text-muted-foreground">
+        {ruleCategory === "GUARDRAILS" && "Use this to enforce temporary min/max pricing bounds or fixed-rate exceptions across the whole group."}
+        {ruleCategory === "SEASONS" && "Use date ranges plus price and stay changes for seasonal periods shared by all group members."}
+        {ruleCategory === "LEAD_TIME" && "Use this to raise or lower pricing for selected weekdays or booking windows across the group."}
+        {ruleCategory === "GAP_LOGIC" && "Use this to protect short gaps, change arrival/departure behavior, or suspend listing-level automation during special windows."}
+        {ruleCategory === "LOS_DISCOUNTS" && "Use this to apply group-wide discounts or min-stay rules tied to booking length."}
+        {ruleCategory === "DATE_OVERRIDES" && "Use this to block dates, set fixed prices, or force stay rules on specific dates for every property in the group."}
+        {ruleCategory === "OCCUPANCY" && "Use this to add occupancy-driven price adjustments that the group should apply before any listing-specific rule."}
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onCancel}>Cancel</Button>
@@ -458,7 +605,7 @@ function GroupDetail({
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [loadingRules, setLoadingRules] = useState(true);
   const [showRuleForm, setShowRuleForm] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
+  const [activeRuleCategory, setActiveRuleCategory] = useState<NonNullable<PricingRule["ruleCategory"]>>("GUARDRAILS");
   const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -471,10 +618,9 @@ function GroupDetail({
   }, [group._id]);
 
   const memberListings = allListings.filter((l) => group.listingIds.includes(l._id));
-  const filteredRules = rules.filter((r) => {
-    if (categoryFilter === "ALL") return true;
-    return (r.ruleCategory || fallbackCategoryFromRuleType(r.ruleType)) === categoryFilter;
-  });
+  const filteredRules = rules.filter(
+    (r) => (r.ruleCategory || fallbackCategoryFromRuleType(r.ruleType)) === activeRuleCategory
+  );
 
   const handleDelete = async () => {
     if (!confirm(`Delete group "${group.name}" and all its rules?`)) return;
@@ -551,41 +697,43 @@ function GroupDetail({
 
         {/* Rules */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">
-              Group Rules ({rules.length})
-            </p>
-            <div className="flex items-center gap-2">
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="h-6 text-xs w-40">
-                  <SelectValue placeholder="Filter category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">All categories</SelectItem>
-                  <SelectItem value="GUARDRAILS">Guardrails</SelectItem>
-                  <SelectItem value="SEASONS">Seasons</SelectItem>
-                  <SelectItem value="LEAD_TIME">Lead Time</SelectItem>
-                  <SelectItem value="GAP_LOGIC">Gap Logic</SelectItem>
-                  <SelectItem value="LOS_DISCOUNTS">LOS Discounts</SelectItem>
-                  <SelectItem value="DATE_OVERRIDES">Date Overrides</SelectItem>
-                  <SelectItem value="OCCUPANCY">Occupancy</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 text-xs gap-1"
-                onClick={() => setShowRuleForm(true)}
-              >
-                <Plus className="w-3 h-3" /> Add rule
-              </Button>
+          <div className="flex items-center justify-between mb-2 gap-3">
+            <div>
+              <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">
+                Group Rules ({rules.length})
+              </p>
+              <p className="text-xs text-text-tertiary mt-1">
+                These rules apply to all {memberListings.length} properties in this group.
+                When both levels define overlapping logic, group rules take precedence.
+              </p>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1 shrink-0"
+              onClick={() => setShowRuleForm(true)}
+            >
+              <Plus className="w-3 h-3" /> Add rule
+            </Button>
           </div>
-
-          <p className="text-xs text-text-tertiary mb-3">
-            These rules apply to all {memberListings.length} properties in this group.
-            Per-property rules always take precedence.
-          </p>
+          <Tabs value={activeRuleCategory} onValueChange={(v) => { setActiveRuleCategory(v as NonNullable<PricingRule["ruleCategory"]>); setShowRuleForm(false); }} className="mb-4">
+            <TabsList className="flex flex-wrap gap-1.5 h-auto bg-surface-2/60 p-1.5 rounded-lg border border-border-subtle">
+              {(Object.entries(RULE_CATEGORY_LABELS) as [NonNullable<PricingRule["ruleCategory"]>, string][]).map(([value, label]) => (
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  className={cn(
+                    "gap-1.5 text-xs font-semibold transition-all rounded-md px-3 py-1.5 border relative",
+                    activeRuleCategory === value
+                      ? "bg-amber-500 text-black border-amber-500 shadow-lg ring-2 ring-amber-500/40 scale-[1.02]"
+                      : "bg-transparent text-muted-foreground border-transparent hover:bg-background hover:text-foreground"
+                  )}
+                >
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
 
           {loadingRules ? (
             <div className="flex items-center gap-2 text-xs text-text-tertiary py-2">
@@ -605,7 +753,9 @@ function GroupDetail({
                 />
               ))}
               {filteredRules.length === 0 && !showRuleForm && (
-                <p className="text-xs text-text-tertiary italic">No group rules yet.</p>
+                <p className="text-xs text-text-tertiary italic">
+                  No {RULE_CATEGORY_LABELS[activeRuleCategory].toLowerCase()} group rules yet.
+                </p>
               )}
             </div>
           )}
@@ -614,6 +764,7 @@ function GroupDetail({
             <div className="mt-2">
               <AddRuleForm
                 groupId={group._id}
+                initialCategory={activeRuleCategory}
                 onAdded={(r) => { setRules((prev) => [...prev, r]); setShowRuleForm(false); }}
                 onCancel={() => setShowRuleForm(false)}
               />
@@ -672,7 +823,7 @@ export default function GroupsPage() {
           </h1>
           <p className="text-sm text-text-tertiary mt-1">
             Create groups of properties and set pricing rules that apply to all of them at once.
-            Per-property rules always override group rules.
+            Group rules override overlapping property rules.
           </p>
         </div>
         <Button onClick={() => { setShowCreate(true); setSelectedId(null); }} className="gap-1.5">
