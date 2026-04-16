@@ -12,14 +12,12 @@ import { apiSuccess, apiError } from "@/lib/api/response";
 import { chatRequestSchema, formatZodErrors } from "@/lib/validators";
 import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/api/rate-limit";
 import { CRO_ROUTER_AGENT_ID } from "@/lib/agents/constants";
-import { getLyzrConfig, requireLyzrChatUrl } from "@/lib/env";
+import { callLyzrAgent, extractJson } from "@/lib/lyzr/client";
 import mongoose from "mongoose";
 
 const AGENT_ID = process.env.AGENT_ID || CRO_ROUTER_AGENT_ID;
 
 export async function POST(req: Request) {
-    const LYZR_API_URL = requireLyzrChatUrl();
-    const { apiKey: LYZR_API_KEY } = getLyzrConfig();
     const ip = getClientIp(req);
 
     const rateCheck = checkRateLimit(`ai-chat:${ip}`, RATE_LIMITS.ai);
@@ -36,10 +34,6 @@ export async function POST(req: Request) {
         }
 
         const { message, context, sessionId, dateRange } = validation.data;
-
-        if (!LYZR_API_KEY) {
-            return apiError("CONFIG_ERROR", "LYZR_API_KEY not configured", 500);
-        }
 
         await connectDB();
 
@@ -209,23 +203,19 @@ export async function POST(req: Request) {
             anchoredMessage = `[SYSTEM: CURRENT PROPERTY DATA]\n${JSON.stringify(propertyDataPayload, null, 2)}\n[/SYSTEM]\n\nUser Message:\n${message}`;
         }
 
-        const lyzrRes = await fetch(LYZR_API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-api-key": LYZR_API_KEY },
-            body: JSON.stringify({
-                user_id: "priceos-user",
-                agent_id: AGENT_ID,
-                session_id: lyzrSessionId,
-                message: anchoredMessage,
-            }),
+        const lyzrResult = await callLyzrAgent({
+            agentId: AGENT_ID,
+            message: anchoredMessage,
+            userId: "priceos-user",
+            sessionId: lyzrSessionId,
         });
 
-        if (!lyzrRes.ok) {
-            return apiError("AI_SERVICE_ERROR", "Failed to connect to Lyzr Agent", 502);
+        if (!lyzrResult.ok) {
+            return apiError("AI_SERVICE_ERROR", lyzrResult.error || "Failed to connect to Lyzr Agent", 502);
         }
 
-        const lyzrData = await lyzrRes.json();
-        const { text: agentReply, parsedJson } = extractAgentMessage(lyzrData);
+        const agentReply = lyzrResult.response;
+        const parsedJson = lyzrResult.parsedJson as any;
 
         // Apply Guardrails
         // For property mode: use the single property's floor/ceiling.
@@ -275,24 +265,6 @@ export async function POST(req: Request) {
     }
 }
 
-function extractAgentMessage(response: any): { text: string; parsedJson: any | null } {
-    let rawStr = response.response || response.message || "";
-    if (typeof rawStr !== "string") {
-        rawStr = response.response?.message || response.response?.result?.message || JSON.stringify(rawStr);
-    }
-
-    const cleanStr = rawStr.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
-    try {
-        const jsonMatch = cleanStr.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            return { text: parsed.chat_response || parsed.summary || rawStr, parsedJson: parsed };
-        }
-        return { text: rawStr, parsedJson: null };
-    } catch {
-        return { text: rawStr, parsedJson: null };
-    }
-}
 
 function enforceGuardrails(proposals: any[], floor: number, ceiling: number): any[] {
     return proposals.map(p => {

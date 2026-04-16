@@ -268,7 +268,7 @@ export function OverviewClient({
               </CardContent>
             </Card>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="dark:bg-black border border-white/20 p-2 text-xs">
+          <TooltipContent side="bottom" className="dark:bg-black dark:text-white border border-white/20 p-2 text-xs">
             Total number of active property units synced from your PMS (Hostaway).
           </TooltipContent>
         </UITooltip>
@@ -291,7 +291,7 @@ export function OverviewClient({
               </CardContent>
             </Card>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="dark:bg-black border border-white/20 p-2 text-xs">
+          <TooltipContent side="bottom" className="dark:bg-black dark:text-white border border-white/20 p-2 text-xs">
             Projected occupancy for the next 30 days based on confirmed bookings.
           </TooltipContent>
         </UITooltip>
@@ -314,7 +314,7 @@ export function OverviewClient({
               </CardContent>
             </Card>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="dark:bg-black border border-white/20 p-2 text-xs">
+          <TooltipContent side="bottom" className="dark:bg-black dark:text-white border border-white/20 p-2 text-xs">
             Average nightly rate across all upcoming bookings in the next 30 days.
           </TooltipContent>
         </UITooltip>
@@ -340,7 +340,7 @@ export function OverviewClient({
               </CardContent>
             </Card>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="dark:bg-black border border-white/20 p-2 text-xs">
+          <TooltipContent side="bottom" className="dark:bg-black dark:text-white border border-white/20 p-2 text-xs">
             Estimated gross revenue for the next 30 days (Confirmed Bookings + Projected yield).
           </TooltipContent>
         </UITooltip>
@@ -363,7 +363,7 @@ export function OverviewClient({
               </CardContent>
             </Card>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="dark:bg-black border border-white/20 p-2 text-xs">
+          <TooltipContent side="bottom" className="dark:bg-black dark:text-white border border-white/20 p-2 text-xs">
             Total historical revenue generated across the entire portfolio life-cycle.
           </TooltipContent>
         </UITooltip>

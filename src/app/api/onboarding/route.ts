@@ -13,7 +13,7 @@ import { verifyAccessToken, signAccessToken } from "@/lib/auth/jwt";
 import { COOKIE_NAME } from "@/lib/auth/server";
 import { connectDB, Organization, Listing, InventoryMaster, Reservation, MarketEvent, PricingRule, PropertyGroup } from "@/lib/db";
 import mongoose from "mongoose";
-import { getLyzrConfig, requireLyzrChatUrl } from "@/lib/env";
+import { callLyzrAgent as callLyzrPool } from "@/lib/lyzr/client";
 import { MARKET_RESEARCH_ID, BENCHMARK_AGENT_ID } from "@/lib/agents/constants";
 
 // ── Helper: detect demo mode ────────────────────────────────────────────────────
@@ -268,39 +268,14 @@ async function seedMarketTemplate(orgId: string, marketCode: string, activatedLi
   }
 }
 
-// ── Server-side Lyzr Agent caller ─────────────────────────────────────────────
-// Calls Lyzr Studio API directly from the Node.js server (no Python backend needed
-// for onboarding since there is no authenticated browser session at this point).
 async function callLyzrAgent(agentId: string, message: string): Promise<string> {
-  const LYZR_API_URL = requireLyzrChatUrl();
-  const { apiKey: LYZR_API_KEY } = getLyzrConfig();
-
-  if (!LYZR_API_KEY) {
-    throw new Error("LYZR_API_KEY not configured in environment");
-  }
-
-  const res = await fetch(LYZR_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": LYZR_API_KEY,
-    },
-    body: JSON.stringify({
-      agent_id: agentId,
-      message,
-      // session per onboarding run to avoid cross-context bleed
-      session_id: `onboarding-${agentId}-${Date.now()}`,
-    }),
+  const result = await callLyzrPool({
+    agentId,
+    message,
+    sessionId: `onboarding-${agentId}-${Date.now()}`,
   });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Lyzr API error ${res.status}: ${errText}`);
-  }
-
-  const data = await res.json();
-  // Lyzr response: data.response or data.message or data.output
-  return data?.response || data?.message || data?.output || JSON.stringify(data);
+  if (!result.ok) throw new Error(result.error || "Lyzr agent call failed");
+  return result.response || JSON.stringify(result.raw);
 }
 
 // ── Live Market Data Seeder (Real Hostaway Users via Lyzr Agents) ──────────────

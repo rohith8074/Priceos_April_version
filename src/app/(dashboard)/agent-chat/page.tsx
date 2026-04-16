@@ -7,7 +7,6 @@ import { ContextPanel } from "@/components/layout/context-panel";
 import { UnifiedChatInterface } from "@/components/chat/unified-chat-interface";
 import { SidebarTabbedView } from "@/components/layout/sidebar-tabbed-view";
 import { RightSidebarLayout } from "@/components/layout/right-sidebar-layout";
-import { OnboardingTour } from "@/components/chat/onboarding-tour";
 
 export default async function DashboardPage() {
   // ── Auth + orgId ──────────────────────────────────────────────────────────
@@ -77,7 +76,6 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      <OnboardingTour />
       <div id="tour-property-list">
         <ContextPanel properties={propertiesWithMetrics} />
       </div>

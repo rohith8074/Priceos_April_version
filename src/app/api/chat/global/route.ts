@@ -3,7 +3,8 @@ import { connectDB, ChatMessage } from "@/lib/db";
 import { getSession } from "@/lib/auth/server";
 import mongoose from "mongoose";
 import { buildAgentContext } from "@/lib/agents/db-context-builder";
-import { getLyzrConfig, requireLyzrChatUrl, requirePythonBackendUrl } from "@/lib/env";
+import { requirePythonBackendUrl } from "@/lib/env";
+import { callLyzrAgent, extractLyzrMessage } from "@/lib/lyzr/client";
 
 const LOG_PREFIX = "[DashboardAgent]";
 
@@ -18,8 +19,6 @@ function sseEvent(type: string, data: any): string {
 }
 
 export async function POST(req: NextRequest) {
-    const LYZR_API_URL = requireLyzrChatUrl();
-    const { apiKey: LYZR_API_KEY } = getLyzrConfig();
     const startTime = performance.now();
     const encoder = new TextEncoder();
 
@@ -157,46 +156,24 @@ Use exactly this orgId. Do not use placeholder, example, or cached org ids from 
                 let metadata: Record<string, number | string> = {};
 
                 if (usedFallback || !responseMessage) {
-                    if (!LYZR_API_KEY) {
-                        clearInterval(progressTimer);
-                        console.error(`${LOG_PREFIX} LYZR_API_KEY missing; cannot fall back after python failure`);
-                        send("error", { message: "Dashboard agent unavailable (missing API key)." });
-                        controller.close();
-                        return;
-                    }
-
                     send("status", { step: "fallback", message: "Connecting to Lyzr agent directly…" });
 
-                    const directRes = await fetch(LYZR_API_URL, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", "x-api-key": LYZR_API_KEY },
-                        body: JSON.stringify({
-                            user_id: session?.userId || "priceos-user",
-                            agent_id: dashboardAgentId,
-                            session_id: sessionId,
-                            message: finalMessage,
-                        }),
+                    const directResult = await callLyzrAgent({
+                        agentId: dashboardAgentId || "",
+                        message: finalMessage,
+                        userId: session?.userId || "priceos-user",
+                        sessionId: sessionId,
                     });
 
-                    if (!directRes.ok) {
-                        const errText = await directRes.text();
+                    if (!directResult.ok) {
                         clearInterval(progressTimer);
-                        send("error", { message: `Dashboard agent unavailable (${directRes.status})` });
-                        console.error(`${LOG_PREFIX} lyzr_direct HTTP error`, {
-                            status: directRes.status,
-                            bodyPreview: logPreview(errText, 400),
-                        });
+                        send("error", { message: `Dashboard agent unavailable (${directResult.error})` });
+                        console.error(`${LOG_PREFIX} lyzr_direct error`, { error: directResult.error });
                         controller.close();
                         return;
                     }
 
-                    const directData = await directRes.json();
-                    const raw =
-                        typeof directData?.response === "string"
-                            ? directData.response
-                            : directData?.response?.message || directData?.response?.result?.message || "";
-
-                    responseMessage = raw || "No response from dashboard agent.";
+                    responseMessage = directResult.response || "No response from dashboard agent.";
                     metadata = { source: "lyzr_direct" };
                     responseSource = "lyzr_direct";
                     console.log(`${LOG_PREFIX} lyzr_direct reply`, {

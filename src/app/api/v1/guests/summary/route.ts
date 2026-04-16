@@ -7,7 +7,8 @@ import { apiSuccess, apiError } from "@/lib/api/response";
 import { getSummarySchema, generateSummarySchema, formatZodErrors } from "@/lib/validators";
 import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/api/rate-limit";
 import { getSession } from "@/lib/auth/server";
-import { getAgentId, getLyzrConfig, requireLyzrChatUrl } from "@/lib/env";
+import { getAgentId, getLyzrConfig } from "@/lib/env";
+import { callLyzrAgent } from "@/lib/lyzr/client";
 import mongoose from "mongoose";
 
 export async function GET(request: Request) {
@@ -124,28 +125,17 @@ export async function POST(request: Request) {
         try {
             const lyzrAgentId = getAgentId("LYZR_CONVERSATION_SUMMARY_AGENT_ID", "LYZR_Conversation_Summary_Agent_ID");
             const { apiKey: lyzrApiKey } = getLyzrConfig();
-            const lyzrApiUrl = requireLyzrChatUrl();
 
             if (!lyzrAgentId || !lyzrApiKey) throw new Error("Lyzr not configured");
 
             const callLyzr = async (prompt: string, sessionSuffix: string): Promise<string | null> => {
-                const res = await fetch(lyzrApiUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "x-api-key": lyzrApiKey },
-                    body: JSON.stringify({
-                        user_id: "priceos-system",
-                        agent_id: lyzrAgentId,
-                        session_id: `summary-${listingId}-${sessionSuffix}`,
-                        message: prompt,
-                    }),
+                const result = await callLyzrAgent({
+                    agentId: lyzrAgentId!,
+                    message: prompt,
+                    userId: "priceos-system",
+                    sessionId: `summary-${listingId}-${sessionSuffix}`,
                 });
-                const json = await res.json();
-                if (res.ok && json.response) {
-                    return typeof json.response === 'string'
-                        ? json.response
-                        : json.response?.message || json.response?.data || JSON.stringify(json.response);
-                }
-                return null;
+                return result.ok ? result.response || null : null;
             };
 
             if (chunks.length === 1) {

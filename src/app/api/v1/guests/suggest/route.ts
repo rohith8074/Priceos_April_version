@@ -2,7 +2,8 @@ import { connectDB, Listing } from "@/lib/db";
 import { apiSuccess, apiError } from "@/lib/api/response";
 import { suggestReplySchema, formatZodErrors } from "@/lib/validators";
 import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/api/rate-limit";
-import { getAgentId, getLyzrConfig, requireLyzrChatUrl } from "@/lib/env";
+import { getAgentId, getLyzrConfig } from "@/lib/env";
+import { callLyzrAgent } from "@/lib/lyzr/client";
 import mongoose from "mongoose";
 
 /**
@@ -52,7 +53,6 @@ export async function POST(request: Request) {
         // ── Step 2: Check Lyzr configuration ──
         const lyzrAgentId = getAgentId("LYZR_CHAT_RESPONSE_AGENT_ID", "LYZR_Chat_Response_Agent_ID");
         const { apiKey: lyzrApiKey } = getLyzrConfig();
-        const lyzrApiUrl = requireLyzrChatUrl();
 
         if (!lyzrAgentId || !lyzrApiKey) {
             console.warn("⚠️  [v1/guests/suggest] Lyzr not configured, returning fallback");
@@ -99,52 +99,31 @@ Guest's message: "${message}"
 
 Write a professional, warm, and concise reply. Address their question directly using the property details above where relevant. Keep it to 2-4 sentences. Do not use formal sign-offs like "Sincerely" or "Best regards".`;
 
-        console.log(`📨 [v1/guests/suggest] Calling Lyzr agent ${lyzrAgentId}...`);
+        console.log(`[v1/guests/suggest] Calling Lyzr agent ${lyzrAgentId}...`);
 
-        const agentRes = await fetch(lyzrApiUrl, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-api-key": lyzrApiKey,
-            },
-            body: JSON.stringify({
-                user_id: "priceos-system",
-                agent_id: lyzrAgentId,
-                session_id: `reply-${Date.now()}`,
-                message: prompt,
-            }),
+        const lyzrResult = await callLyzrAgent({
+            agentId: lyzrAgentId,
+            message: prompt,
+            userId: "priceos-system",
+            sessionId: `reply-${Date.now()}`,
         });
 
-        const agentJson = await agentRes.json();
-
-        if (agentRes.ok && agentJson.response) {
-            const rawResponse = typeof agentJson.response === 'string'
-                ? agentJson.response
-                : agentJson.response?.message || agentJson.response?.data || "";
-
-            // ── Step 4: Extract reply from potentially structured JSON response ──
-            let reply = rawResponse;
+        if (lyzrResult.ok && lyzrResult.response) {
+            let reply = lyzrResult.response;
             try {
-                const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+                const jsonMatch = reply.match(/\{[\s\S]*\}/);
                 if (jsonMatch) {
                     const parsed = JSON.parse(jsonMatch[0]);
-                    if (parsed.reply) {
-                        reply = parsed.reply;
-                    }
+                    if (parsed.reply) reply = parsed.reply;
                 }
-            } catch {
-                // Not JSON — use as-is (plain text reply is fine)
-            }
-
-            // Strip any remaining markdown code fences
+            } catch { /* plain text */ }
             reply = reply.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim();
 
-            console.log(`✅ [v1/guests/suggest] AI draft generated`);
+            console.log(`[v1/guests/suggest] AI draft generated`);
             return apiSuccess({ reply, source: "lyzr" });
         }
 
-        // ── Fallback if Lyzr returned non-OK ──
-        console.warn("⚠️  [v1/guests/suggest] Lyzr returned non-OK, using fallback");
+        console.warn("[v1/guests/suggest] Lyzr returned non-OK, using fallback");
         return apiSuccess({
             reply: `Hi ${guestName}, thanks for reaching out! I'll look into this and get back to you shortly.`,
             source: "fallback",

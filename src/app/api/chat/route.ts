@@ -7,7 +7,7 @@ import {
 } from "@/lib/db";
 import { getSession } from "@/lib/auth/server";
 import mongoose from "mongoose";
-import { getLyzrConfig, requireLyzrChatUrl } from "@/lib/env";
+import { callLyzrAgent, extractLyzrMessage, extractJson } from "@/lib/lyzr/client";
 
 const AGENT_ID = process.env.AGENT_ID || MANAGER_AGENT_ID;
 const AGENT_TOOLS_API_KEY = process.env.AGENT_TOOLS_JWT_SECRET || "";
@@ -40,8 +40,6 @@ function sseEvent(type: string, data: any): string {
 }
 
 export async function POST(req: NextRequest) {
-    const LYZR_API_URL = requireLyzrChatUrl();
-    const { apiKey: LYZR_API_KEY } = getLyzrConfig();
     const startTime = performance.now();
     const encoder = new TextEncoder();
 
@@ -60,7 +58,7 @@ export async function POST(req: NextRequest) {
                     controller.close();
                     return;
                 }
-                if (!LYZR_API_KEY || !AGENT_ID) {
+                if (!AGENT_ID) {
                     send("error", { message: "Agent not configured" });
                     controller.close();
                     return;
@@ -159,14 +157,6 @@ export async function POST(req: NextRequest) {
 
                 send("status", { step: "agent", message: "Aria is analyzing your request…" });
 
-                const payload = {
-                    user_id: "priceos-user",
-                    agent_id: AGENT_ID,
-                    session_id: lyzrSessionId,
-                    message: anchoredMessage,
-                };
-
-                // Start a timer to send intermediate status updates while Lyzr is processing
                 let statusIdx = 0;
                 const PROGRESS_MESSAGES = [
                     "Querying live property data…",
@@ -182,20 +172,20 @@ export async function POST(req: NextRequest) {
                     }
                 }, 4000);
 
-                let response: Response;
+                let lyzrResult;
                 try {
-                    response = await fetch(LYZR_API_URL, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json", "x-api-key": LYZR_API_KEY },
-                        body: JSON.stringify(payload),
+                    lyzrResult = await callLyzrAgent({
+                        agentId: AGENT_ID,
+                        message: anchoredMessage,
+                        userId: "priceos-user",
+                        sessionId: lyzrSessionId,
                     });
                 } finally {
                     clearInterval(progressTimer);
                 }
 
-                if (!response.ok) {
-                    const rawText = await response.text();
-                    console.error(`❌ LYZR API ERROR — ${response.status}: ${rawText.substring(0, 300)}`);
+                if (!lyzrResult.ok) {
+                    console.error(`LYZR API ERROR: ${lyzrResult.error}`);
                     send("error", { message: "AI agent is temporarily unavailable. Please try again." });
                     controller.close();
                     return;
@@ -203,9 +193,9 @@ export async function POST(req: NextRequest) {
 
                 send("status", { step: "parsing", message: "Processing agent response…" });
 
-                const data = await response.json();
                 const duration = Math.round(performance.now() - startTime);
-                const { text: agentReply, parsedJson } = extractAgentMessage(data);
+                const agentReply = lyzrResult.response;
+                const parsedJson = lyzrResult.parsedJson as any;
 
                 // Server-side guardrails
                 const floorPrice = Number(listingGuardrails?.floorPrice || 0);
@@ -261,37 +251,6 @@ export async function POST(req: NextRequest) {
             "X-Accel-Buffering": "no",
         },
     });
-}
-
-function extractAgentMessage(response: any): { text: string; parsedJson: any | null } {
-    let rawStr = "";
-    if (typeof response.response === "string") rawStr = response.response;
-    else if (response.response?.message) rawStr = response.response.message;
-    else if (response.response?.result?.message) rawStr = response.response.result.message;
-    else if (response.response?.result?.text) rawStr = response.response.result.text;
-    else if (response.response?.result?.answer) rawStr = response.response.result.answer;
-    else if (typeof response.message === "string") rawStr = response.message;
-    else if (response.choices?.[0]?.message?.content) rawStr = response.choices[0].message.content;
-    else if (typeof response.result === "string") rawStr = response.result;
-
-    if (!rawStr) {
-        console.warn("[Chat API] Unknown Lyzr response format:", JSON.stringify(response).substring(0, 500));
-        return { text: "I received your message but couldn't parse my response. Please try again.", parsedJson: null };
-    }
-
-    let cleanStr = rawStr;
-    if (cleanStr.startsWith("```json")) {
-        cleanStr = cleanStr.replace(/```json\s*/, "").replace(/\s*```$/, "");
-    }
-
-    try {
-        const parsed = JSON.parse(cleanStr);
-        if (parsed.chat_response) return { text: parsed.chat_response, parsedJson: parsed };
-        if (parsed.summary) return { text: parsed.summary, parsedJson: parsed };
-        return { text: "```json\n" + JSON.stringify(parsed, null, 2) + "\n```", parsedJson: parsed };
-    } catch {
-        return { text: rawStr, parsedJson: null };
-    }
 }
 
 function enforceGuardrails(proposals: any[], floorPrice: number, ceilingPrice: number): any[] {

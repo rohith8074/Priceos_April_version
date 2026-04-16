@@ -17,51 +17,20 @@ import {
     BENCHMARK_AGENT_ID,
     GUARDRAILS_AGENT_ID,
 } from "@/lib/agents/constants";
-import { getLyzrConfig, requireLyzrChatUrl } from "@/lib/env";
+import { callLyzrAgent } from "@/lib/lyzr/client";
 import mongoose from "mongoose";
 import { syncEventFeeds } from "@/lib/events/event-feed-syncer";
 
 export const dynamic = "force-dynamic";
 
-async function callLyzrAgent(agentId: string, message: string) {
-    const { apiKey: LYZR_API_KEY } = getLyzrConfig();
-    const LYZR_API_URL = requireLyzrChatUrl();
-
-    if (!LYZR_API_KEY) return { text: "", parsedJson: null };
-
-    try {
-        const response = await fetch(LYZR_API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-api-key": LYZR_API_KEY },
-            body: JSON.stringify({
-                user_id: "priceos-setup-system",
-                agent_id: agentId,
-                session_id: `setup-${Date.now()}`,
-                message,
-            }),
-        });
-
-        if (!response.ok) return { text: "", parsedJson: null };
-
-        const data = await response.json();
-        const rawStr =
-            data.response?.message ||
-            data.response?.result?.message ||
-            data.response ||
-            data.message ||
-            "";
-
-        let parsedJson = null;
-        try {
-            const jsonMatch = rawStr.match(/\{[\s\S]*\}/);
-            if (jsonMatch) parsedJson = JSON.parse(jsonMatch[0]);
-        } catch { /* ignore */ }
-
-        return { text: rawStr, parsedJson };
-    } catch (err) {
-        console.error(`[callLyzrAgent] Error calling agent ${agentId}:`, err);
-        return { text: "", parsedJson: null };
-    }
+async function callMarketAgent(agentId: string, message: string) {
+    const result = await callLyzrAgent({
+        agentId,
+        message,
+        userId: "priceos-setup-system",
+        sessionId: `setup-${Date.now()}`,
+    });
+    return { text: result.response, parsedJson: result.parsedJson };
 }
 
 export async function POST(req: NextRequest) {
@@ -158,12 +127,12 @@ export async function POST(req: NextRequest) {
         const benchmarkPrompt = `Market: ${templateCity}. Area: ${searchClusters}. ${bedrooms}BR. Base price: ${listing?.price || "Unknown"} ${currency}. Date range: ${dateRange.from} to ${dateRange.to}. Find 10-15 comparable short-term rental properties. Return JSON with rate_distribution (p25,p50,p75,p90,avg_weekday,avg_weekend), pricing_verdict (verdict,percentile,your_price), rate_trend (direction,pct_change), recommended_rates (weekday,weekend,event_peak,reasoning), comps array.`;
 
         const [marketingRes, benchmarkRes] = await Promise.all([
-            callLyzrAgent(MARKETING_AGENT_ID || MARKET_RESEARCH_ID, marketingPrompt),
-            callLyzrAgent(BENCHMARK_AGENT_ID || PROPERTY_ANALYST_ID, benchmarkPrompt),
+            callMarketAgent(MARKETING_AGENT_ID || MARKET_RESEARCH_ID, marketingPrompt),
+            callMarketAgent(BENCHMARK_AGENT_ID || PROPERTY_ANALYST_ID, benchmarkPrompt),
         ]);
 
-        const agentMkt = marketingRes.parsedJson || {};
-        const agentBench = benchmarkRes.parsedJson || {};
+        const agentMkt: any = marketingRes.parsedJson || {};
+        const agentBench: any = benchmarkRes.parsedJson || {};
 
         console.log(`✅ Research complete. Events: ${agentMkt?.events?.length || 0}, News: ${agentMkt?.news?.length || 0}`);
 
@@ -261,11 +230,11 @@ export async function POST(req: NextRequest) {
             console.log(`🛡️ Guardrails unset. Invoking Guardrails Agent...`);
             const guardrailsPrompt = `Compute suggested_floor and suggested_ceiling for: ${JSON.stringify({ name: listing?.name, bedrooms, price: listing?.price, currency })}. Market: ${templateCity}. Benchmark p25=${benchmarkDoc.p25Rate} p50=${benchmarkDoc.p50Rate} p90=${benchmarkDoc.p90Rate}. Return JSON: {suggested_floor, suggested_ceiling, floor_reasoning, ceiling_reasoning}.`;
 
-            const guardRes = await callLyzrAgent(
+            const guardRes = await callMarketAgent(
                 GUARDRAILS_AGENT_ID || MARKET_RESEARCH_ID,
                 guardrailsPrompt
             );
-            const guardJson = guardRes.parsedJson || {};
+            const guardJson: any = guardRes.parsedJson || {};
 
             if (guardJson.suggested_floor && guardJson.suggested_ceiling) {
                 await Listing.findByIdAndUpdate(listingObjectId, {

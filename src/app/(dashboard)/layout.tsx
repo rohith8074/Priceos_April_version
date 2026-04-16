@@ -4,7 +4,6 @@ import { InactivityMonitor } from "@/components/auth/inactivity-wrapper";
 import { ApprovalGuard } from "@/components/auth/approval-guard";
 import { ThemeToggleFloating } from "@/components/layout/theme-toggle-floating";
 import { Suspense } from "react";
-import { GlobalTour } from "@/components/tour/global-tour";
 
 export default function DashboardLayout({
   children,
@@ -35,9 +34,6 @@ export default function DashboardLayout({
 
       {/* Floating Theme Toggle */}
       <ThemeToggleFloating />
-
-      {/* Global Onboarding Tour */}
-      <GlobalTour />
     </div>
   );
 }
