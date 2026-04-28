@@ -52,3 +52,6 @@ export type { IDetector } from "./Detector";
 export { SourceRun } from "./SourceRun";
 export type { ISourceRun } from "./SourceRun";
 export * from "./AirbticsCache";
+export { Job } from "./Job";
+export type { IJob } from "./Job";
+

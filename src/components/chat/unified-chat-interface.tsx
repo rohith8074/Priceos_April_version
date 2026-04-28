@@ -569,7 +569,6 @@ export function UnifiedChatInterface({ properties: _properties, orgId }: Props) 
     setInput("");
     setIsLoading(true);
     setStatusText("Connecting to PriceOS…");
-    setShowLiveGraph(true);
 
     // Reset graph state immediately for new query
     setGraphEvents([]);
@@ -904,15 +903,6 @@ export function UnifiedChatInterface({ properties: _properties, orgId }: Props) 
           </div>
 
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowLiveGraph((v) => !v)}
-              className="h-9 gap-2 bg-background hover:bg-background/80 border-border/50 font-bold shadow-sm"
-            >
-              <Activity className="h-4 w-4" />
-              <span className="hidden sm:inline">{showLiveGraph ? "Hide Graph" : "Live Graph"}</span>
-            </Button>
             <Button
               variant={isSidebarOpen ? "secondary" : "ghost"}
               size="sm"

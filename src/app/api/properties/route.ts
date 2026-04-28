@@ -61,35 +61,36 @@ export async function GET(req: NextRequest) {
       const avgPrice = listingInv.length > 0 ? Math.round(sumPrices / listingInv.length) : Math.round(Number(l.price || 0));
 
       const pending = listingInv.filter((x: any) => x.proposalStatus === "pending").length;
-      let revenue = listingInv
-        .filter((x: any) => x.status === "booked")
-        .reduce((sum: number, x: any) => sum + Number(x.currentPrice || 0), 0);
-
-      if (revenue === 0 && listingRes.length > 0) {
-        revenue = listingRes
-          .filter((r: any) => r.status !== "cancelled")
-          .reduce((sum: number, r: any) => sum + Number(r.totalPrice || 0), 0);
-      }
-
       const channelMap: Record<string, { channel: string; revenue: number; count: number }> = {};
-      listingRes.forEach((r: any) => {
-        const channel = r.channelName || "Direct";
-        if (!channelMap[channel]) {
-          channelMap[channel] = { channel, revenue: 0, count: 0 };
-        }
-        channelMap[channel].revenue += Number(r.totalPrice || 0);
-        channelMap[channel].count += 1;
-      });
+      listingRes
+        .filter((r: any) => r.status !== "cancelled")
+        .forEach((r: any) => {
+          const channel = r.channelName || "Direct";
+          if (!channelMap[channel]) {
+            channelMap[channel] = { channel, revenue: 0, count: 0 };
+          }
+          channelMap[channel].revenue += Number(r.totalPrice || 0);
+          channelMap[channel].count += 1;
+        });
 
-      const totalChannelRev = Object.values(channelMap).reduce((sum: number, ch: any) => sum + ch.revenue, 0);
-      if (revenue > totalChannelRev) {
-        const diff = revenue - totalChannelRev;
-        channelMap["Other"] = {
-          channel: "Other",
-          revenue: Math.round(diff * 100) / 100,
-          count: 1
-        };
-      }
+      const revenue = Object.values(channelMap).reduce((sum: number, ch: any) => sum + ch.revenue, 0);
+
+      const PROPERTY_TYPE_MAP: Record<number, string> = {
+        0: "Apartment",
+        1: "Apartment",
+        2: "Villa",
+        3: "House",
+        4: "Studio",
+        5: "Penthouse",
+        6: "Townhouse",
+        7: "Condo",
+        8: "Loft",
+      };
+
+      const propertyTypeRaw = (l as any).propertyType || l.propertyTypeId;
+      const propertyType = (propertyTypeRaw === "N/A" || !propertyTypeRaw)
+        ? "Apartment"
+        : (PROPERTY_TYPE_MAP[Number(propertyTypeRaw)] || String(propertyTypeRaw));
 
       properties.push({
         id: lid,
@@ -107,7 +108,7 @@ export async function GET(req: NextRequest) {
         priceCeiling: Number(l.priceCeiling || 0),
         capacity: l.personCapacity,
         hostawayId: l.hostawayId,
-        propertyType: String((l as any).propertyType || l.propertyTypeId || "Apartment"),
+        propertyType,
         isActive: Boolean(l.isActive),
         isActivated: Boolean(l.isActive),
         occupancyPct: occupancy,
@@ -118,6 +119,7 @@ export async function GET(req: NextRequest) {
         revenueByChannel: Object.values(channelMap),
         createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
       });
+
     }
 
     return NextResponse.json({ properties }, { status: 200 });

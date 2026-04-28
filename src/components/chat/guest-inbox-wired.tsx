@@ -670,44 +670,86 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
             </div>
           </div>
           {/* Mode toggles */}
-          <div className="flex items-center gap-2 mb-2">
-            <button
-              onClick={() => { const next = !testMode; setTestMode(next); persistCommsMode(next, autoReply); }}
-              title={testMode ? "Switch to Live Mode (agent active)" : "Switch to Test/Paused Mode (human-only)"}
-              className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold border transition-colors",
-                testMode
-                  ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
-                  : "bg-surface-2 border-border-default text-text-muted hover:text-text-primary"
-              )}
-            >
-              <FlaskConical className="h-2.5 w-2.5" />
-              {testMode ? "Test" : "Live"}
-            </button>
-            <button
-              onClick={() => { const next = !autoReply; setAutoReply(next); persistCommsMode(testMode, next); }}
-              title={autoReply ? "Auto-reply ON — AI sends directly" : "Auto-reply OFF — queued for PM approval"}
-              className={cn(
-                "flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold border transition-colors",
-                autoReply
-                  ? "bg-amber/10 border-amber/30 text-amber"
-                  : "bg-surface-2 border-border-default text-text-muted hover:text-text-primary"
-              )}
-            >
-              <Zap className="h-2.5 w-2.5" />
-              {autoReply ? "Auto" : "Manual"}
-            </button>
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <div className="flex items-center gap-1 bg-surface-2/60 border border-border-default rounded-full p-0.5 text-[10px] font-medium">
+              <button
+                type="button"
+                onClick={() => { setTestMode(false); persistCommsMode(false, autoReply); }}
+                className={cn(
+                  "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
+                  !testMode ? "bg-amber text-black shadow-sm" : "text-text-muted hover:text-text-secondary"
+                )}
+              >
+                Live
+              </button>
+              <button
+                type="button"
+                onClick={() => { setTestMode(true); persistCommsMode(true, autoReply); }}
+                className={cn(
+                  "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
+                  testMode ? "bg-purple-500 text-white shadow-sm" : "text-text-muted hover:text-text-secondary"
+                )}
+              >
+                Manual
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1 bg-surface-2/60 border border-border-default rounded-full p-0.5 text-[10px] font-medium">
+              <button
+                type="button"
+                onClick={() => { setAutoReply(true); persistCommsMode(testMode, true); }}
+                className={cn(
+                  "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
+                  autoReply ? "bg-amber text-black shadow-sm" : "text-text-muted hover:text-text-secondary"
+                )}
+              >
+                Auto
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAutoReply(false); persistCommsMode(testMode, false); }}
+                className={cn(
+                  "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
+                  !autoReply ? "bg-surface-3 text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"
+                )}
+              >
+                Manual
+              </button>
+            </div>
 
             {testMode && (
               <button
                 onClick={handleNewChat}
-                className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold bg-amber text-black hover:bg-amber/90 transition-colors ml-auto"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber text-black hover:bg-amber/90 transition-colors ml-auto"
               >
                 <Plus className="h-2.5 w-2.5" />
                 New Chat
               </button>
             )}
           </div>
+
+          <Button
+            onClick={async () => {
+              toast.loading("Syncing conversations from Hostaway…", { id: "hostaway-sync" });
+              try {
+                const res = await fetch(`/api/hostaway/conversations/sync?orgId=${orgId}`, { method: "POST" });
+                if (res.ok) {
+                  toast.success("Hostaway sync completed!", { id: "hostaway-sync" });
+                  fetchAll();
+                } else {
+                  throw new Error("Sync failed");
+                }
+              } catch {
+                toast.error("Sync failed", { id: "hostaway-sync" });
+              }
+            }}
+            disabled={isLoading}
+            variant="outline"
+            className="w-full text-[10px] h-7 bg-amber/5 hover:bg-amber/10 border-amber/30 text-amber font-semibold gap-1.5 rounded-lg mb-2"
+          >
+            <RefreshCw className={cn("h-3 w-3", isLoading && "animate-spin")} />
+            Fetch from Hostaway
+          </Button>
 
           <div className="flex items-center gap-2 mb-2">
             <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-surface-2 border border-border-default flex-1">
