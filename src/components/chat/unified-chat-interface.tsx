@@ -1014,53 +1014,7 @@ export function UnifiedChatInterface({ properties: _properties, orgId }: Props) 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-col flex-1 overflow-hidden relative">
 
-          {/* LIVE GRAPH OVERLAY */}
-          {showLiveGraph && (
-            <div className="absolute top-0 right-0 left-0 sm:left-auto h-[400px] w-full sm:w-[500px] z-40 bg-background/95 backdrop-blur-xl border-l border-b border-border shadow-2xl sm:rounded-bl-3xl overflow-hidden flex flex-col transition-all duration-300">
-              <div className="px-4 py-2 bg-muted/30 border-b border-border/50 flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${isLoading ? 'bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`} />
-                  Execution Graph
-                </span>
-                <div className="flex items-center gap-1">
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 px-2 gap-1.5 text-[10px] font-bold text-muted-foreground hover:text-foreground">
-                        <Maximize2 className="h-3 w-3" />
-                        Expand
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-[95vw] w-[1400px] h-[90vh] p-0 overflow-hidden flex flex-col">
-                      <DialogHeader className="px-6 py-4 border-b shrink-0 bg-muted/20">
-                        <DialogTitle className="flex items-center gap-3">
-                          <Activity className="h-5 w-5 text-emerald-600" />
-                          <div className="flex flex-col">
-                            <span className="text-base font-black tracking-tight">Full Execution Trace</span>
-                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Detailed Agent & Tool Interaction Lineage</span>
-                          </div>
-                        </DialogTitle>
-                      </DialogHeader>
-                      <div className="flex-1 relative bg-grid-black/[0.01]">
-                        {/* Live graph removed */}
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 rounded-full hover:bg-muted" onClick={() => setShowLiveGraph(false)}>
-                    ✕
-                  </Button>
-                </div>
-              </div>
-              <div className="flex-1 relative w-full h-full bg-grid-black/[0.02]">
-                {/* Live graph removed */}
-              </div>
-              {lastThinkingMessage && (
-                <div className="absolute bottom-0 left-0 right-0 bg-background/80 backdrop-blur-sm border-t border-border/50 p-2 px-3 text-[10px] text-muted-foreground truncate">
-                  <span className="font-bold text-foreground">Thinking: </span>
-                  {lastThinkingMessage}
-                </div>
-              )}
-            </div>
-          )}
+
 
           <div className={`flex-1 overflow-y-auto p-6 space-y-4 transition-all duration-300 ${showLiveGraph ? "pt-[420px] sm:pt-6 sm:pr-[520px]" : ""}`}>
             {isHistoryLoading && <div className="flex justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}

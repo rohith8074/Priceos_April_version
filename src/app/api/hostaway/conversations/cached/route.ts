@@ -23,7 +23,15 @@ export async function GET(req: NextRequest) {
       query.orgId = new Types.ObjectId(orgId);
     }
 
-    const conversations = await HostawayConversation.find(query).sort({ updatedAt: -1 }).limit(50).lean();
+    const docs = await HostawayConversation.find(query).sort({ updatedAt: -1 }).limit(50).lean() as any[];
+
+    const conversations = docs.map((doc) => ({
+      ...doc,
+      id: doc.hostawayConversationId || doc._id.toString(),
+      // Explicitly surface needsReply so the frontend can map active/resolved correctly
+      needsReply: doc.needsReply ?? false,
+      status: doc.needsReply ? "needs_reply" : "resolved",
+    }));
 
     return NextResponse.json({ conversations });
   } catch (err: any) {

@@ -153,6 +153,42 @@ export function GuestChatInterface({
         }
     };
 
+    const syncAllFromHostaway = async () => {
+        setIsSyncingHostaway(true);
+        toast.loading("Syncing all conversations across portfolio...", { id: "sync_all_hostaway" });
+        try {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "/api"}/hostaway/conversations?orgId=${orgId}`, {
+                headers: { "Authorization": `Bearer ${localStorage.getItem("priceos-token")}` }
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Failed to sync all from Hostaway");
+            const syncedConversations = data.conversations || [];
+            
+            // Format for GuestChatInterface expected structure
+            const formatted = syncedConversations.map((c: any) => ({
+                id: c.id || c.hostawayConversationId,
+                guestName: c.guestName || "Guest",
+                lastMessage: c.lastMessage || "No message",
+                status: c.status || (c.unread || c.needsReply ? 'needs_reply' : 'resolved'),
+                unreadCount: c.unreadCount || 0,
+                listingId: c.listingId,
+                messages: c.messages || [
+                    { id: `m-${c.id}`, sender: "guest", text: c.lastMessage || "Inquiry", time: "Today" }
+                ]
+            }));
+
+            setConversations(formatted);
+            if (formatted.length > 0 && !activeConversationId) {
+                setActiveConversationId(formatted[0].id);
+            }
+            toast.success(`Synced ${formatted.length} threads across portfolio`, { id: "sync_all_hostaway" });
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Failed to sync all conversations", { id: "sync_all_hostaway" });
+        } finally {
+            setIsSyncingHostaway(false);
+        }
+    };
+
     const fetchConversations = async (showLoadingToast = false) => {
         if (!propertyId) return;
         setIsLoading(true);
@@ -718,6 +754,14 @@ export function GuestChatInterface({
                 <p className="mt-2 text-sm max-w-sm">
                     Please select a property from the sidebar to view guest conversations and use the AI Inbox Analyst.
                 </p>
+                <Button
+                    onClick={syncAllFromHostaway}
+                    disabled={isSyncingHostaway}
+                    className="mt-6 gap-2 font-bold px-5 py-5 rounded-xl shadow-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all hover:scale-[1.02]"
+                >
+                    {isSyncingHostaway ? <Loader2 className="h-5 w-5 animate-spin" /> : <CloudDownload className="h-5 w-5" />}
+                    Sync All Conversations from Hostaway
+                </Button>
             </div>
         );
     }
@@ -745,12 +789,14 @@ export function GuestChatInterface({
                         <Button
                             variant="outline"
                             size="sm"
-                            className="h-9 gap-2 bg-background hover:bg-background/80 border-border/50 font-bold shadow-sm"
-                            onClick={() => setShowLiveGraph((v) => !v)}
+                            className="h-9 gap-2 bg-background hover:bg-background/80 border-border/50 font-bold shadow-sm text-text-primary"
+                            onClick={syncAllFromHostaway}
+                            disabled={isSyncingHostaway}
                         >
-                            <Activity className="h-4 w-4" />
-                            <span className="hidden sm:inline">{showLiveGraph ? "Hide Graph" : "Live Graph"}</span>
+                            {isSyncingHostaway ? <Loader2 className="h-4 w-4 animate-spin" /> : <CloudDownload className="h-4 w-4 text-emerald-500" />}
+                            Sync All Hostaway
                         </Button>
+
                         {/* Auto-Reply Toggle */}
                         <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${autoReplyEnabled ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-muted/30 border-border/50'}`}>
                             <Zap className={`h-3.5 w-3.5 transition-colors ${autoReplyEnabled ? 'text-emerald-500' : 'text-muted-foreground'}`} />

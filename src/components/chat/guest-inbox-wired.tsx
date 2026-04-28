@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Search, Send, Sparkles, Bot, Home, Calendar, Star, Clock,
   CheckCheck, ThumbsUp, ThumbsDown, X, Loader2, RefreshCw, Activity,
@@ -66,6 +67,7 @@ interface BackendConversation {
   guestName?: string;
   lastMessage?: string;
   status?: "needs_reply" | "resolved";
+  needsReply?: boolean;
   messages?: Array<{ id?: string; sender: "guest" | "admin"; text: string; time?: string; timestamp?: string }>;
   listingId?: string;
   unreadCount?: number;
@@ -139,6 +141,12 @@ function guessSentiment(messages: InboxMessage[]): Sentiment {
   return "neutral";
 }
 
+function isValidDateStr(s?: string): boolean {
+  if (!s || s === "N/A" || s === "null" || s === "undefined") return false;
+  const d = new Date(s);
+  return !isNaN(d.getTime());
+}
+
 function mapConversation(c: BackendConversation, property: PropertyWithMetrics, index: number): InboxConversation {
   const messages: InboxMessage[] = (c.messages || []).map((m, i) => ({
     id: m.id ?? `msg-${i}`,
@@ -147,6 +155,14 @@ function mapConversation(c: BackendConversation, property: PropertyWithMetrics, 
     time: m.time || m.timestamp || "",
   }));
   const lastMsg = messages.length > 0 ? messages[messages.length - 1].content : (c.lastMessage || "");
+
+  // Determine status: prefer needsReply field (set by sync from Hostaway isUnread)
+  const needsReply = c.needsReply === true || c.status === "needs_reply";
+  const isResolved = c.needsReply === false
+    ? c.status !== "needs_reply"
+    : c.status === "resolved";
+  const convStatus: ConvStatus = needsReply ? "active" : isResolved ? "resolved" : "active";
+
   return {
     id: `${property.id}-${c.id}`,
     guestName: c.guestName || "Unknown Guest",
@@ -155,13 +171,13 @@ function mapConversation(c: BackendConversation, property: PropertyWithMetrics, 
     channel: guessChannel(c),
     property: property.name || "Property",
     propertyId: property.id,
-    checkIn: c.dateFrom || "",
-    checkOut: c.dateTo || "",
+    checkIn: isValidDateStr(c.dateFrom) ? c.dateFrom! : "",
+    checkOut: isValidDateStr(c.dateTo) ? c.dateTo! : "",
     lastMessage: lastMsg.length > 80 ? lastMsg.slice(0, 77) + "…" : lastMsg,
-    unread: c.unreadCount ?? (c.status === "needs_reply" ? 1 : 0),
+    unread: c.unreadCount ?? (needsReply ? 1 : 0),
     sentiment: guessSentiment(messages),
     rating: null,
-    status: c.status === "resolved" ? "resolved" : "active",
+    status: convStatus,
     messages,
   };
 }
@@ -588,18 +604,30 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
     if (!draftText.trim() || !conv) return;
     setIsSending(true);
     try {
-      await new Promise((r) => setTimeout(r, 400));
+      const res = await fetch("/api/hostaway/save-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: conv.id,
+          text: draftText.trim(),
+          orgId,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to save reply in DB");
+
       const newMsg: InboxMessage = {
         id: `msg-${Date.now()}`,
         role: "host",
         content: draftText.trim(),
         time: format(new Date(), "d MMM, HH:mm"),
       };
+
       setConversations((prev) =>
         prev.map((c) => c.id === conv.id ? { ...c, messages: [...c.messages, newMsg], status: "resolved", unread: 0 } : c)
       );
       setDraftText("");
-      toast.success("Reply sent");
+      toast.success("Reply saved to MongoDB");
     } catch {
       toast.error("Failed to send reply");
     } finally {
@@ -669,27 +697,14 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
           </div>
           {/* Mode toggles */}
           <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <div className="flex items-center gap-1 bg-surface-2/60 border border-border-default rounded-full p-0.5 text-[10px] font-medium">
-              <button
-                type="button"
-                onClick={() => { setTestMode(false); persistCommsMode(false, autoReply); }}
-                className={cn(
-                  "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
-                  !testMode ? "bg-amber text-black shadow-sm" : "text-text-muted hover:text-text-secondary"
-                )}
-              >
-                Live
-              </button>
-              <button
-                type="button"
-                onClick={() => { setTestMode(true); persistCommsMode(true, autoReply); }}
-                className={cn(
-                  "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
-                  testMode ? "bg-purple-500 text-white shadow-sm" : "text-text-muted hover:text-text-secondary"
-                )}
-              >
-                Manual
-              </button>
+            <div className="flex items-center gap-2 bg-surface-2/60 border border-border-default rounded-full px-3 py-1 text-[10px] font-medium">
+              <span className={cn("text-[10px] font-bold", !testMode ? "text-amber" : "text-text-muted")}>Live</span>
+              <Switch
+                checked={testMode}
+                onCheckedChange={(v) => { setTestMode(v); persistCommsMode(v, autoReply); }}
+                className="h-4 w-8 data-[state=checked]:bg-purple-500"
+              />
+              <span className={cn("text-[10px] font-bold", testMode ? "text-purple-400" : "text-text-muted")}>Manual</span>
             </div>
 
             <div className="flex items-center gap-1 bg-surface-2/60 border border-border-default rounded-full p-0.5 text-[10px] font-medium">
@@ -766,25 +781,31 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56 bg-surface-2 border-border-default">
-                <div className="px-2 py-1.5 text-[10px] font-semibold text-text-muted uppercase tracking-wider">Properties</div>
+                <div className="px-2 py-1.5 text-[10px] font-semibold text-text-muted uppercase tracking-wider flex items-center justify-between">
+                  <span>Properties</span>
+                  {activePropertyIds.length < properties.length && (
+                    <button
+                      onClick={() => setActivePropertyIds(properties.map(p => p.id))}
+                      className="text-[9px] text-amber hover:text-amber/80 font-normal"
+                    >
+                      Show all
+                    </button>
+                  )}
+                </div>
                 {properties.map((p) => (
                   <DropdownMenuCheckboxItem
                     key={p.id}
                     checked={activePropertyIds.includes(p.id)}
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      const isCurrentlyActive = activePropertyIds.includes(p.id);
-                      const nextActive = !isCurrentlyActive;
-                      
-                      setActivePropertyIds(prev => 
-                        nextActive ? [...prev, p.id] : prev.filter(id => id !== p.id)
-                      );
-                      
-                      if (nextActive) {
+                    onSelect={() => {
+                      const isExclusive = activePropertyIds.length === 1 && activePropertyIds[0] === p.id;
+                      if (isExclusive) {
+                        // Already filtered to this one — reset to show all
+                        setActivePropertyIds(properties.map(prop => prop.id));
+                      } else {
+                        // Single-click: show only this property
+                        setActivePropertyIds([p.id]);
                         const firstConv = conversations.find(c => c.propertyId === p.id);
-                        if (firstConv) {
-                          setSelected(firstConv.id);
-                        }
+                        if (firstConv) setSelected(firstConv.id);
                       }
                     }}
                     className="text-[11px] focus:bg-amber/10 focus:text-amber"

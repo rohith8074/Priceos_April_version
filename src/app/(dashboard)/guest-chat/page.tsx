@@ -38,12 +38,14 @@ export default async function GuestChatPage() {
             const fromDate = now.toISOString().split("T")[0];
             const toDate = new Date(now.getTime() + 29 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
+            const listingOids = listings.map((l: any) => l._id);
+
             const [invDocs, resDocs] = await Promise.all([
                 InventoryMaster.find({
-                    orgId: orgOid,
+                    listingId: { $in: listingOids },
                     date: { $gte: fromDate, $lte: toDate }
                 }).lean(),
-                Reservation.find({ orgId: orgOid }).lean()
+                Reservation.find({ listingId: { $in: listingOids } }).lean()
             ]);
 
             const invByListing: Record<string, any[]> = {};

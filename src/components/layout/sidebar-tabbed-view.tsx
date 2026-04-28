@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MarketEventsTable } from "@/components/events/market-events-table";
 import { BenchmarkWidget } from "@/components/signals/benchmark-widget";
@@ -58,11 +58,41 @@ export function SidebarTabbedView() {
         propertyId,
         marketRefreshTrigger,
         propertyCurrency,
+        setCalendarMetrics,
     } = useContextStore();
 
     const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
     const [replyText, setReplyText] = useState("");
     const [conversations, setConversations] = useState<SimulatedConversation[]>(mockConversations);
+
+    useEffect(() => {
+        const fetchMetrics = async () => {
+            if (contextType !== "property" || !propertyId || !dateRange?.from || !dateRange?.to) {
+                return;
+            }
+            try {
+                const from = format(dateRange.from, "yyyy-MM-dd");
+                const to = format(dateRange.to, "yyyy-MM-dd");
+                const res = await fetch(`/api/calendar-metrics?listingId=${propertyId}&from=${from}&to=${to}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setCalendarMetrics({
+                        occupancy: data.occupancy,
+                        avgPrice: data.avgPrice,
+                        bookedDays: data.bookedDays,
+                        availableDays: data.availableDays,
+                        blockedDays: data.blockedDays,
+                        totalDays: data.totalDays,
+                        calendarDays: data.calendarDays,
+                        reservations: data.reservations,
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to fetch calendar metrics in sidebar:", err);
+            }
+        };
+        fetchMetrics();
+    }, [contextType, propertyId, dateRange?.from, dateRange?.to, setCalendarMetrics]);
 
     const showData = contextType === "property" && propertyId;
     const showCalendar = showData && calendarMetrics?.calendarDays;

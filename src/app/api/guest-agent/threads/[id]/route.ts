@@ -7,19 +7,22 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     const params = await props.params;
     const { id } = params;
 
-    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json({ error: "Invalid threadId" }, { status: 400 });
-    }
-
     await connectToDatabase();
     
     if (!mongoose.connection.db) {
       throw new Error("Database connection not initialized");
     }
 
+    let query: any = {};
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      query = { $or: [{ _id: new mongoose.Types.ObjectId(id) }, { hostawayConversationId: id }] };
+    } else {
+      query = { hostawayConversationId: id };
+    }
+
     const doc = await mongoose.connection.db
       .collection("guest_threads")
-      .findOne({ _id: new mongoose.Types.ObjectId(id) });
+      .findOne(query);
 
     if (!doc) {
       return NextResponse.json({ error: "Thread not found" }, { status: 404 });

@@ -48,13 +48,17 @@ export default async function OverviewPage() {
     await connectToDatabase();
     const orgOid = new Types.ObjectId(orgId);
 
-    const [listingDocs, invDocs, resDocs] = await Promise.all([
-      Listing.find({ orgId: orgOid }).lean(),
+    const listingDocs = await Listing.find({ orgId: orgOid }).lean();
+    const listingOids = listingDocs.map((l: any) => l._id);
+    const listingIds = listingDocs.map((l: any) => l._id.toString());
+    const combinedListingIds = [...listingOids, ...listingIds];
+
+    const [invDocs, resDocs] = await Promise.all([
       InventoryMaster.find({
-        orgId: orgOid,
+        listingId: { $in: combinedListingIds },
         date: { $gte: todayStr, $lte: plus29Str }
       }).lean(),
-      Reservation.find({ orgId: orgOid }).lean(),
+      Reservation.find({ listingId: { $in: combinedListingIds } }).lean(),
     ]);
 
     allListings = listingDocs.map((ls: any) => ({

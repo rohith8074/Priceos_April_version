@@ -73,14 +73,23 @@ export function AppSidebar() {
         if (!r.ok) return;
         const data = await r.json();
         if (disposed || !data) return;
+        
+        const todayDate = new Date().toISOString().slice(0, 10);
+        
         const pendingConversations = (data.conversations ?? []).filter(
-          (c: any) => c.unread || c.needsReply || c.status === "needs_reply"
+          (c: any) => c.needsReply === true || c.status === "needs_reply"
         );
         const count = pendingConversations.length;
         setNeedsReplyCount(count);
+        
         setGuestNotifications(
           pendingConversations
             .filter((c: any) => c.listingId && c.id)
+            .filter((c: any) => {
+              const dateToCheck = c.updatedAt || c.createdAt;
+              if (!dateToCheck) return false;
+              return new Date(dateToCheck).toISOString().slice(0, 10) === todayDate;
+            })
             .slice(0, 8)
             .map((c: any) => ({
               id: `guest-${c.id}`,
@@ -88,6 +97,7 @@ export function AppSidebar() {
               preview: c.lastMessage || "New guest message",
               propertyId: String(c.listingId),
               conversationId: String(c.id),
+              updatedAt: c.updatedAt || c.createdAt || new Date().toISOString()
             }))
         );
         const firstPending = pendingConversations.find((c: any) => c.listingId && c.id);
@@ -119,6 +129,7 @@ export function AppSidebar() {
             upliftPct: Number(e.upliftPct || 0),
             area: e.area || (Array.isArray(e.areas) ? e.areas[0] : undefined),
             source: e.source || "market_template",
+            updatedAt: e.updatedAt || e.createdAt
           }));
         setTodayEvents(items);
         const latestUpdatedAt = data.latestUpdatedAt
@@ -149,16 +160,22 @@ export function AppSidebar() {
 
         const now = new Date();
         const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+        const todayDate = now.toISOString().slice(0, 10);
 
         const highRisk = proposals
           .filter((p: any) => String(p?.riskLevel || "").toLowerCase() === "high")
+          .filter((p: any) => {
+            const dateToCheck = p.updatedAt || p.createdAt;
+            if (!dateToCheck) return false;
+            return new Date(dateToCheck).toISOString().slice(0, 10) === todayDate;
+          })
           .slice(0, 8)
           .map((p: any) => ({
             id: `proposal-high-${p._id}`,
             label: "High Risk Proposal",
             listingName: p.listingName || "Unknown Property",
             type: "high_risk" as const,
-            updatedAt: p.updatedAt,
+            updatedAt: p.updatedAt || p.createdAt || new Date().toISOString(),
           }));
 
         const expiring = proposals
@@ -167,13 +184,18 @@ export function AppSidebar() {
             const proposalDate = new Date(`${p.date}T00:00:00`);
             return proposalDate >= now && proposalDate <= in48h;
           })
+          .filter((p: any) => {
+            const dateToCheck = p.updatedAt || p.createdAt;
+            if (!dateToCheck) return false;
+            return new Date(dateToCheck).toISOString().slice(0, 10) === todayDate;
+          })
           .slice(0, 8)
           .map((p: any) => ({
             id: `proposal-exp-${p._id}`,
             label: "Expiring Proposal",
             listingName: p.listingName || "Unknown Property",
             type: "expiring" as const,
-            updatedAt: p.updatedAt,
+            updatedAt: p.updatedAt || p.createdAt || new Date().toISOString(),
           }));
 
         setProposalNotifications([...highRisk, ...expiring]);
@@ -181,6 +203,7 @@ export function AppSidebar() {
         // Best-effort only.
       }
     };
+
 
     const refreshBadges = async () => {
       await Promise.all([refreshGuestInbox(), refreshTodayEvents(), refreshProposalNotifications()]);
@@ -271,6 +294,16 @@ export function AppSidebar() {
     );
   };
 
+  const formatTime = (dateStr?: string) => {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch {
+      return "";
+    }
+  };
+
   return (
     <div className="flex h-full w-[232px] flex-col border-r border-border-default bg-surface-1 shrink-0 z-50">
       {/* Header */}
@@ -322,7 +355,7 @@ export function AppSidebar() {
                   </div>
                 ) : (
                   <div className="divide-y divide-border-subtle">
-                    {visibleGuestNotifications.slice(0, 8).map((notification) => (
+                    {visibleGuestNotifications.slice(0, 8).map((notification: any) => (
                       <div
                         key={notification.id}
                         onClick={() =>
@@ -347,7 +380,14 @@ export function AppSidebar() {
                             <p className="text-[12px] font-medium text-text-primary leading-snug">
                               New Guest Message
                             </p>
-                            <p className="text-[11px] text-text-tertiary truncate">{notification.guestName}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-[11px] text-text-tertiary truncate">{notification.guestName}</p>
+                              {notification.updatedAt && (
+                                <span className="text-[10px] text-text-tertiary font-medium">
+                                  • {formatTime(notification.updatedAt)}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-[10px] text-text-tertiary truncate mt-1">{notification.preview}</p>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
@@ -368,7 +408,7 @@ export function AppSidebar() {
                         </div>
                       </div>
                     ))}
-                    {visibleProposalNotifications.slice(0, 8).map((proposal) => (
+                    {visibleProposalNotifications.slice(0, 8).map((proposal: any) => (
                       <div
                         key={proposal.id}
                         onClick={() => router.push("/pricing")}
@@ -387,7 +427,14 @@ export function AppSidebar() {
                             <p className="text-[12px] font-medium text-text-primary leading-snug">
                               {proposal.label}
                             </p>
-                            <p className="text-[11px] text-text-tertiary truncate">{proposal.listingName}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-[11px] text-text-tertiary truncate">{proposal.listingName}</p>
+                              {proposal.updatedAt && (
+                                <span className="text-[10px] text-text-tertiary font-medium">
+                                  • {formatTime(proposal.updatedAt)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <Badge
@@ -414,14 +461,21 @@ export function AppSidebar() {
                         </div>
                       </div>
                     ))}
-                    {visibleEvents.slice(0, 8).map((event) => (
+                    {visibleEvents.slice(0, 8).map((event: any) => (
                       <button
                         key={event.id}
                         onClick={() => router.push("/market?focus=today")}
                         className="w-full text-left px-3 py-2.5 hover:bg-surface-2/70 transition-colors"
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-[12px] font-medium text-text-primary leading-snug">{event.name}</p>
+                          <div className="flex flex-col">
+                            <p className="text-[12px] font-medium text-text-primary leading-snug">{event.name}</p>
+                            {event.updatedAt && (
+                              <span className="text-[10px] text-text-tertiary text-left">
+                                {formatTime(event.updatedAt)}
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-1">
                             <Badge
                               className={cn(
@@ -448,6 +502,7 @@ export function AppSidebar() {
                           </div>
                         </div>
                         <div className="mt-1 flex items-center gap-3 text-[10px] text-text-tertiary">
+
                           <span className="inline-flex items-center gap-1">
                             <TrendingUp className="h-3 w-3" /> +{event.upliftPct}%
                           </span>

@@ -26,10 +26,12 @@ export default async function BookingsPage() {
   await connectToDatabase();
   const orgOid = new Types.ObjectId(orgId);
 
-  const [listingDocs, reservationDocs, inventoryDocs] = await Promise.all([
-    Listing.find({ orgId: orgOid }).lean(),
-    Reservation.find({ orgId: orgOid }).lean(),
-    InventoryMaster.find({ orgId: orgOid }).lean(),
+  const listingDocs = await Listing.find({ orgId: orgOid }).lean();
+  const listingOids = listingDocs.map((l: any) => l._id);
+
+  const [reservationDocs, inventoryDocs] = await Promise.all([
+    Reservation.find({ listingId: { $in: listingOids } }).lean(),
+    InventoryMaster.find({ listingId: { $in: listingOids } }).lean(),
   ]);
 
   const allProperties = listingDocs.map((l: any) => ({

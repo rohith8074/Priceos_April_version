@@ -7,7 +7,7 @@ import { SidebarTabbedView } from "@/components/layout/sidebar-tabbed-view";
 import type { PropertyWithMetrics } from "@/types";
 
 import { connectToDatabase } from "@/lib/db/mongodb";
-import { Listing } from "@/lib/db/models";
+import { Listing, InventoryMaster } from "@/lib/db/models";
 import { Types } from "mongoose";
 
 export const metadata = {
@@ -25,17 +25,37 @@ export default async function AgentChatPage() {
   try {
     await connectToDatabase();
     const orgOid = new Types.ObjectId(orgObjectId);
-    const listingDocs = await Listing.find({ orgId: orgOid }).lean();
-    const cleanListings = JSON.parse(JSON.stringify(listingDocs));
+    const [listingDocs, invDocs] = await Promise.all([
+      Listing.find({ orgId: orgOid }).lean(),
+      InventoryMaster.find({ orgId: orgOid }).lean()
+    ]);
     
-    propertiesWithMetrics = cleanListings.map((p: any) => ({
-      ...p,
-      id: p._id,
-      _id: p._id,
-      price: Number(p.basePrice ?? p.price ?? 0),
-      occupancy: Number(p.occupancyPct ?? 0),
-      avgPrice: Number(p.avgPrice ?? p.basePrice ?? p.price ?? 0),
-    }));
+    const cleanListings = JSON.parse(JSON.stringify(listingDocs));
+    const invByListing: Record<string, any[]> = {};
+    
+    for (const inv of invDocs) {
+      if (!inv.listingId) continue;
+      const lId = inv.listingId.toString();
+      if (!invByListing[lId]) invByListing[lId] = [];
+      invByListing[lId].push(inv);
+    }
+    
+    propertiesWithMetrics = cleanListings.map((p: any) => {
+      const pId = p._id.toString();
+      const pInvs = invByListing[pId] || [];
+      const bookedDays = pInvs.filter((d: any) => d.status === "booked").length;
+      const totalDays = pInvs.length;
+      const calculatedOccupancy = totalDays > 0 ? Math.round((bookedDays / totalDays) * 100) : 0;
+      
+      return {
+        ...p,
+        id: p._id,
+        _id: p._id,
+        price: Number(p.basePrice ?? p.price ?? 500),
+        occupancy: calculatedOccupancy,
+        avgPrice: Number(p.avgPrice ?? p.basePrice ?? p.price ?? 500),
+      };
+    });
   } catch (err) {
     console.error("[agent-chat page] failed to load properties", err);
   }
