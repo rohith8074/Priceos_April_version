@@ -272,11 +272,9 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
   const isResizing = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
-
   // Load persisted comms settings on mount
   useEffect(() => {
-    fetch(`${api}/comms-settings?orgId=${orgId}`)
+    fetch(`/api/comms-settings?orgId=${orgId}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d) return;
@@ -284,12 +282,12 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
         setAutoReply(d.autoReply);
       })
       .catch(() => {});
-  }, [orgId, api]);
+  }, [orgId]);
 
   const persistCommsMode = async (liveMode: boolean, autoReplyVal: boolean) => {
     setIsSavingComms(true);
     try {
-      await fetch(`${api}/comms-settings`, {
+      await fetch(`/api/comms-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId, liveMode, autoReply: autoReplyVal }),
@@ -328,7 +326,7 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
       const token = typeof window !== "undefined" ? localStorage.getItem("priceos-token") : null;
       const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
       
-      const res = await fetch(`${api}/hostaway/conversations/cached?orgId=${orgId}`, { headers });
+      const res = await fetch(`/api/hostaway/conversations/cached?orgId=${orgId}`, { headers });
       const data = res.ok ? await res.json() : { conversations: [] };
       const backendConvs = (data.conversations || []) as BackendConversation[];
 
@@ -371,7 +369,7 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
     } finally {
       setIsLoading(false);
     }
-  }, [orgId, properties, api, selected]);
+  }, [orgId, properties, selected]);
 
   useEffect(() => { fetchAll(); }, [orgId, properties.length]);
   // Re-fetch when properties change
@@ -400,7 +398,7 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
       const c = conversations.find(x => x.id === selected);
       if (!c) return;
       
-      const res = await fetch(`${api}/guest-agent/tickets?orgId=${orgId}`);
+      const res = await fetch(`/api/guest-agent/tickets?orgId=${orgId}`);
       if (res.ok) {
         const data = await res.json();
         const allTickets = data.tickets || [];
@@ -492,7 +490,7 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
       toast.success("Marked as helpful — Aria learns from this");
     }
     try {
-      await fetch(`${api}/hostaway/draft-feedback`, {
+      await fetch(`/api/hostaway/draft-feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId, conversationId: conv.id, feedback: type, draft: aiDraft }),
@@ -613,7 +611,7 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
     if (!conv) return;
     setIsGeneratingSummary(true);
     try {
-      const response = await fetch(`${api}/guest-agent/threads/${conv.id}/summary?orgId=${orgId}`, {
+      const response = await fetch(`/api/guest-agent/threads/${conv.id}/summary?orgId=${orgId}`, {
         method: "POST"
       });
       if (!response.ok) throw new Error("Failed to generate summary");
