@@ -45,7 +45,8 @@ export async function POST(req: NextRequest) {
       sub: user._id.toString(),
       email: user.email,
       orgId: organization._id.toString(),
-      role: user.role
+      role: user.role,
+      onboardingStep: "connect",
     };
 
     const accessToken = signToken(tokenPayload, "7d");

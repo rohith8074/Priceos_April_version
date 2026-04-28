@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
       orgId,
       role: subject.role || "owner",
       isApproved: subject.isApproved !== false,
+      onboardingStep: subject.onboardingStep || subject.onboarding?.step || "connect",
     };
 
     const accessToken = signToken(tokenPayload, "7d");
@@ -78,6 +79,8 @@ export async function POST(req: NextRequest) {
       await Organization.findByIdAndUpdate(subject._id, { refreshToken });
     }
 
+    const onboardingStep = subject.onboardingStep || subject.onboarding?.step || "connect";
+
     const response = NextResponse.json({
       user: {
         id: subject._id.toString(),
@@ -85,8 +88,9 @@ export async function POST(req: NextRequest) {
         name: subject.name || subject.fullName || subject.email,
         orgId,
         isApproved: subject.isApproved !== false,
-        onboardingStep: subject.onboarding?.step || subject.onboardingStep || "complete",
+        onboardingStep,
       },
+      needsOnboarding: onboardingStep !== "complete",
       accessToken,
       refreshToken,
     }, { status: 200 });

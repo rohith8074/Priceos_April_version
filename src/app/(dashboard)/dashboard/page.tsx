@@ -154,6 +154,8 @@ export default async function OverviewPage() {
       revenue,
       calendarDays,
       reservations: listingRes,
+      isActive: Boolean(listing.isActive),
+      isActivated: Boolean(listing.isActive),
     };
   });
 

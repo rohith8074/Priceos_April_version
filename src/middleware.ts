@@ -19,6 +19,7 @@ const PUBLIC_PATHS = [
   "/api/debug",             // dev-only reset tools
   "/api/agent-tools/v1",   // Bearer-token auth handled inside each route
   "/api/admin",            // Admin tools proxy
+  "/api/markets",          // Settings markets getter
 ];
 
 // Extra paths allowed DURING onboarding (user is authenticated but not complete)

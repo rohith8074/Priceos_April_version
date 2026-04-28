@@ -184,10 +184,12 @@ export function OverviewClient({
   const [intelPriorityFilter, setIntelPriorityFilter] = useState<'all' | ActionPriority>('all');
   const [intelTypeFilter, setIntelTypeFilter] = useState('all');
 
-  const filteredProperties = properties.filter((prop) =>
-    prop.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    prop.area.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProperties = properties
+    .filter((prop: any) => prop.isActivated || prop.isActive)
+    .filter((prop) =>
+      prop.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      prop.area.toLowerCase().includes(searchTerm.toLowerCase())
+    );
   const currency = (properties[0] as any)?.currencyCode ?? "AED";
 
   // Dynamic KPIs based on search

@@ -21,14 +21,27 @@ export default async function AgentChatPage() {
 
   const orgObjectId = session.orgId;
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split("T")[0];
+  const plus29 = new Date(today);
+  plus29.setDate(plus29.getDate() + 29);
+  const plus29Str = plus29.toISOString().split("T")[0];
+
   let propertiesWithMetrics: PropertyWithMetrics[] = [];
   try {
     await connectToDatabase();
     const orgOid = new Types.ObjectId(orgObjectId);
-    const [listingDocs, invDocs] = await Promise.all([
-      Listing.find({ orgId: orgOid }).lean(),
-      InventoryMaster.find({ orgId: orgOid }).lean()
-    ]);
+    
+    const listingDocs = await Listing.find({ orgId: orgOid }).lean();
+    const listingOids = listingDocs.map((l: any) => l._id);
+    const listingIds = listingDocs.map((l: any) => l._id.toString());
+    const combinedListingIds = [...listingOids, ...listingIds];
+
+    const invDocs = await InventoryMaster.find({
+      listingId: { $in: combinedListingIds },
+      date: { $gte: todayStr, $lte: plus29Str }
+    }).lean();
     
     const cleanListings = JSON.parse(JSON.stringify(listingDocs));
     const invByListing: Record<string, any[]> = {};
@@ -43,7 +56,7 @@ export default async function AgentChatPage() {
     propertiesWithMetrics = cleanListings.map((p: any) => {
       const pId = p._id.toString();
       const pInvs = invByListing[pId] || [];
-      const bookedDays = pInvs.filter((d: any) => d.status === "booked").length;
+      const bookedDays = pInvs.filter((d: any) => d.status === "booked" || d.status === "reserved").length;
       const totalDays = pInvs.length;
       const calculatedOccupancy = totalDays > 0 ? Math.round((bookedDays / totalDays) * 100) : 0;
       
