@@ -75,8 +75,10 @@ export function useChat() {
         clearInterval(activityInterval)
         setActivityStep(null)
 
-        if (result.success && result.response.status === 'success') {
-          const data = result.response.result
+        const response = result.response
+
+        if (result.success && response?.status === 'success') {
+          const data = response.result
           let structured: PricingData | null = null
 
           if (data?.recommended_price_aed || data?.risk_level) {
@@ -93,7 +95,7 @@ export function useChat() {
             }
           }
 
-          const text = extractText(result.response)
+          const text = extractText(response)
           const assistantMessage: ChatMessage = {
             id: `msg-${Date.now()}`,
             role: 'assistant',
@@ -107,7 +109,7 @@ export function useChat() {
           addMessage({
             id: `msg-${Date.now()}`,
             role: 'error',
-            content: result.response.message || result.error || 'Failed to get response',
+            content: response?.message || result.error || 'Failed to get response',
             timestamp: new Date(),
           })
         }

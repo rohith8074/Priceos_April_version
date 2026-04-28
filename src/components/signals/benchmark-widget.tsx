@@ -26,6 +26,7 @@ interface BenchmarkSummary {
     recommendedWeekend: string | null;
     recommendedEvent: string | null;
     reasoning: string | null;
+    source?: string;
 }
 
 interface BenchmarkComp {
@@ -121,6 +122,16 @@ export function BenchmarkWidget({ listingId, dateFrom, dateTo, refreshKey = 0, c
                     <span className="text-[11px] font-black uppercase tracking-widest">Benchmark Intelligence</span>
                 </div>
                 <div className="flex items-center gap-2">
+                    {hasData && !isPending && summary?.source && (
+                        <span className={cn(
+                            "px-2 py-0.5 rounded-full text-[9px] font-bold border",
+                            summary.source === 'cache' ? "bg-blue-500/10 text-blue-500 border-blue-500/30" :
+                            summary.source === 'internet_fallback' ? "bg-amber-500/10 text-amber-600 border-amber-500/30" :
+                            "bg-slate-500/10 text-slate-500 border-slate-500/30"
+                        )}>
+                            {summary.source === 'cache' ? 'Airbtics API' : summary.source === 'internet_fallback' ? 'Agent 7 Research' : 'Historical DB'}
+                        </span>
+                    )}
                     {hasData && !isPending && (
                         <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#f39c12]/10 text-[#f39c12] border border-[#f39c12]/30">
                             {comps.length} comps

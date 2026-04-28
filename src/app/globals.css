@@ -1,6 +1,4 @@
 @import "tailwindcss";
-@import "@neondatabase/auth/ui/tailwind";
-
 @plugin "tailwindcss-animate";
 @import "tw-animate-css";
 
@@ -180,5 +178,37 @@
   }
   main {
     transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@layer utilities {
+  @keyframes pulse-subtle {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.85;
+      transform: scale(0.995);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .animate-pulse-subtle {
+    animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .animate-shimmer {
+    background: linear-gradient(90deg, transparent 25%, rgba(161, 133, 93, 0.05) 50%, transparent 75%);
+    background-size: 200% 100%;
+    animation: shimmer 2.5s infinite;
   }
 }

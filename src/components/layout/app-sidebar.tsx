@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { getOrgId } from "@/lib/auth/client";
 import {
   LayoutDashboard,
   TrendingUp,
@@ -18,6 +19,7 @@ import {
   AlertTriangle,
   Clock3,
   X,
+  BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -34,8 +36,10 @@ const BUSINESS_GROUP = [
   { name: "Market", href: "/market", icon: Globe },
   { name: "Agent Chat", href: "/agent-chat", icon: MessagesSquare },
   { name: "Guest Inbox", href: "/guest-chat", icon: MessageSquare, showGuestBadge: true },
+  { name: "Operations", href: "/operations", icon: Clock3 },
   { name: "Properties", href: "/properties", icon: Home },
   { name: "Groups", href: "/groups", icon: Layers },
+  { name: "Analytics", href: "/analytics", icon: BarChart2 },
 ];
 
 export function AppSidebar() {
@@ -63,7 +67,9 @@ export function AppSidebar() {
 
     const refreshGuestInbox = async () => {
       try {
-        const r = await fetch("/api/hostaway/conversations/cached");
+        const orgId = getOrgId();
+        if (!orgId) return;
+        const r = await fetch(`/api/hostaway/conversations/cached?orgId=${orgId}`);
         if (!r.ok) return;
         const data = await r.json();
         if (disposed || !data) return;
@@ -97,8 +103,10 @@ export function AppSidebar() {
 
     const refreshTodayEvents = async () => {
       try {
+        const orgId = getOrgId();
+        if (!orgId) return;
         const today = new Date().toISOString().slice(0, 10);
-        const r = await fetch(`/api/events?dateFrom=${today}&dateTo=${today}`);
+        const r = await fetch(`/api/events?orgId=${orgId}&dateFrom=${today}&dateTo=${today}`);
         if (!r.ok) return;
         const data = await r.json();
         if (disposed || !data?.events) return;
@@ -122,9 +130,7 @@ export function AppSidebar() {
               return latest;
             }, null);
         setLastUpdatedAt(
-          latestUpdatedAt
-            ? latestUpdatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-            : null
+          (latestUpdatedAt ?? new Date()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         );
       } catch {
         // Best-effort only.
@@ -133,7 +139,9 @@ export function AppSidebar() {
 
     const refreshProposalNotifications = async () => {
       try {
-        const r = await fetch("/api/v1/revenue/proposals?status=pending");
+        const orgId = getOrgId();
+        if (!orgId) return;
+        const r = await fetch(`/api/v1/revenue/proposals?orgId=${orgId}&status=pending`);
         if (!r.ok) return;
         const payload = await r.json();
         const proposals = payload?.data?.proposals ?? [];
@@ -303,7 +311,7 @@ export function AppSidebar() {
                 <p className="text-[11px] text-text-tertiary mt-1">
                   {totalNotificationCount === 0
                     ? "No active notifications."
-                    : `${totalNotificationCount} notification${totalNotificationCount > 1 ? "s" : ""} right now.`}
+                    : `${totalNotificationCount > 9 ? "9+" : totalNotificationCount} notification${totalNotificationCount > 1 ? "s" : ""} right now.`}
                 </p>
               </div>
 

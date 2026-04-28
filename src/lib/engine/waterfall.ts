@@ -78,6 +78,9 @@ export interface ListingConfig {
     // Weekend minimum pricing (KB Tier 2 #8)
     weekendMinPrice: number;
     weekendDays: number[]; // DOW indices (0=Mon..6=Sun), e.g. [3,4] for Thu/Fri
+
+    // Airbtics Market Intelligence
+    marketPacingAdjPct?: number;       // e.g. +10 if market pacing is super high for this date
 }
 
 export interface Rule {
@@ -243,6 +246,12 @@ export function computeDay(
         suspendGapFill = winner.suspendGapFill;
         ruleMinPrice = winner.minPriceOverride;
         ruleMaxPrice = winner.maxPriceOverride;
+    }
+
+    // Airbtics Market Pacing Surge
+    if (config.marketPacingAdjPct && config.marketPacingAdjPct !== 0) {
+        price = price * (1 + config.marketPacingAdjPct / 100);
+        notes.push(`[AIRBTICS_PACING] Market intel adjusted price by ${config.marketPacingAdjPct}%`);
     }
 
     // If booked, mark unavailable

@@ -1,248 +1,116 @@
-import { connectDB, InventoryMaster, Listing, Organization } from "@/lib/db";
-import { getSession } from "@/lib/auth/server";
-import { apiSuccess, apiError } from "@/lib/api/response";
-import { getProposalsSchema, bulkProposalActionSchema, formatZodErrors } from "@/lib/validators";
-import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/api/rate-limit";
-import mongoose from "mongoose";
+import { NextRequest, NextResponse } from "next/server";
+import { connectToDatabase } from "@/lib/db/mongodb";
+import { InventoryMaster, Listing } from "@/lib/db/models";
+import { Types } from "mongoose";
 
-// ── GET /api/v1/revenue/proposals ────────────────────────────────────────────
-// Returns all pending (and optionally filtered) pricing proposals from
-// InventoryMaster, enriched with listing metadata.
+// GET /api/v1/revenue/proposals
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const orgId = searchParams.get("orgId");
+    const listingId = searchParams.get("listingId");
+    const status = searchParams.get("status") || "all";
 
-export async function GET(request: Request) {
-    const ip = getClientIp(request);
-    const rateCheck = checkRateLimit(`revenue-proposals-get:${ip}`, RATE_LIMITS.standard);
-    if (!rateCheck.allowed) {
-        return apiError("RATE_LIMITED", `Try again in ${Math.ceil(rateCheck.resetMs / 1000)}s.`, 429);
+    if (!orgId) {
+      return NextResponse.json({ proposals: [], count: 0 }, { status: 200 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const validation = getProposalsSchema.safeParse({
-        listingId: searchParams.get("listingId") || undefined,
-        status: searchParams.get("status") || "all",
+    await connectToDatabase();
+
+    const query: any = {
+      orgId: new Types.ObjectId(orgId),
+      proposedPrice: { $ne: null }
+    };
+
+    if (listingId && Types.ObjectId.isValid(listingId)) {
+      query.listingId = new Types.ObjectId(listingId);
+    }
+
+    if (status !== "all") {
+      query.proposalStatus = status;
+    } else {
+      query.proposalStatus = { $in: ["pending", "approved", "rejected", "pushed"] };
+    }
+
+    const docs = await InventoryMaster.find(query).sort({ date: 1 }).limit(500).lean();
+
+    const uniqueListingIds = Array.from(new Set(docs.map((d: any) => d.listingId?.toString()).filter(Boolean)));
+    const listingOids = uniqueListingIds.map((id: string) => new Types.ObjectId(id));
+
+    const listings = await Listing.find({ _id: { $in: listingOids } }).lean();
+    const listingMap: Record<string, any> = {};
+    listings.forEach((l: any) => {
+      listingMap[l._id.toString()] = l;
     });
 
-    if (!validation.success) {
-        return apiError("VALIDATION_ERROR", "Invalid query parameters", 400, formatZodErrors(validation.error));
-    }
+    const proposals = docs.map((d: any) => {
+      const listing = listingMap[d.listingId?.toString() || ""];
+      return {
+        id: d._id.toString(),
+        _id: d._id.toString(),
+        listingId: d.listingId?.toString() || "",
+        listingName: listing?.name || "Unknown Property",
+        date: d.date,
+        currentPrice: d.currentPrice,
+        proposedPrice: d.proposedPrice,
+        changePct: d.changePct,
+        proposalStatus: d.proposalStatus || "pending",
+        status: d.proposalStatus || "pending",
+        reasoning: d.reasoning || ""
+      };
+    });
 
-    const { listingId, status } = validation.data;
-
-    try {
-        await connectDB();
-
-        const session = await getSession();
-        if (!session?.orgId) {
-            return apiError("UNAUTHORIZED", "Authentication required", 401);
-        }
-        const orgId = new mongoose.Types.ObjectId(session.orgId);
-
-        // Build filter — always scoped to org
-        const filter: Record<string, unknown> = {
-            orgId,
-            proposedPrice: { $exists: true, $ne: null },
-        };
-
-        if (listingId) {
-            filter.listingId = new mongoose.Types.ObjectId(String(listingId));
-        }
-
-        // Status filter
-        if (status !== "all") {
-            filter.proposalStatus = status;
-        } else {
-            // Default: show pending + approved (exclude rejected/pushed)
-            filter.proposalStatus = { $in: ["pending", "approved"] };
-        }
-
-        const inventoryDocs = await InventoryMaster.find(filter)
-            .sort({ date: 1 })
-            .limit(200)
-            .lean();
-
-        if (inventoryDocs.length === 0) {
-            return apiSuccess({ proposals: [], count: 0 });
-        }
-
-        // Fetch listing metadata for enrichment (batch by unique listingIds)
-        const uniqueListingIds = [...new Set(inventoryDocs.map(d => d.listingId.toString()))];
-        const listings = await Listing.find({
-            _id: { $in: uniqueListingIds.map(id => new mongoose.Types.ObjectId(id)) },
-        }).select("name area currencyCode priceFloor priceCeiling").lean();
-
-        const listingMap = new Map(listings.map(l => [l._id.toString(), l]));
-
-        // Read org guardrails for auto-approve threshold display
-        const org = await Organization.findById(orgId)
-            .select("settings.guardrails")
-            .lean();
-        const autoApproveThreshold = org?.settings?.guardrails?.autoApproveThreshold ?? 5;
-
-        const proposals = inventoryDocs.map((doc, idx) => {
-            const listing = listingMap.get(doc.listingId.toString());
-            const changePct = doc.changePct ?? (
-                doc.currentPrice > 0
-                    ? Math.round(((doc.proposedPrice! - doc.currentPrice) / doc.currentPrice) * 100)
-                    : 0
-            );
-            return {
-                id: idx + 1,                          // numeric id for bulk action compat
-                _id: doc._id.toString(),              // real MongoDB id
-                listingId: doc.listingId.toString(),
-                listingName: listing?.name ?? "Unknown Property",
-                area: listing?.area ?? "",
-                date: doc.date,
-                currentPrice: doc.currentPrice,
-                proposedPrice: doc.proposedPrice!,
-                currencyCode: listing?.currencyCode ?? "AED",
-                priceFloor: listing?.priceFloor ?? doc.currentPrice * 0.5,
-                priceCeiling: listing?.priceCeiling ?? doc.currentPrice * 3,
-                changePct,
-                riskLevel: classifyRisk(changePct, autoApproveThreshold),
-                status: doc.proposalStatus ?? "pending",
-                reasoning: doc.reasoning ?? "",
-                batchId: doc.batchId,
-                autoApproved: Math.abs(changePct) <= autoApproveThreshold,
-                updatedAt: doc.updatedAt,
-            };
-        });
-
-        return apiSuccess({
-            proposals,
-            count: proposals.length,
-            autoApproveThreshold,
-            pendingCount:  proposals.filter(p => p.status === "pending").length,
-            approvedCount: proposals.filter(p => p.status === "approved").length,
-        });
-    } catch (error: unknown) {
-        console.error("❌ [v1/revenue/proposals GET] Error:", error);
-        return apiError("INTERNAL_ERROR", "Failed to fetch pricing proposals", 500);
-    }
+    return NextResponse.json({ proposals, count: proposals.length }, { status: 200 });
+  } catch (err: any) {
+    console.error("[api/v1/revenue/proposals] GET", err);
+    return NextResponse.json({ proposals: [], count: 0, error: err.message }, { status: 500 });
+  }
 }
 
-function classifyRisk(changePct: number, autoApproveThreshold: number): "low" | "medium" | "high" {
-    const abs = Math.abs(changePct);
-    if (abs <= autoApproveThreshold) return "low";
-    if (abs <= autoApproveThreshold * 3) return "medium";
-    return "high";
-}
+// POST /api/v1/revenue/proposals
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { orgId, _ids, action } = body;
 
-// ── POST /api/v1/revenue/proposals — bulk action ──────────────────────────────
-// Supports: approve | reject | push | save
-// `ids` are numeric positional IDs from the GET response (1-indexed).
-// `_ids` (MongoDB ObjectId strings) are preferred if the client sends them.
-
-export async function POST(request: Request) {
-    const ip = getClientIp(request);
-    const rateCheck = checkRateLimit(`revenue-proposals-bulk:${ip}`, RATE_LIMITS.standard);
-    if (!rateCheck.allowed) {
-        return apiError("RATE_LIMITED", `Try again in ${Math.ceil(rateCheck.resetMs / 1000)}s.`, 429);
+    if (!orgId || !_ids || !action) {
+      return NextResponse.json({ processed: 0, error: "Missing required fields" }, { status: 400 });
     }
 
-    try {
-        await connectDB();
+    await connectToDatabase();
 
-        const session = await getSession();
-        if (!session?.orgId) {
-            return apiError("UNAUTHORIZED", "Authentication required", 401);
-        }
-        const orgId = new mongoose.Types.ObjectId(session.orgId);
-
-        const body = await request.json();
-
-        // Accept either numeric ids OR MongoDB _id strings
-        const mongoIds: mongoose.Types.ObjectId[] = [];
-
-        if (Array.isArray(body._ids) && body._ids.length > 0) {
-            // Preferred: client sends real MongoDB _ids
-            for (const id of body._ids) {
-                if (mongoose.Types.ObjectId.isValid(id)) {
-                    mongoIds.push(new mongoose.Types.ObjectId(id));
-                }
-            }
-        }
-
-        // Validate action via existing schema (ids field optional when _ids provided)
-        const validation = bulkProposalActionSchema.safeParse({
-            ids: body.ids ?? body._ids?.map((_: unknown, i: number) => i + 1) ?? [1],
-            action: body.action,
-        });
-
-        if (!validation.success) {
-            return apiError("VALIDATION_ERROR", "Invalid bulk request", 400, formatZodErrors(validation.error));
-        }
-
-        const { action } = validation.data;
-
-        // Map action → new proposalStatus
-        const STATUS_MAP: Record<string, "approved" | "rejected" | "pushed"> = {
-            approve: "approved",
-            reject:  "rejected",
-            apply:   "pushed",
-            push:    "pushed",
-            save:    "approved", // "save" treated as approve
-        };
-
-        const newStatus = STATUS_MAP[action];
-        if (!newStatus) {
-            return apiError("INVALID_ACTION", `Unknown action: ${action}`, 400);
-        }
-
-        // Validate org ownership before updating
-        const filter: Record<string, unknown> = { orgId };
-        if (mongoIds.length > 0) {
-            filter._id = { $in: mongoIds };
-        }
-
-        // Guard: only allow pushing already-approved proposals
-        if (newStatus === "pushed") {
-            filter.proposalStatus = "approved";
-        }
-
-        let docsToPush: Array<{
-            _id: mongoose.Types.ObjectId;
-            currentPrice?: number | null;
-            proposedPrice?: number | null;
-        }> = [];
-        if (newStatus === "pushed") {
-            docsToPush = await InventoryMaster.find(filter).lean();
-        }
-
-        const result = await InventoryMaster.updateMany(filter, {
-            $set: { proposalStatus: newStatus },
-        });
-
-        // If pushing: save previousPrice, then copy proposedPrice → currentPrice
-        if (newStatus === "pushed") {
-            const toPush = docsToPush;
-            for (const doc of toPush) {
-                if (doc.proposedPrice != null) {
-                    await InventoryMaster.updateOne(
-                        { _id: doc._id },
-                        {
-                            $set: {
-                                previousPrice: doc.currentPrice, // snapshot before push
-                                currentPrice:  doc.proposedPrice,
-                                proposalStatus: "pushed",
-                                pushedAt:       new Date(),
-                            },
-                        }
-                    );
-                }
-            }
-        }
-
-        console.log(`💼 [Revenue/Proposals] ${action} → ${newStatus} for ${result.modifiedCount} proposals (org: ${session.orgId})`);
-
-        return apiSuccess({
-            processed: result.modifiedCount,
-            action,
-            newStatus,
-            message: `${result.modifiedCount} proposal(s) ${newStatus}.`,
-        });
-
-    } catch (error: unknown) {
-        console.error("❌ [v1/revenue/proposals POST] Error:", error);
-        return apiError("INTERNAL_ERROR", "Failed to process bulk pricing action", 500);
+    let newStatus: "pending" | "approved" | "rejected" | "pushed" | "rolled_back" = "pushed";
+    if (action === "approve" || action === "save" || action === "apply") {
+      newStatus = "approved";
+    } else if (action === "reject") {
+      newStatus = "rejected";
     }
+
+    const validOids = _ids.map((id: string) => Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : null).filter(Boolean);
+
+    if (validOids.length === 0) {
+      return NextResponse.json({ processed: 0, action, newStatus: "none" }, { status: 200 });
+    }
+
+    const docs = await InventoryMaster.find({
+      _id: { $in: validOids },
+      orgId: new Types.ObjectId(orgId)
+    });
+
+    let processed = 0;
+    for (const d of docs) {
+      d.proposalStatus = newStatus;
+      if (newStatus === "pushed" && d.proposedPrice !== null && d.proposedPrice !== undefined) {
+        d.previousPrice = d.currentPrice;
+        d.currentPrice = d.proposedPrice;
+      }
+      await d.save();
+      processed++;
+    }
+
+    return NextResponse.json({ processed, action, newStatus }, { status: 200 });
+  } catch (err: any) {
+    console.error("[api/v1/revenue/proposals] POST", err);
+    return NextResponse.json({ processed: 0, error: err.message }, { status: 500 });
+  }
 }

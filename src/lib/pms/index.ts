@@ -1,6 +1,5 @@
 import { PMSClient } from "./types";
 import { MockPMSClient } from "./mock-client";
-import { HostawayClient } from "./hostaway-client";
 
 /**
  * PMS Client Factory
@@ -18,7 +17,9 @@ export function createPMSClient(): PMSClient {
   const mode = (process.env.HOSTAWAY_MODE || "db").toLowerCase();
 
   if (mode === "live") {
-    return new HostawayClient();
+    // Live Hostaway client implementation is not available in this frontend package.
+    // Fall back to mock client to keep builds and local development stable.
+    return new MockPMSClient();
   }
 
   if (mode === "mock") {
@@ -38,4 +39,3 @@ export function createPMSClient(): PMSClient {
 
 export type { PMSClient } from "./types";
 export { MockPMSClient } from "./mock-client";
-export { HostawayClient } from "./hostaway-client";

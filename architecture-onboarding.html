@@ -432,9 +432,9 @@
           </tr>
           <tr>
             <td><span class="tag tag-green">💬 GuestAgent</span></td>
-            <td><code>conversations</code> · <code>reservations</code></td>
+            <td><code>conversations</code> · <code>reservations</code> · <code>listings</code> · <code>calendar</code></td>
             <td><code>conversations</code> (reply drafts)</td>
-            <td><span class="tag tag-red">proposals · calendar · financials</span></td>
+            <td><span class="tag tag-red">proposals · financials</span></td>
           </tr>
           <tr>
             <td><span class="tag tag-red">🛡 GuardrailAgent</span></td>
@@ -475,7 +475,7 @@
 
 <span class="kw">const</span> AGENT_SCOPES = {
   PricingAgent:    { read: [<span class="str">'listings'</span>, <span class="str">'calendar'</span>, <span class="str">'market_templates'</span>], write: [<span class="str">'proposals'</span>] },
-  GuestAgent:      { read: [<span class="str">'conversations'</span>, <span class="str">'reservations'</span>],          write: [<span class="str">'conversations'</span>] },
+  GuestAgent:      { read: [<span class="str">'conversations'</span>, <span class="str">'reservations'</span>, <span class="str">'listings'</span>, <span class="str">'calendar'</span>], write: [<span class="str">'conversations'</span>] },
   GuardrailAgent:  { read: [<span class="str">'listings'</span>, <span class="str">'proposals'</span>],                   write: [<span class="str">'proposals'</span>] },
   BenchmarkAgent:  { read: [<span class="str">'listings'</span>, <span class="str">'calendar'</span>, <span class="str">'reservations'</span>],   write: [<span class="str">'insights'</span>] },
   FinanceModule:   { read: [<span class="str">'financials'</span>, <span class="str">'reservations'</span>, <span class="str">'listings'</span>],  write: [<span class="str">'financials'</span>] },

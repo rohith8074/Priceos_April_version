@@ -1,4 +1,40 @@
-import { extractJson } from "@/lib/lyzr/client";
+function extractJson(input: string): unknown {
+  const trimmed = input?.trim();
+  if (!trimmed) return null;
+
+  // Direct JSON payload
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      // Fall through to fence/extraction attempts
+    }
+  }
+
+  // JSON fenced block
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) {
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {
+      return null;
+    }
+  }
+
+  // First JSON object in text
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    const candidate = trimmed.slice(firstBrace, lastBrace + 1);
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
 
 /**
  * Turns agent replies that are raw JSON (e.g. { user_intent, proposed_data, reasoning })

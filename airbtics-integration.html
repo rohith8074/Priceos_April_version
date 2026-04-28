@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PriceOS — Airbtics API Integration Spec</title>
+  <style>
+    :root {
+      --bg: #0a0a0c;
+      --surface: #131316;
+      --surface2: #1a1a1f;
+      --surface3: #212128;
+      --border: #2a2a35;
+      --amber: #f59e0b;
+      --amber-dim: rgba(245,158,11,0.08);
+      --green: #22c55e;
+      --blue: #3b82f6;
+      --red: #ef4444;
+      --purple: #a855f7;
+      --cyan: #06b6d4;
+      --orange: #f97316;
+      --text: #f5f5f5;
+      --text2: #a1a1aa;
+      --text3: #52525b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.6; }
+    .page { max-width: 1100px; margin: 0 auto; padding: 60px 40px; }
+
+    /* HEADER */
+    .doc-header { border-bottom: 1px solid var(--border); padding-bottom: 40px; margin-bottom: 60px; }
+    .badge { display: inline-block; background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); border-radius: 6px; padding: 4px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 16px; }
+    .badge-blue { background: rgba(59,130,246,0.08); color: var(--blue); border-color: rgba(59,130,246,0.2); }
+    .doc-title { font-size: 42px; font-weight: 800; letter-spacing: -1px; color: #fff; line-height: 1.1; margin-bottom: 12px; }
+    .doc-title span { color: var(--amber); }
+    .doc-subtitle { color: var(--text2); font-size: 16px; max-width: 700px; }
+    .meta { display: flex; gap: 24px; margin-top: 20px; font-size: 12px; color: var(--text3); flex-wrap: wrap; }
+    .meta span { display: flex; align-items: center; gap: 6px; }
+
+    /* SECTIONS */
+    .section { margin-bottom: 70px; }
+    .section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); margin-bottom: 10px; }
+    .section-title { font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .section-desc { color: var(--text2); font-size: 14px; max-width: 720px; margin-bottom: 32px; line-height: 1.7; }
+
+    /* CARDS */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-bottom: 16px; }
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .card-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+    .card h4 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+    .card p { color: var(--text2); font-size: 13px; line-height: 1.6; }
+
+    /* TAGS */
+    .tag { display: inline-flex; align-items: center; gap: 4px; border-radius: 5px; padding: 2px 8px; font-size: 11px; font-weight: 600; }
+    .tag-green  { background: rgba(34,197,94,0.1);  color: var(--green);  border: 1px solid rgba(34,197,94,0.2); }
+    .tag-red    { background: rgba(239,68,68,0.1);   color: var(--red);    border: 1px solid rgba(239,68,68,0.2); }
+    .tag-blue   { background: rgba(59,130,246,0.1);  color: var(--blue);   border: 1px solid rgba(59,130,246,0.2); }
+    .tag-amber  { background: var(--amber-dim);      color: var(--amber);  border: 1px solid rgba(245,158,11,0.2); }
+    .tag-purple { background: rgba(168,85,247,0.1);  color: var(--purple); border: 1px solid rgba(168,85,247,0.2); }
+    .tag-cyan   { background: rgba(6,182,212,0.1);   color: var(--cyan);   border: 1px solid rgba(6,182,212,0.2); }
+    .tag-orange { background: rgba(249,115,22,0.1);  color: var(--orange); border: 1px solid rgba(249,115,22,0.2); }
+
+    /* PRIORITY INDICATOR */
+    .priority-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot-red    { background: var(--red); box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+    .dot-amber  { background: var(--amber); box-shadow: 0 0 6px rgba(245,158,11,0.5); }
+    .dot-green  { background: var(--green); box-shadow: 0 0 6px rgba(34,197,94,0.4); }
+    .dot-blue   { background: var(--blue); box-shadow: 0 0 6px rgba(59,130,246,0.4); }
+
+    /* TABLE */
+    .spec-table { width: 100%; border-collapse: collapse; }
+    .spec-table th { background: var(--surface2); color: var(--text2); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 700; padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+    .spec-table td { padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 13px; vertical-align: top; }
+    .spec-table tr:last-child td { border-bottom: none; }
+    .spec-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* COST DISPLAY */
+    .cost-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; padding: 4px 12px; font-size: 12px; font-weight: 700; }
+    .cost-free   { background: rgba(34,197,94,0.1);  color: var(--green);  border: 1px solid rgba(34,197,94,0.2); }
+    .cost-low    { background: rgba(59,130,246,0.1);  color: var(--blue);   border: 1px solid rgba(59,130,246,0.2); }
+    .cost-medium { background: var(--amber-dim);       color: var(--amber);  border: 1px solid rgba(245,158,11,0.2); }
+    .cost-high   { background: rgba(239,68,68,0.1);   color: var(--red);    border: 1px solid rgba(239,68,68,0.2); }
+
+    /* FLOW DIAGRAM */
+    .flow-pipeline { display: flex; flex-direction: column; gap: 0; }
+    .pipeline-step { display: grid; grid-template-columns: 52px 1fr; gap: 20px; position: relative; padding-bottom: 0; }
+    .pipeline-step + .pipeline-step { margin-top: 0; }
+    .pipeline-step + .pipeline-step .step-connector { position: absolute; left: 25px; top: -20px; width: 2px; height: 20px; background: linear-gradient(180deg, var(--border), var(--border)); }
+    .step-circle { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; border: 2px solid; }
+    .step-content { padding: 12px 0 32px 0; }
+    .step-content h4 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+    .step-content p { color: var(--text2); font-size: 13px; margin-bottom: 10px; line-height: 1.6; }
+    .step-content ul { margin: 8px 0 0 0; padding-left: 0; list-style: none; }
+    .step-content ul li { font-size: 12px; color: var(--text2); padding: 3px 0; display: flex; align-items: flex-start; gap: 8px; }
+    .step-content ul li::before { content: '›'; color: var(--text3); flex-shrink: 0; margin-top: 1px; }
+    .connector-line { width: 2px; background: var(--border); height: 100%; position: absolute; left: 25px; top: 52px; }
+
+    /* ARCHITECTURE DIAGRAM */
+    .arch-container { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px; }
+    .arch-row { display: flex; gap: 10px; align-items: stretch; margin-bottom: 10px; flex-wrap: wrap; }
+    .arch-box { flex: 1; min-width: 120px; border-radius: 10px; padding: 14px 12px; border: 1px solid; text-align: center; font-size: 11px; font-weight: 600; line-height: 1.5; }
+    .arch-box .arch-icon { font-size: 18px; display: block; margin-bottom: 4px; }
+    .arch-box.external { border-color: var(--border); background: var(--surface2); color: var(--text2); }
+    .arch-box.central  { border-color: rgba(245,158,11,0.3); background: var(--amber-dim); color: var(--amber); }
+    .arch-box.engine   { border-color: rgba(59,130,246,0.3); background: rgba(59,130,246,0.06); color: var(--blue); }
+    .arch-box.airbtics { border-color: rgba(6,182,212,0.3); background: rgba(6,182,212,0.06); color: var(--cyan); }
+    .arch-box.perplexity { border-color: rgba(168,85,247,0.3); background: rgba(168,85,247,0.06); color: var(--purple); }
+    .arch-box.cache    { border-color: rgba(34,197,94,0.3); background: rgba(34,197,94,0.06); color: var(--green); }
+    .arch-box.output   { border-color: rgba(249,115,22,0.3); background: rgba(249,115,22,0.06); color: var(--orange); }
+    .arch-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); text-align: center; margin-bottom: 8px; margin-top: 16px; }
+    .arch-arrow { text-align: center; color: var(--text3); font-size: 18px; margin: 4px 0; padding: 0 16px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+    .arch-separator { border: none; border-top: 1px dashed var(--border); margin: 12px 0; }
+
+    /* CODE */
+    pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 22px; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 12px; overflow-x: auto; color: var(--text2); line-height: 1.9; margin-bottom: 16px; }
+    .kw  { color: #7dd3fc; } /* light blue - keywords */
+    .str { color: #86efac; } /* light green - strings */
+    .cm  { color: #52525b; } /* grey - comments */
+    .fn  { color: #fcd34d; } /* yellow - function names */
+    .tp  { color: #c4b5fd; } /* lavender - types */
+    .num { color: #fb923c; } /* orange - numbers */
+    .prop{ color: #f0abfc; } /* pink - properties */
+
+    /* CALLOUT */
+    .callout { border-radius: 12px; padding: 20px 24px; margin: 20px 0; border: 1px solid; }
+    .callout.amber  { background: var(--amber-dim); border-color: rgba(245,158,11,0.25); }
+    .callout.green  { background: rgba(34,197,94,0.06); border-color: rgba(34,197,94,0.25); }
+    .callout.blue   { background: rgba(59,130,246,0.06); border-color: rgba(59,130,246,0.25); }
+    .callout.red    { background: rgba(239,68,68,0.06); border-color: rgba(239,68,68,0.25); }
+    .callout.cyan   { background: rgba(6,182,212,0.06); border-color: rgba(6,182,212,0.25); }
+    .callout-title  { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+    .callout.amber  .callout-title { color: var(--amber); }
+    .callout.green  .callout-title { color: var(--green); }
+    .callout.blue   .callout-title { color: var(--blue); }
+    .callout.red    .callout-title { color: var(--red); }
+    .callout.cyan   .callout-title { color: var(--cyan); }
+    .callout p { font-size: 13px; color: var(--text2); line-height: 1.7; }
+    .callout strong { color: var(--text); }
+
+    /* ENDPOINT CARD */
+    .endpoint-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 0; margin-bottom: 12px; overflow: hidden; }
+    .endpoint-header { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--surface2); flex-wrap: wrap; gap: 10px; }
+    .method-badge { font-family: monospace; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; }
+    .method-get  { background: rgba(34,197,94,0.15); color: var(--green); }
+    .method-post { background: rgba(245,158,11,0.15); color: var(--amber); }
+    .endpoint-path { font-family: monospace; font-size: 12px; color: var(--cyan); flex: 1; min-width: 200px; }
+    .endpoint-body { padding: 16px 20px; }
+    .endpoint-body h5 { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .endpoint-body p { font-size: 13px; color: var(--text2); margin-bottom: 10px; line-height: 1.6; }
+    .endpoint-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+    .endpoint-section h6 { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); margin-bottom: 6px; }
+    .endpoint-section ul { list-style: none; padding: 0; }
+    .endpoint-section ul li { font-size: 12px; color: var(--text2); padding: 2px 0; display: flex; gap: 6px; }
+    .endpoint-section ul li::before { content: '·'; color: var(--text3); }
+    .endpoint-section code { font-family: monospace; font-size: 11px; background: var(--surface3); padding: 1px 5px; border-radius: 3px; color: var(--amber); }
+
+    /* COST TABLE */
+    .cost-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .cost-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+    .cost-card .cc-amount { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+    .cost-card .cc-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.06em; }
+    .cost-card .cc-sub { font-size: 11px; color: var(--text3); margin-top: 6px; }
+
+    /* HR */
+    hr { border: none; border-top: 1px solid var(--border); margin: 60px 0; }
+
+    /* FILE PATH */
+    .filepath { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-family: monospace; font-size: 11px; color: var(--text2); }
+    .filepath::before { content: '📁'; font-size: 10px; }
+
+    /* INLINE CODE */
+    code { font-family: monospace; font-size: 12px; background: var(--surface2); padding: 1px 6px; border-radius: 4px; color: var(--amber); border: 1px solid var(--border); }
+
+    /* STEP MARKER */
+    .step-num { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+
+    /* SECTION DIVIDER */
+    .section-divider { display: flex; align-items: center; gap: 16px; margin: 48px 0 40px; }
+    .section-divider .sd-num { font-size: 11px; font-weight: 700; color: var(--amber); background: var(--amber-dim); border: 1px solid rgba(245,158,11,0.2); border-radius: 6px; padding: 4px 10px; white-space: nowrap; }
+    .section-divider .sd-line { flex: 1; height: 1px; background: var(--border); }
+
+    @media (max-width: 700px) {
+      .page { padding: 28px 16px; }
+      .doc-title { font-size: 28px; }
+      .arch-row { flex-direction: column; }
+      .endpoint-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══ HEADER ═══════════════════════════════════════════════════════════ -->
+  <div class="doc-header">
+    <div class="badge">Market Intelligence Layer · v1.0</div>
+    <h1 class="doc-title">PriceOS × <span>Airbtics API</span><br/>Integration Specification</h1>
+    <p class="doc-subtitle">Complete reference covering the Airbtics API endpoints, credit costs, data-flow architecture, caching strategy, and exact TypeScript integration into the PriceOS pricing engine — defaulting to Dubai as the primary market.</p>
+    <div class="meta">
+      <span>📅 April 2026</span>
+      <span>🗺 Default Market: Dubai, UAE</span>
+      <span>🔑 API: Airbtics + Perplexity (dual intelligence)</span>
+      <span>✅ Build-ready spec</span>
+    </div>
+  </div>
+
+  <!-- ═══ SECTION 1: WHY THIS API ══════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">01 · The Problem We're Solving</div>
+    <h2 class="section-title">What PriceOS Is Missing Today</h2>
+    <p class="section-desc">The current pricing engine in <code>pipeline.ts</code> and <code>waterfall.ts</code> is rule-based with internal occupancy data. It completely lacks external market intelligence — meaning it has no idea what competitors are charging, what the market demand is, or what's happening in Dubai that could justify repricing tonight.</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="priority-bar"><div class="dot dot-red"></div><span style="font-size:11px;color:var(--red);font-weight:700;">CRITICAL GAP</span></div>
+        <h4>No Market Benchmarks</h4>
+        <p>The pricing engine uses the host's own historical average as the base price. It has zero knowledge that comparable 2BR properties in Dubai Marina are averaging AED 850/night this month.</p>
+      </div>
+      <div class="card">
+        <div class="priority-bar"><div class="dot dot-red"></div><span style="font-size:11px;color:var(--red);font-weight:700;">CRITICAL GAP</span></div>
+        <h4>No Forward Demand Signal</h4>
+        <p>The engine cannot see that next Saturday is at 87% market occupancy (high pacing) vs the normal 52% — which should trigger an automatic rate surge. This data simply doesn't exist in PriceOS today.</p>
+      </div>
+      <div class="card">
+        <div class="priority-bar"><div class="dot dot-amber"></div><span style="font-size:11px;color:var(--amber);font-weight:700;">MAJOR GAP</span></div>
+        <h4>No Comp Set Feature</h4>
+        <p>PriceOS has no way to identify, track, or benchmark against competing Airbnb listings. Hosts have no visibility into how they are priced relative to their actual competition.</p>
+      </div>
+      <div class="card">
+        <div class="priority-bar"><div class="dot dot-amber"></div><span style="font-size:11px;color:var(--amber);font-weight:700;">MAJOR GAP</span></div>
+        <h4>Perplexity Gives Text, Not Numbers</h4>
+        <p>The existing <code>InternetResearchAgent</code> uses Perplexity to search "What are current rates in Dubai Marina?" — and gets a paragraph of text back. Airbtics gives actual structured numbers: <strong>p50 ADR = AED 842</strong>.</p>
+      </div>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- ═══ SECTION 2: ARCHITECTURE OVERVIEW ════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">02 · Architecture</div>
+    <h2 class="section-title">Dual Intelligence Data Flow</h2>
+    <p class="section-desc">PriceOS will operate a two-track intelligence system: <strong>Airbtics</strong> supplies hard quantitative market data (numbers, percentiles, occupancy curves), and <strong>Perplexity</strong> supplies qualitative soft intelligence (events, news, tourism trends). Both feed into a unified pricing context that the engine consumes per listing.</p>
+
+    <div class="arch-container">
+      <!-- ROW 1: External sources -->
+      <div class="arch-label">External Data Sources</div>
+      <div class="arch-row">
+        <div class="arch-box airbtics">
+          <span class="arch-icon">📊</span>
+          <strong>Airbtics API</strong><br/>
+          <span style="font-size:10px;font-weight:400;color:var(--text3);">Quantitative STR Data<br/>20M+ global listings</span>
+        </div>
+        <div class="arch-box perplexity">
+          <span class="arch-icon">🔍</span>
+          <strong>Perplexity Sonar</strong><br/>
+          <span style="font-size:10px;font-weight:400;color:var(--text3);">News, Events, Trends<br/>Real-time internet search</span>
+        </div>
+        <div class="arch-box external">
+          <span class="arch-icon">🏠</span>
+          <strong>Hostaway PMS</strong><br/>
+          <span style="font-size:10px;font-weight:400;color:var(--text3);">Property, Calendar<br/>Reservation data</span>
+        </div>
+      </div>
+
+      <div class="arch-arrow">↓ &nbsp;<span style="font-size:11px;">API calls via backend — never from browser</span></div>
+
+      <!-- ROW 2: Cache -->
+      <div class="arch-label">Cache Layer (In-Memory / Redis)</div>
+      <div class="arch-row">
+        <div class="arch-box cache" style="max-width:100%;">
+          <span class="arch-icon">💾</span>
+          <strong>Smart Cache</strong> · Market summary cached 24h · Metrics cached 12h · Pacing cached 6h · Events cached 2h
+        </div>
+      </div>
+
+      <div class="arch-arrow">↓ &nbsp;<span style="font-size:11px;">Cache-first, API-on-miss</span></div>
+
+      <!-- ROW 3: PriceOS Lib Layer -->
+      <div class="arch-label">PriceOS Integration Layer (<code>src/lib/</code>)</div>
+      <div class="arch-row">
+        <div class="arch-box engine">
+          <span class="arch-icon">🔧</span>
+          <strong>airbtics/client.ts</strong><br/>
+          <span style="font-size:10px;font-weight:400;">API wrapper + types</span>
+        </div>
+        <div class="arch-box engine">
+          <span class="arch-icon">🧠</span>
+          <strong>internet-research-agent.ts</strong><br/>
+          <span style="font-size:10px;font-weight:400;">Updated: Perplexity for events only</span>
+        </div>
+        <div class="arch-box central">
+          <span class="arch-icon">⚙️</span>
+          <strong>engine/pipeline.ts</strong><br/>
+          <span style="font-size:10px;font-weight:400;">Consumes unified context</span>
+        </div>
+      </div>
+
+      <div class="arch-arrow">↓ &nbsp;<span style="font-size:11px;">Unified MarketContext object injected per listing run</span></div>
+
+      <!-- ROW 4: Output -->
+      <div class="arch-label">Output</div>
+      <div class="arch-row">
+        <div class="arch-box output">
+          <span class="arch-icon">💰</span>
+          <strong>Pricing Proposals</strong><br/>
+          <span style="font-size:10px;font-weight:400;">Price per night with market-anchored reasoning</span>
+        </div>
+        <div class="arch-box output">
+          <span class="arch-icon">📈</span>
+          <strong>Market Insights</strong><br/>
+          <span style="font-size:10px;font-weight:400;">Benchmarks, comp sets, demand curves</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- ═══ SECTION 3: DATA FLOW STEP BY STEP ═══════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">03 · Step-by-Step Flow</div>
+    <h2 class="section-title">How the Pricing Engine Gets Market Data</h2>
+    <p class="section-desc">Here's the exact sequence of events from the moment the pricing engine is triggered for a Dubai property to when the final proposal is stored in MongoDB.</p>
+
+    <div class="flow-pipeline">
+
+      <!-- Step 1 -->
+      <div class="pipeline-step">
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div class="step-circle" style="border-color:rgba(59,130,246,0.4);background:rgba(59,130,246,0.08);">🏠</div>
+          <div style="width:2px;flex:1;background:var(--border);min-height:40px;"></div>
+        </div>
+        <div class="step-content">
+          <h4 style="color:var(--blue);">Step 1 — Engine Triggered for a Listing</h4>
+          <p>The pipeline runs for a listing (e.g. a 2-bedroom in Dubai Marina). The first thing it does is resolve the <strong>market context</strong> — today this is empty; after integration, it fetches from the cache or calls Airbtics.</p>
+          <ul>
+            <li>Reads listing config (bedrooms, orgId, priceFloor, etc.) from MongoDB</li>
+            <li>Determines the Dubai market ID (static, stored once in MarketTemplate)</li>
+            <li>Checks the cache for existing market data before any API call</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="pipeline-step">
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div class="step-circle" style="border-color:rgba(6,182,212,0.4);background:rgba(6,182,212,0.08);">📊</div>
+          <div style="width:2px;flex:1;background:var(--border);min-height:40px;"></div>
+        </div>
+        <div class="step-content">
+          <h4 style="color:var(--cyan);">Step 2 — Fetch Airbtics Quantitative Data (with cache)</h4>
+          <p>Airbtics is called <strong>only if cache is stale</strong>. Three endpoints are called in parallel for Dubai 2BR:</p>
+          <ul>
+            <li><strong>Market Summary</strong> → real LTM ADR, occupancy %, active listing count</li>
+            <li><strong>Monthly Metrics</strong> → 12-month history of ADR percentiles (p25/p50/p75)</li>
+            <li><strong>Future Pacing</strong> → forward-looking occupancy and ADR by check-in date</li>
+          </ul>
+          <div style="margin-top:10px;">
+            <span class="tag tag-green" style="font-size:10px;">Cache hit → 0ms, 0 credits</span>&nbsp;
+            <span class="tag tag-amber" style="font-size:10px;">Cache miss → ~300ms, 3 API calls</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="pipeline-step">
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div class="step-circle" style="border-color:rgba(168,85,247,0.4);background:rgba(168,85,247,0.08);">🔍</div>
+          <div style="width:2px;flex:1;background:var(--border);min-height:40px;"></div>
+        </div>
+        <div class="step-content">
+          <h4 style="color:var(--purple);">Step 3 — Fetch Perplexity Qualitative Data (events only)</h4>
+          <p>Perplexity is called for things Airbtics <em>cannot</em> tell you — what's happening in the real world. After integration, Perplexity is <strong>restricted to event/news research only</strong>. Market rate queries are removed and replaced by Airbtics.</p>
+          <ul>
+            <li>Searches for upcoming Dubai events in the next 60 days</li>
+            <li>Identifies conferences, festivals, public holidays, Ramadan dates</li>
+            <li>Returns structured findings: event name, dates, expected impact, confidence</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="pipeline-step">
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div class="step-circle" style="border-color:rgba(245,158,11,0.4);background:rgba(245,158,11,0.08);">🔀</div>
+          <div style="width:2px;flex:1;background:var(--border);min-height:40px;"></div>
+        </div>
+        <div class="step-content">
+          <h4 style="color:var(--amber);">Step 4 — Synthesize: Build the MarketContext Object</h4>
+          <p>Both data sources are merged into a single <code>MarketContext</code> TypeScript object. This is the "source of truth" that the pricing waterfall will consume for each day in the 365-day loop.</p>
+          <pre style="margin-top:8px;margin-bottom:0;font-size:11px;">
+<span class="kw">interface</span> <span class="tp">MarketContext</span> {
+  <span class="prop">marketId</span>: <span class="tp">string</span>;            <span class="cm">// e.g. "2286" (Dubai from Airbtics)</span>
+  <span class="prop">bedrooms</span>: <span class="tp">number</span>;           <span class="cm">// 2 (from Listing config)</span>
+
+  <span class="cm">// 📊 FROM AIRBTICS</span>
+  <span class="prop">marketOccupancyPct</span>: <span class="tp">number</span>; <span class="cm">// LTM market occupancy (e.g. 71%)</span>
+  <span class="prop">p50ADR</span>: <span class="tp">number</span>;             <span class="cm">// Median daily rate (e.g. AED 842)</span>
+  <span class="prop">p75ADR</span>: <span class="tp">number</span>;             <span class="cm">// 75th percentile (e.g. AED 1,240)</span>
+  <span class="prop">futurePacing</span>: <span class="tp">PacingEntry</span>[];  <span class="cm">// Per-date forward demand data</span>
+  <span class="prop">monthlyTrend</span>: <span class="tp">MonthlyMetric</span>[]; <span class="cm">// 12-month seasonal ADR history</span>
+
+  <span class="cm">// 🔍 FROM PERPLEXITY</span>
+  <span class="prop">upcomingEvents</span>: <span class="tp">EventFinding</span>[]; <span class="cm">// Confirmed Dubai events</span>
+  <span class="prop">demandSignal</span>: <span class="str">"high"</span> | <span class="str">"medium"</span> | <span class="str">"low"</span>;
+  <span class="prop">researchSummary</span>: <span class="tp">string</span>;    <span class="cm">// Human-readable context for proposal reasoning</span>
+}</pre>
+        </div>
+      </div>
+
+      <!-- Step 5 -->
+      <div class="pipeline-step">
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div class="step-circle" style="border-color:rgba(34,197,94,0.4);background:rgba(34,197,94,0.08);">⚙️</div>
+          <div style="width:2px;flex:1;background:var(--border);min-height:40px;"></div>
+        </div>
+        <div class="step-content">
+          <h4 style="color:var(--green);">Step 5 — Waterfall Consumes MarketContext Per Day</h4>
+          <p>The 365-day pricing loop in <code>pipeline.ts</code> now has access to full market data per day. For each date, it checks the pacing data and any active events to apply market-driven adjustments on top of the existing rules.</p>
+          <ul>
+            <li>If pacing occupancy &gt; 80% for a date → trigger rate increase</li>
+            <li>If a high-impact event overlaps the date → layer on top of base event rule</li>
+            <li>The proposal reasoning now reads: <em>"Market pacing at 87% (GITEX conference), +15% applied"</em></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Step 6 -->
+      <div class="pipeline-step">
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div class="step-circle" style="border-color:rgba(249,115,22,0.4);background:rgba(249,115,22,0.08);">💾</div>
+        </div>
+        <div class="step-content">
+          <h4 style="color:var(--orange);">Step 6 — Save Proposals with Full Reasoning</h4>
+          <p>The enriched proposals are written to <code>InventoryMaster</code> in MongoDB as before, but now the <code>reasoning</code> field contains <strong>specific, data-backed explanations</strong> — not just "high occupancy" but <em>"Market ADR p50 = AED 842, your current rate is AED 700 (17% below market). Pacing for this date is 83%. Proposed rate: AED 950."</em></p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- ═══ SECTION 4: ENDPOINTS WE NEED ════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">04 · API Endpoints</div>
+    <h2 class="section-title">Exactly Which Airbtics Endpoints We Use</h2>
+    <p class="section-desc">Out of the 17 available Airbtics endpoints, PriceOS will use 6. Below is a detailed breakdown of each one — what it does, what parameters to send, what data we get back, and how it's used in the code.</p>
+
+    <!-- Step 0: One-time setup -->
+    <div class="callout amber" style="margin-bottom:24px;">
+      <div class="callout-title">🔧 One-Time Setup (Run Once, Store in DB)</div>
+      <p>Before anything, we need Dubai's <code>market_id</code>. Call <code>GET /markets/search?query=Dubai&amp;country_code=AE</code> once, get the ID (e.g. <code>2286</code>), and store it in the <code>MarketTemplate</code> MongoDB document as <code>airbticsMarketId</code>. Every subsequent call uses this ID — no repeat lookups needed.</p>
+    </div>
+
+    <!-- Endpoint 1 -->
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-get">GET</span>
+        <span class="endpoint-path">/markets/summary?market_id=2286&amp;bedrooms=2</span>
+        <span class="tag tag-red">🔴 Critical</span>
+        <span class="cost-badge cost-low">💳 Low Cost</span>
+      </div>
+      <div class="endpoint-body">
+        <h5>Market Summary — The Baseline Anchor</h5>
+        <p>Gets the Last-Twelve-Month (LTM) aggregate KPIs for the Dubai 2-bedroom market. This is the single most important call — it tells us what the market is actually doing at a high level.</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-section">
+            <h6>Response data we use</h6>
+            <ul>
+              <li><code>average_daily_rate</code> — market median ADR (AED)</li>
+              <li><code>occupancy</code> — market LTM occupancy % (e.g. 0.71)</li>
+              <li><code>revenue</code> — median monthly revenue</li>
+              <li><code>active_listings_count</code> — supply pressure indicator</li>
+            </ul>
+          </div>
+          <div class="endpoint-section">
+            <h6>Where it's used in PriceOS</h6>
+            <ul>
+              <li>Sets <code>p50ADR</code> in MarketContext</li>
+              <li>Populates Market Insights dashboard card</li>
+              <li>Prices proposals relative to market median</li>
+              <li>Tells hosts if they're above/below market</li>
+            </ul>
+          </div>
+        </div>
+        <div class="callout green" style="margin-top:12px;padding:12px 16px;">
+          <div class="callout-title">✅ Cache for 24 hours</div>
+          <p>LTM market data changes very slowly. One call per market+bedroom combination per day is more than sufficient.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Endpoint 2 -->
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-get">GET</span>
+        <span class="endpoint-path">/markets/metrics/all?market_id=2286&amp;bedrooms=2&amp;number_of_months=12</span>
+        <span class="tag tag-red">🔴 Critical</span>
+        <span class="cost-badge cost-medium">💳 Medium Cost</span>
+      </div>
+      <div class="endpoint-body">
+        <h5>Monthly Metrics — Seasonality Intelligence</h5>
+        <p>Returns a month-by-month array of market performance metrics for the past 12 months. This is how we understand Dubai's seasonal pricing rhythm — when are peak months, shoulder months, and low season?</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-section">
+            <h6>Response data we use</h6>
+            <ul>
+              <li><code>month</code> — YYYY-MM period</li>
+              <li><code>p25_adr</code>, <code>p50_adr</code>, <code>p75_adr</code> — ADR percentiles</li>
+              <li><code>occupancy</code> — monthly occupancy rate</li>
+              <li><code>revenue_yoy_change_pct</code> — year-over-year trend</li>
+            </ul>
+          </div>
+          <div class="endpoint-section">
+            <h6>Where it's used in PriceOS</h6>
+            <ul>
+              <li>Seasonal adjustment multiplier per month</li>
+              <li>Dashboard: 12-month market trend chart</li>
+              <li>Validates if a pricing rule makes sense seasonally</li>
+              <li>Feeds the "Market Trends" section in Insights</li>
+            </ul>
+          </div>
+        </div>
+        <div class="callout cyan" style="margin-top:12px;padding:12px 16px;">
+          <div class="callout-title">💡 How This Improves Pricing</div>
+          <p>Without this data, the engine treats all months equally. With it, we know Dubai December–February has a p50 ADR of AED 1,100 vs AED 580 in July — a nearly <strong>2× seasonal difference</strong> that the current engine ignores.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Endpoint 3 -->
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-get">GET</span>
+        <span class="endpoint-path">/markets/metrics/future-pacing?market_id=2286&amp;bedrooms=2</span>
+        <span class="tag tag-red">🔴 Critical</span>
+        <span class="cost-badge cost-medium">💳 Medium Cost</span>
+      </div>
+      <div class="endpoint-body">
+        <h5>Future Pacing — The Most Powerful Endpoint</h5>
+        <p>Returns forward-looking occupancy and ADR for each upcoming check-in date in the market. This is the gold standard for demand forecasting — instead of guessing, you see exactly how booked-up the Dubai market is for any specific future date, right now.</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-section">
+            <h6>Response data we use</h6>
+            <ul>
+              <li><code>date</code> — specific check-in date (YYYY-MM-DD)</li>
+              <li><code>occupancy</code> — current booking rate for that date</li>
+              <li><code>adr</code> — average rate competitors are charging</li>
+              <li><code>vs_ly_occupancy</code> — vs same date last year</li>
+            </ul>
+          </div>
+          <div class="endpoint-section">
+            <h6>Where it's used in PriceOS</h6>
+            <ul>
+              <li><strong>Per-date demand signal</strong> in the 365-day pricing loop</li>
+              <li>Calendar heatmap (red=hot, blue=cold demand)</li>
+              <li>Triggers surge pricing when market occupancy &gt; 75%</li>
+              <li>Triggers discount when pacing is unusually low</li>
+            </ul>
+          </div>
+        </div>
+        <div class="callout amber" style="margin-top:12px;padding:12px 16px;">
+          <div class="callout-title">⚡ Real Example: Impact on a Proposal</div>
+          <p>Pacing data shows Dec 31st Dubai at 94% occupancy. Without pacing, engine prices at AED 850. <strong>With pacing, engine sees 94% market-wide demand and surges to AED 1,350</strong> — correctly aligned to what the market will bear that night.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Endpoint 4 -->
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-post">POST</span>
+        <span class="endpoint-path">/listings/search/bounds</span>
+        <span class="tag tag-amber">🟠 High Value</span>
+        <span class="cost-badge cost-medium">💳 Medium Cost</span>
+      </div>
+      <div class="endpoint-body">
+        <h5>Listing Search by Bounds — Comp Set Builder</h5>
+        <p>POST a lat/long bounding box around a property (e.g. ±0.05° from Dubai Marina coordinates) and get back a list of all nearby Airbnb listings with their performance stats. This enables a real Comp Set feature.</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-section">
+            <h6>Request body we send</h6>
+            <ul>
+              <li><code>bounds.ne_lat</code>, <code>bounds.ne_lng</code></li>
+              <li><code>bounds.sw_lat</code>, <code>bounds.sw_lng</code></li>
+              <li><code>bedrooms</code> — filter by bedroom count</li>
+              <li><code>page</code> — paginate results</li>
+            </ul>
+          </div>
+          <div class="endpoint-section">
+            <h6>Response data we use</h6>
+            <ul>
+              <li><code>listings[].listing_id</code> — Airbnb listing ID</li>
+              <li><code>listings[].ltm_occupancy</code> — competitor occupancy</li>
+              <li><code>listings[].ltm_adr</code> — competitor ADR</li>
+              <li><code>listings[].ltm_revenue</code> — competitor revenue</li>
+            </ul>
+          </div>
+        </div>
+        <div class="callout blue" style="margin-top:12px;padding:12px 16px;">
+          <div class="callout-title">📌 New Feature Unlocked: Comp Set</div>
+          <p>This call enables a "Your Competition" panel in the dashboard — showing the host their top 5–10 nearest similar properties with their actual LTM performance. Cache for <strong>24 hours</strong> per property (comp sets don't change overnight).</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Endpoint 5 -->
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-post">POST</span>
+        <span class="endpoint-path">/report/all</span>
+        <span class="tag tag-cyan">🔵 Onboarding</span>
+        <span class="cost-badge cost-high">💳 Higher Cost</span>
+      </div>
+      <div class="endpoint-body">
+        <h5>Revenue Report — Onboarding Projection Engine</h5>
+        <p>Pass a property's coordinates + bedroom/bathroom counts and get back a full revenue projection with comparable listings. Call this <strong>once</strong> during onboarding — then fetch the report by ID.</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-section">
+            <h6>Request body we send</h6>
+            <ul>
+              <li><code>latitude</code>, <code>longitude</code></li>
+              <li><code>bedrooms</code>, <code>bathrooms</code></li>
+              <li><code>accommodates</code> — max guests</li>
+            </ul>
+          </div>
+          <div class="endpoint-section">
+            <h6>Response data we use</h6>
+            <ul>
+              <li><code>report_id</code> → then GET <code>/report?report_id=...</code></li>
+              <li>Estimated annual revenue range</li>
+              <li>Comp listing data (10–20 comparables)</li>
+              <li>Seasonal revenue breakdown</li>
+            </ul>
+          </div>
+        </div>
+        <div class="callout green" style="margin-top:12px;padding:12px 16px;">
+          <div class="callout-title">✅ When to Call This</div>
+          <p>Only during onboarding Step 4 ("Strategy") for each newly activated property. Show the host: <strong>"Based on your location, comparable properties earn AED 85,000–120,000/year."</strong> Store the result permanently in the Listing document — never re-call unless the property data changes.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Endpoint 6 -->
+    <div class="endpoint-card">
+      <div class="endpoint-header">
+        <span class="method-badge method-get">GET</span>
+        <span class="endpoint-path">/listings/metrics/all?listing_id=AIRBNB_ID</span>
+        <span class="tag tag-green">🟢 Optional</span>
+        <span class="cost-badge cost-low">💳 Low Cost</span>
+      </div>
+      <div class="endpoint-body">
+        <h5>Single Listing Deep Dive — Competitor Profiling</h5>
+        <p>Get complete 12-month analytics for one specific Airbnb listing ID. Used when a host wants to monitor a specific competitor or when seeding the comp set with detailed profiles.</p>
+        <div class="endpoint-grid">
+          <div class="endpoint-section">
+            <h6>Response data we use</h6>
+            <ul>
+              <li>Full 12-month occupancy and ADR history</li>
+              <li>Seasonal pricing patterns</li>
+              <li>Review score and count</li>
+              <li>Listing amenity tier inference</li>
+            </ul>
+          </div>
+          <div class="endpoint-section">
+            <h6>Where it's used in PriceOS</h6>
+            <ul>
+              <li>Comp card in the Benchmark Agent view</li>
+              <li>Enriches comp set with seasonal context</li>
+              <li>Called on demand (user clicks a competitor)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- ═══ SECTION 5: COST BREAKDOWN ════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">05 · Cost &amp; Credits</div>
+    <h2 class="section-title">API Pricing &amp; Cost Estimation for Dubai</h2>
+    <p class="section-desc">Airbtics uses a <strong>pay-as-you-go credit model</strong>. You top up credits and endpoints consume credits per call. The exact credit amount per endpoint is visible in your Airbtics dashboard after registration. The data refreshes weekly (every Thursday). Here's a realistic cost model for PriceOS using Dubai as the primary market.</p>
+
+    <div class="callout amber" style="margin-bottom:28px;">
+      <div class="callout-title">⚠️ Important: Credits Are Consumed Per API Call</div>
+      <p>This means <strong>caching is not optional — it is a core cost control mechanism</strong>. Without caching, every pricing run for every property would consume credits. With smart caching shared across all listings in the same market+bedroom bucket, 50 property runs can share 1 set of API responses. This drops costs by <strong>~98%</strong>.</p>
+    </div>
+
+    <div class="card" style="overflow:auto;">
+      <table class="spec-table">
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th>Cost Tier</th>
+            <th>Cache TTL</th>
+            <th>Calls/Day (Dubai, all bedrooms)</th>
+            <th>Why We Cache Aggressively</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/markets/search</code></td>
+            <td><span class="cost-badge cost-free">🆓 Near-Free</span></td>
+            <td>Forever (static)</td>
+            <td>1 call total (one-time setup)</td>
+            <td>Dubai's market_id never changes</td>
+          </tr>
+          <tr>
+            <td><code>/markets/summary</code></td>
+            <td><span class="cost-badge cost-low">💳 Low</span></td>
+            <td>24 hours</td>
+            <td>6 calls/day (6 bedroom types: 0,1,2,3,4,5+)</td>
+            <td>LTM data updates weekly; daily cache is more than fresh enough</td>
+          </tr>
+          <tr>
+            <td><code>/markets/metrics/all</code></td>
+            <td><span class="cost-badge cost-medium">💳 Medium</span></td>
+            <td>24 hours</td>
+            <td>6 calls/day (one per bedroom count)</td>
+            <td>Monthly data static within a week; cache 24h safely</td>
+          </tr>
+          <tr>
+            <td><code>/markets/metrics/future-pacing</code></td>
+            <td><span class="cost-badge cost-medium">💳 Medium</span></td>
+            <td>6 hours</td>
+            <td>24 calls/day (6 bedroom × 4 refreshes)</td>
+            <td>Pacing changes as bookings come in; refresh every 6 hours for accuracy</td>
+          </tr>
+          <tr>
+            <td><code>/listings/search/bounds</code></td>
+            <td><span class="cost-badge cost-medium">💳 Medium</span></td>
+            <td>24 hours</td>
+            <td>~20 calls/day (per activated property)</td>
+            <td>Comp sets are stable; no need to refresh more than once per day</td>
+          </tr>
+          <tr>
+            <td><code>/report/all</code></td>
+            <td><span class="cost-badge cost-high">💳 Higher</span></td>
+            <td>Permanent (store in DB)</td>
+            <td>1 per newly onboarded property</td>
+            <td>One-time calculation at onboarding; result stored forever in Listing doc</td>
+          </tr>
+          <tr>
+            <td><code>/listings/metrics/all</code></td>
+            <td><span class="cost-badge cost-low">💳 Low</span></td>
+            <td>24 hours</td>
+            <td>On-demand (user action)</td>
+            <td>Only called when user explores a specific competitor</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout green" style="margin-top:20px;">
+      <div class="callout-title">💰 Realistic Monthly Cost Estimate</div>
+      <p>With aggressive caching: the steady-state daily volume is <strong>under 60 API calls per day</strong> shared across the entire Dubai market (all listings with the same bedroom type share the same cached response). At standard Airbtics pay-as-you-go rates, this is roughly <strong>$5–$30/month</strong> depending on credit tiers — a negligible cost that unlocks enterprise-grade market intelligence for all users.</p>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- ═══ SECTION 6: WHAT DATA MATTERS MOST ════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">06 · Data Value Ranking</div>
+    <h2 class="section-title">What Actually Matters for Dubai Pricing</h2>
+    <p class="section-desc">Not all data is equally valuable. Here's a ranked breakdown of what each data type does for PriceOS and why Dubai specifically benefits from it.</p>
+
+    <div class="card-grid-2">
+      <div class="card" style="border-color:rgba(239,68,68,0.3);">
+        <div class="priority-bar">
+          <div class="dot dot-red"></div><div class="dot dot-red"></div><div class="dot dot-red"></div>
+          <span style="font-size:11px;color:var(--red);font-weight:700;">HIGHEST VALUE</span>
+        </div>
+        <h4>Future Pacing Data</h4>
+        <p style="margin-bottom:12px;"><strong>What it is:</strong> Per-date forward occupancy and ADR for the Dubai market.</p>
+        <p style="margin-bottom:12px;"><strong>Why it's #1:</strong> Dubai is an event-driven market — GITEX, Art Dubai, Formula E, New Year's Eve, Eid holidays — demand swings are enormous and predictable from pacing data weeks in advance.</p>
+        <p><strong>Impact:</strong> Enables the engine to surge prices 2–6 weeks ahead of peak dates before the host even knows there's an event. This is where the most revenue is captured.</p>
+      </div>
+
+      <div class="card" style="border-color:rgba(245,158,11,0.3);">
+        <div class="priority-bar">
+          <div class="dot dot-amber"></div><div class="dot dot-amber"></div><div class="dot dot-amber"></div>
+          <span style="font-size:11px;color:var(--amber);font-weight:700;">VERY HIGH VALUE</span>
+        </div>
+        <h4>Market ADR Percentiles (p50 / p75)</h4>
+        <p style="margin-bottom:12px;"><strong>What it is:</strong> Monthly ADR at the 25th, 50th, 75th, and 90th percentile for Dubai by bedroom count.</p>
+        <p style="margin-bottom:12px;"><strong>Why it matters:</strong> Many Dubai hosts are chronic underpricers. Knowing that their 2BR in JBR should command AED 900/night (p50) when they're charging AED 620 is an immediate, measurable improvement.</p>
+        <p><strong>Impact:</strong> This single data point often justifies a 15–30% rate increase for underpriced hosts — the core value proposition of PriceOS.</p>
+      </div>
+
+      <div class="card" style="border-color:rgba(59,130,246,0.3);">
+        <div class="priority-bar">
+          <div class="dot dot-blue"></div><div class="dot dot-blue"></div>
+          <span style="font-size:11px;color:var(--blue);font-weight:700;">HIGH VALUE</span>
+        </div>
+        <h4>Dubai Events (Perplexity)</h4>
+        <p style="margin-bottom:12px;"><strong>What it is:</strong> Structured findings from Perplexity about upcoming events in Dubai: conferences, festivals, public holidays.</p>
+        <p style="margin-bottom:12px;"><strong>Why it matters:</strong> Pacing data shows demand is high, but Perplexity explains <em>why</em>. This context makes the proposal reasoning meaningful to hosts.</p>
+        <p><strong>Impact:</strong> Host sees: "GITEX Technology Week (Oct 14–18, 87,000 attendees) — +22% rate recommended." This is trusted, actionable, and explainable.</p>
+      </div>
+
+      <div class="card" style="border-color:rgba(168,85,247,0.3);">
+        <div class="priority-bar">
+          <div class="dot dot-blue"></div>
+          <span style="font-size:11px;color:var(--purple);font-weight:700;">MEDIUM VALUE</span>
+        </div>
+        <h4>Comp Set (Nearby Listing Data)</h4>
+        <p style="margin-bottom:12px;"><strong>What it is:</strong> LTM performance of the 10 nearest comparable Airbnb listings, filtered by bedroom count.</p>
+        <p style="margin-bottom:12px;"><strong>Why it matters:</strong> Benchmark Agent gains real competitor data instead of market-wide averages — critical for premium properties that sit above the p50 price point.</p>
+        <p><strong>Impact:</strong> Unlocks the full Benchmark Agent functionality. Hosts can see that their penthouse in Downtown Dubai competes against 7 specific listings, not just the area average.</p>
+      </div>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- ═══ SECTION 7: CODE IMPLEMENTATION ══════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">07 · Code Implementation</div>
+    <h2 class="section-title">Files to Create &amp; Modify</h2>
+    <p class="section-desc">Here is the complete file-level specification. Each file is described with its purpose, the functions it exposes, and a code skeleton to implement.</p>
+
+    <!-- File 1: ENV -->
+    <div class="card" style="margin-bottom:24px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <span class="step-num" style="background:rgba(245,158,11,0.1);color:var(--amber);">1</span>
+        <span class="filepath">.env.local</span>
+        <span class="tag tag-amber">Config</span>
+      </div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px;">Add the Airbtics API key. Never expose this in the frontend.</p>
+      <pre>
+<span class="cm"># --- Airbtics Market Intelligence ---</span>
+<span class="prop">AIRBTICS_API_KEY</span>=<span class="str">your_api_key_here</span>
+
+<span class="cm"># Dubai static market ID (from one-time /markets/search call)</span>
+<span class="prop">AIRBTICS_DUBAI_MARKET_ID</span>=<span class="str">2286</span>
+
+<span class="cm"># Keep existing keys</span>
+<span class="prop">PERPLEXITY_API_KEY</span>=<span class="str">your_perplexity_key</span></pre>
+    </div>
+
+    <!-- File 2: Client -->
+    <div class="card" style="margin-bottom:24px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <span class="step-num" style="background:rgba(6,182,212,0.1);color:var(--cyan);">2</span>
+        <span class="filepath">src/lib/airbtics/client.ts</span>
+        <span class="tag tag-cyan">New File</span>
+      </div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px;">Core API wrapper. All Airbtics HTTP calls go through this file. Handles auth, error handling, and typed responses.</p>
+      <pre>
+<span class="kw">const</span> BASE = <span class="str">'https://crap0y5bx5.execute-api.us-east-2.amazonaws.com/prod'</span>;
+<span class="kw">const</span> KEY  = process.env.<span class="prop">AIRBTICS_API_KEY</span>!;
+
+<span class="kw">async function</span> <span class="fn">get</span>&lt;T&gt;(path: <span class="tp">string</span>, params: <span class="tp">Record</span>&lt;<span class="tp">string</span>, <span class="tp">string</span>&gt; = {}): <span class="tp">Promise</span>&lt;T&gt; {
+  <span class="kw">const</span> url = <span class="kw">new</span> <span class="fn">URL</span>(<span class="str">`${BASE}${path}`</span>);
+  <span class="fn">Object.entries</span>(params).<span class="fn">forEach</span>(([ k, v ]) =&gt; url.searchParams.<span class="fn">set</span>(k, v));
+  <span class="kw">const</span> res = <span class="kw">await</span> <span class="fn">fetch</span>(url.toString(), {
+    headers: { <span class="str">'x-api-key'</span>: KEY },
+    next: { revalidate: <span class="num">0</span> } <span class="cm">// we handle caching ourselves</span>
+  });
+  <span class="kw">if</span> (!res.ok) <span class="kw">throw new</span> <span class="fn">Error</span>(<span class="str">`Airbtics ${res.status}: ${path}`</span>);
+  <span class="kw">return</span> res.<span class="fn">json</span>();
+}
+
+<span class="kw">export const</span> airbtics = {
+  <span class="cm">// One-time setup</span>
+  <span class="fn">searchMarket</span>: (query: <span class="tp">string</span>, countryCode: <span class="tp">string</span>) =&gt;
+    <span class="fn">get</span>(<span class="str">'/markets/search'</span>, { query, country_code: countryCode }),
+
+  <span class="cm">// Core market intelligence — used in pipeline</span>
+  <span class="fn">getMarketSummary</span>: (marketId: <span class="tp">string</span>, bedrooms: <span class="tp">string</span>) =&gt;
+    <span class="fn">get</span>(<span class="str">'/markets/summary'</span>, { market_id: marketId, bedrooms }),
+
+  <span class="fn">getMarketMetrics</span>: (marketId: <span class="tp">string</span>, bedrooms: <span class="tp">string</span>, months = <span class="str">'12'</span>) =&gt;
+    <span class="fn">get</span>(<span class="str">'/markets/metrics/all'</span>, { market_id: marketId, bedrooms, number_of_months: months }),
+
+  <span class="fn">getFuturePacing</span>: (marketId: <span class="tp">string</span>, bedrooms: <span class="tp">string</span>) =&gt;
+    <span class="fn">get</span>(<span class="str">'/markets/metrics/future-pacing'</span>, { market_id: marketId, bedrooms }),
+
+  <span class="cm">// Comp set builder</span>
+  <span class="fn">searchListingsByBounds</span>: (bounds: { ne_lat: <span class="tp">number</span>; ne_lng: <span class="tp">number</span>; sw_lat: <span class="tp">number</span>; sw_lng: <span class="tp">number</span> }, bedrooms: <span class="tp">number</span>) =&gt;
+    <span class="fn">fetch</span>(<span class="str">`${BASE}/listings/search/bounds`</span>, {
+      method: <span class="str">'POST'</span>,
+      headers: { <span class="str">'x-api-key'</span>: KEY, <span class="str">'Content-Type'</span>: <span class="str">'application/json'</span> },
+      body: <span class="fn">JSON.stringify</span>({ bounds, bedrooms, page: <span class="num">1</span> })
+    }).<span class="fn">then</span>(r =&gt; r.<span class="fn">json</span>()),
+
+  <span class="cm">// Onboarding revenue projection (call once per property)</span>
+  <span class="fn">generateRevenueReport</span>: (lat: <span class="tp">number</span>, lng: <span class="tp">number</span>, bedrooms: <span class="tp">number</span>) =&gt;
+    <span class="fn">fetch</span>(<span class="str">`${BASE}/report/all`</span>, {
+      method: <span class="str">'POST'</span>,
+      headers: { <span class="str">'x-api-key'</span>: KEY, <span class="str">'Content-Type'</span>: <span class="str">'application/json'</span> },
+      body: <span class="fn">JSON.stringify</span>({ latitude: lat, longitude: lng, bedrooms })
+    }).<span class="fn">then</span>(r =&gt; r.<span class="fn">json</span>()),
+
+  <span class="fn">getReport</span>: (reportId: <span class="tp">string</span>) =&gt;
+    <span class="fn">get</span>(<span class="str">'/report'</span>, { report_id: reportId }),
+};</pre>
+    </div>
+
+    <!-- File 3: Market Context -->
+    <div class="card" style="margin-bottom:24px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <span class="step-num" style="background:rgba(245,158,11,0.1);color:var(--amber);">3</span>
+        <span class="filepath">src/lib/airbtics/market-context.ts</span>
+        <span class="tag tag-cyan">New File</span>
+      </div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px;">Builds the unified <code>MarketContext</code> object used by the pricing pipeline. Contains all caching logic.</p>
+      <pre>
+<span class="kw">import</span> { airbtics } <span class="kw">from</span> <span class="str">'./client'</span>;
+
+<span class="cm">// In-memory cache (can be upgraded to Redis later)</span>
+<span class="kw">const</span> cache = <span class="kw">new</span> <span class="fn">Map</span>&lt;<span class="tp">string</span>, { data: <span class="tp">any</span>; expiresAt: <span class="tp">number</span> }&gt;();
+
+<span class="kw">async function</span> <span class="fn">cached</span>&lt;T&gt;(key: <span class="tp">string</span>, ttlMs: <span class="tp">number</span>, fn: () =&gt; <span class="tp">Promise</span>&lt;T&gt;): <span class="tp">Promise</span>&lt;T&gt; {
+  <span class="kw">const</span> hit = cache.<span class="fn">get</span>(key);
+  <span class="kw">if</span> (hit &amp;&amp; hit.expiresAt &gt; Date.<span class="fn">now</span>()) <span class="kw">return</span> hit.data;
+  <span class="kw">const</span> data = <span class="kw">await</span> <span class="fn">fn</span>();
+  cache.<span class="fn">set</span>(key, { data, expiresAt: Date.<span class="fn">now</span>() + ttlMs });
+  <span class="kw">return</span> data;
+}
+
+<span class="kw">const</span> H2  = <span class="num">2</span>  * <span class="num">60</span> * <span class="num">60</span> * <span class="num">1000</span>;  <span class="cm">// 2 hours</span>
+<span class="kw">const</span> H6  = <span class="num">6</span>  * <span class="num">60</span> * <span class="num">60</span> * <span class="num">1000</span>;  <span class="cm">// 6 hours → pacing</span>
+<span class="kw">const</span> H24 = <span class="num">24</span> * <span class="num">60</span> * <span class="num">60</span> * <span class="num">1000</span>; <span class="cm">// 24 hours → metrics + summary</span>
+
+<span class="kw">export async function</span> <span class="fn">buildMarketContext</span>(marketId: <span class="tp">string</span>, bedrooms: <span class="tp">number</span>) {
+  <span class="kw">const</span> br = <span class="fn">String</span>(bedrooms);
+  <span class="kw">const</span> key = <span class="str">`${marketId}:${br}`</span>;
+
+  <span class="kw">const</span> [ summary, metrics, pacing ] = <span class="kw">await</span> Promise.<span class="fn">all</span>([
+    <span class="fn">cached</span>(<span class="str">`summary:${key}`</span>, H24, () =&gt; airbtics.<span class="fn">getMarketSummary</span>(marketId, br)),
+    <span class="fn">cached</span>(<span class="str">`metrics:${key}`</span>, H24, () =&gt; airbtics.<span class="fn">getMarketMetrics</span>(marketId, br, <span class="str">'12'</span>)),
+    <span class="fn">cached</span>(<span class="str">`pacing:${key}`</span>,  H6,  () =&gt; airbtics.<span class="fn">getFuturePacing</span>(marketId, br)),
+  ]);
+
+  <span class="cm">// Build a fast lookup map: date → { occupancy, adr }</span>
+  <span class="kw">const</span> pacingMap = <span class="kw">new</span> <span class="fn">Map</span>&lt;<span class="tp">string</span>, { occupancy: <span class="tp">number</span>; adr: <span class="tp">number</span> }&gt;();
+  <span class="kw">for</span> (<span class="kw">const</span> entry <span class="kw">of</span> pacing?.data ?? []) {
+    pacingMap.<span class="fn">set</span>(entry.date, { occupancy: entry.occupancy, adr: entry.adr });
+  }
+
+  <span class="kw">return</span> {
+    marketId,
+    bedrooms,
+    <span class="prop">p50ADR</span>:              summary?.average_daily_rate ?? <span class="num">0</span>,
+    <span class="prop">marketOccupancyPct</span>: (summary?.occupancy ?? <span class="num">0</span>) * <span class="num">100</span>,
+    <span class="prop">monthlyMetrics</span>:     metrics?.data ?? [],
+    <span class="prop">pacingMap</span>,           <span class="cm">// O(1) lookups in the pipeline loop</span>
+  };
+}</pre>
+    </div>
+
+    <!-- File 4: Pipeline Integration -->
+    <div class="card" style="margin-bottom:24px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <span class="step-num" style="background:rgba(59,130,246,0.1);color:var(--blue);">4</span>
+        <span class="filepath">src/lib/engine/pipeline.ts</span>
+        <span class="tag tag-blue">Modify Existing</span>
+      </div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px;">Add the Airbtics market context fetch and inject pacing data into the per-day pricing computation. The key change is fetching the market context once before the 365-day loop begins, then using it inside the loop.</p>
+      <pre>
+<span class="kw">import</span> { buildMarketContext } <span class="kw">from</span> <span class="str">'@/lib/airbtics/market-context'</span>;
+
+<span class="cm">// Inside runPipeline(), after resolving effectiveBasePrice...</span>
+<span class="cm">// --- NEW: Fetch market context ---</span>
+<span class="kw">const</span> DUBAI_MARKET_ID = process.env.<span class="prop">AIRBTICS_DUBAI_MARKET_ID</span> ?? <span class="str">'2286'</span>;
+<span class="kw">const</span> bedrooms = listing.bedrooms ?? <span class="num">1</span>;
+<span class="kw">let</span> marketCtx = <span class="kw">null</span>;
+
+<span class="kw">try</span> {
+  marketCtx = <span class="kw">await</span> <span class="fn">buildMarketContext</span>(DUBAI_MARKET_ID, bedrooms);
+  console.<span class="fn">log</span>(<span class="str">`[Pipeline] Market context loaded: p50ADR=${marketCtx.p50ADR}, occupancy=${marketCtx.marketOccupancyPct.toFixed(1)}%`</span>);
+} <span class="kw">catch</span> (err) {
+  console.<span class="fn">warn</span>(<span class="str">'[Pipeline] Airbtics market context unavailable, using internal data only'</span>, err);
+}
+
+<span class="cm">// Inside the 365-day for-loop, before computeDay()...</span>
+<span class="cm">// --- NEW: Per-day pacing signal ---</span>
+<span class="kw">const</span> pacing = marketCtx?.pacingMap.<span class="fn">get</span>(ds) ?? <span class="kw">null</span>;
+<span class="kw">const</span> pacingAdjPct =
+  pacing?.occupancy &gt; <span class="num">0.80</span> ? <span class="num">+15</span> :   <span class="cm">// Hot market → surge</span>
+  pacing?.occupancy &gt; <span class="num">0.65</span> ? <span class="num">+5</span>  :   <span class="cm">// Warm      → mild uplift</span>
+  pacing?.occupancy &lt; <span class="num">0.40</span> ? <span class="num">-10</span> :   <span class="cm">// Cold      → discount</span>
+  <span class="num">0</span>;                                   <span class="cm">// Neutral</span>
+
+<span class="cm">// Pass pacingAdjPct into dayConfig so waterfall can log it in reasoning</span>
+<span class="kw">const</span> dayConfig: <span class="tp">ListingConfig</span> = {
+  ...config,
+  currentOccupancyPct: blendedOccupancyForDay,
+  <span class="prop">marketPacingAdjPct</span>: pacingAdjPct,  <span class="cm">// ← new field (add to ListingConfig interface)</span>
+  <span class="prop">marketP50ADR</span>: marketCtx?.p50ADR ?? <span class="num">0</span>,
+};</pre>
+    </div>
+
+    <!-- File 5: Research Agent Update -->
+    <div class="card" style="margin-bottom:24px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <span class="step-num" style="background:rgba(168,85,247,0.1);color:var(--purple);">5</span>
+        <span class="filepath">src/lib/agents/internet-research-agent.ts</span>
+        <span class="tag tag-blue">Modify Existing</span>
+      </div>
+      <p style="color:var(--text2);font-size:13px;margin-bottom:12px;">Remove the <code>searchMarketRates</code> method that calls Perplexity for pricing data (now handled by Airbtics). Keep and enhance the events, area intelligence, and tourism trends methods.</p>
+      <pre>
+<span class="cm">// CHANGE: searchMarketRates() is now deprecated internally</span>
+<span class="cm">// It now calls Airbtics instead of Perplexity</span>
+<span class="kw">async</span> <span class="fn">searchMarketRates</span>(area: <span class="tp">string</span>, bedrooms: <span class="tp">number</span>): <span class="tp">Promise</span>&lt;<span class="tp">ResearchResult</span>&gt; {
+  <span class="cm">// ❌ BEFORE: called Perplexity for "current Airbnb rates in Dubai Marina"</span>
+  <span class="cm">// ✅ AFTER: defer to Airbtics client — real structured numbers</span>
+  <span class="kw">const</span> marketId = process.env.<span class="prop">AIRBTICS_DUBAI_MARKET_ID</span> ?? <span class="str">'2286'</span>;
+  <span class="kw">const</span> data = <span class="kw">await</span> airbtics.<span class="fn">getMarketSummary</span>(marketId, <span class="fn">String</span>(bedrooms));
+  <span class="kw">return</span> {
+    query_type: <span class="str">'market_rates'</span>,
+    location: area,
+    market_snapshot: {
+      average_nightly_rate: data.average_daily_rate,
+      occupancy_trend: data.occupancy &gt; <span class="num">0.7</span> ? <span class="str">'increasing'</span> : <span class="str">'stable'</span>,
+      demand_level: data.occupancy &gt; <span class="num">0.7</span> ? <span class="str">'high'</span> : data.occupancy &gt; <span class="num">0.5</span> ? <span class="str">'medium'</span> : <span class="str">'low'</span>,
+      notable_factors: [<span class="str">`${data.active_listings_count} active listings in market`</span>],
+    },
+    <span class="cm">// ... rest of the ResearchResult shape</span>
+  };
+}
+
+<span class="cm">// KEEP UNCHANGED: Perplexity still handles event/news research</span>
+<span class="kw">async</span> <span class="fn">searchEvents</span>(area: <span class="tp">string</span>, startDate: <span class="tp">Date</span>, endDate: <span class="tp">Date</span>) { <span class="cm">/* unchanged */</span> }
+<span class="kw">async</span> <span class="fn">searchTourismTrends</span>(start: <span class="tp">Date</span>, end: <span class="tp">Date</span>)              { <span class="cm">/* unchanged */</span> }
+<span class="kw">async</span> <span class="fn">searchAreaIntelligence</span>(area: <span class="tp">string</span>)                       { <span class="cm">/* unchanged */</span> }</pre>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- ═══ SECTION 8: IMPLEMENTATION ROADMAP ════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">08 · Roadmap</div>
+    <h2 class="section-title">Build Order &amp; Task List</h2>
+    <p class="section-desc">Implement in this exact sequence to ensure each layer is ready before the next depends on it.</p>
+
+    <div class="card" style="overflow:auto;">
+      <table class="spec-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Task</th>
+            <th>File</th>
+            <th>Effort</th>
+            <th>Priority</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>Add <code>AIRBTICS_API_KEY</code> and <code>AIRBTICS_DUBAI_MARKET_ID</code> to <code>.env.local</code></td>
+            <td><span class="filepath">.env.local</span></td>
+            <td><span class="tag tag-green">5 min</span></td>
+            <td><span class="tag tag-red">P0</span></td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>Create Airbtics API client with all 6 endpoint functions</td>
+            <td><span class="filepath">src/lib/airbtics/client.ts</span></td>
+            <td><span class="tag tag-green">30 min</span></td>
+            <td><span class="tag tag-red">P0</span></td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Create <code>buildMarketContext()</code> with in-memory cache (TTL per endpoint)</td>
+            <td><span class="filepath">src/lib/airbtics/market-context.ts</span></td>
+            <td><span class="tag tag-amber">45 min</span></td>
+            <td><span class="tag tag-red">P0</span></td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>Add <code>marketPacingAdjPct</code> and <code>marketP50ADR</code> fields to <code>ListingConfig</code> interface</td>
+            <td><span class="filepath">src/lib/engine/waterfall.ts</span></td>
+            <td><span class="tag tag-green">15 min</span></td>
+            <td><span class="tag tag-red">P0</span></td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td>Inject <code>buildMarketContext()</code> into pipeline and pass pacing to waterfall per day</td>
+            <td><span class="filepath">src/lib/engine/pipeline.ts</span></td>
+            <td><span class="tag tag-amber">1 hr</span></td>
+            <td><span class="tag tag-red">P0</span></td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td>Add pacing adjustment pass to waterfall (Pass 2 — Strategy), log in <code>reasoning</code></td>
+            <td><span class="filepath">src/lib/engine/waterfall.ts</span></td>
+            <td><span class="tag tag-amber">45 min</span></td>
+            <td><span class="tag tag-red">P0</span></td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td>Update <code>searchMarketRates()</code> in Internet Research Agent to use Airbtics</td>
+            <td><span class="filepath">src/lib/agents/internet-research-agent.ts</span></td>
+            <td><span class="tag tag-green">30 min</span></td>
+            <td><span class="tag tag-amber">P1</span></td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td>Create <code>GET /api/airbtics/market/summary</code> route for dashboard UI</td>
+            <td><span class="filepath">src/app/api/airbtics/market/summary/route.ts</span></td>
+            <td><span class="tag tag-green">20 min</span></td>
+            <td><span class="tag tag-amber">P1</span></td>
+          </tr>
+          <tr>
+            <td>9</td>
+            <td>Create <code>GET /api/airbtics/market/pacing</code> route for calendar heatmap</td>
+            <td><span class="filepath">src/app/api/airbtics/market/pacing/route.ts</span></td>
+            <td><span class="tag tag-green">20 min</span></td>
+            <td><span class="tag tag-amber">P1</span></td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td>Add market benchmarks panel to existing Insights/Dashboard UI</td>
+            <td><span class="filepath">src/components/dashboard/MarketBenchmarks.tsx</span></td>
+            <td><span class="tag tag-amber">2 hrs</span></td>
+            <td><span class="tag tag-amber">P1</span></td>
+          </tr>
+          <tr>
+            <td>11</td>
+            <td>Build Comp Set feature using <code>/listings/search/bounds</code></td>
+            <td><span class="filepath">src/app/api/airbtics/comps/route.ts</span></td>
+            <td><span class="tag tag-amber">2 hrs</span></td>
+            <td><span class="tag tag-blue">P2</span></td>
+          </tr>
+          <tr>
+            <td>12</td>
+            <td>Integrate revenue projection into onboarding wizard (Step 4)</td>
+            <td><span class="filepath">src/app/onboarding/*.tsx</span></td>
+            <td><span class="tag tag-amber">2 hrs</span></td>
+            <td><span class="tag tag-blue">P2</span></td>
+          </tr>
+          <tr>
+            <td>13</td>
+            <td>Store <code>airbticsMarketId</code> in MarketTemplate MongoDB model</td>
+            <td><span class="filepath">src/lib/db/models/MarketTemplate.ts</span></td>
+            <td><span class="tag tag-green">20 min</span></td>
+            <td><span class="tag tag-blue">P2</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout blue" style="margin-top:20px;">
+      <div class="callout-title">📋 Phase 1 (P0 tasks) = 3–4 hours of work</div>
+      <p>The first 6 tasks (P0) are the core integration — Airbtics data flowing into the pricing engine. Once complete, every single pricing proposal generated by PriceOS will be market-anchored with real Dubai data. The remaining tasks (P1, P2) are UI and feature improvements that build on top of the working foundation.</p>
+    </div>
+  </div>
+
+  <!-- ═══ FOOTER ════════════════════════════════════════════════════════════ -->
+  <div style="text-align:center;padding:40px 0 20px;color:var(--text3);font-size:12px;border-top:1px solid var(--border);margin-top:40px;">
+    PriceOS × Airbtics Integration Spec · v1.0 · Dubai Default Market · Confidential
+  </div>
+
+</div>
+</body>
+</html>

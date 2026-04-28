@@ -1,168 +1,128 @@
-import { NextResponse } from "next/server";
-import { connectDB, Listing, Organization, InventoryMaster, Reservation } from "@/lib/db";
-import { getSession } from "@/lib/auth/server";
-import mongoose from "mongoose";
+import { NextRequest, NextResponse } from "next/server";
+import { connectToDatabase } from "@/lib/db/mongodb";
+import { Listing, InventoryMaster, Reservation } from "@/lib/db/models";
+import { Types } from "mongoose";
 
-export const dynamic = "force-dynamic";
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const orgId = searchParams.get("orgId");
 
-const PROPERTY_TYPE_MAP: Record<number, string> = {
-    1: "Apartment", 2: "Villa", 3: "House", 4: "Studio",
-    5: "Condo", 6: "Townhouse", 7: "Cabin", 8: "Loft",
-    9: "Penthouse", 10: "Hotel Room", 0: "Other",
-};
-
-export async function GET() {
-    const session = await getSession();
-    if (!session) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!orgId) {
+      return NextResponse.json({ properties: [] }, { status: 200 });
     }
 
-    await connectDB();
+    await connectToDatabase();
 
-    const orgId = new mongoose.Types.ObjectId(session.orgId);
-    const org = await Organization.findById(orgId)
-        .select("onboarding.activatedListingIds onboarding.selectedListingIds")
-        .lean();
+    const orgOid = new Types.ObjectId(orgId);
+    const listings = await Listing.find({ orgId: orgOid }).lean();
+    
+    if (listings.length === 0) {
+      return NextResponse.json({ properties: [] }, { status: 200 });
+    }
 
-    const activatedIds = new Set(
-        (org?.onboarding?.activatedListingIds || []).map(String)
-    );
-    const selectedIds = new Set(
-        (org?.onboarding?.selectedListingIds || []).map(String)
-    );
+    const now = new Date();
+    const fromDate = now.toISOString().split("T")[0];
+    const toDate = new Date(now.getTime() + 29 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-    const listings = await Listing.find({ orgId })
-        .select("name city area bedroomsNumber bathroomsNumber price currencyCode isActive hostawayId propertyTypeId personCapacity priceFloor priceCeiling createdAt")
-        .sort({ name: 1 })
-        .lean();
-
-    const today = new Date().toISOString().split("T")[0];
-    const next30 = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
-
-    const listingIds = listings.map((l) => l._id);
-
-    const [occupancyAgg, revenueAgg, channelAgg] = await Promise.all([
-        InventoryMaster.aggregate([
-            { $match: { listingId: { $in: listingIds }, date: { $gte: today, $lte: next30 } } },
-            {
-                $group: {
-                    _id: "$listingId",
-                    totalDays: { $sum: 1 },
-                    bookedDays: { $sum: { $cond: [{ $eq: ["$status", "booked"] }, 1, 0] } },
-                    avgPrice: { $avg: "$currentPrice" },
-                    pendingProposals: {
-                        $sum: { $cond: [{ $eq: ["$proposalStatus", "pending"] }, 1, 0] },
-                    },
-                },
-            },
-        ]),
-        Reservation.aggregate([
-            {
-                $match: {
-                    listingId: { $in: listingIds },
-                    status: { $in: ["confirmed", "checked_in", "checked_out"] },
-                },
-            },
-            {
-                $group: {
-                    _id: "$listingId",
-                    totalRevenue: { $sum: "$totalPrice" },
-                    count: { $sum: 1 },
-                },
-            },
-        ]),
-        Reservation.aggregate([
-            {
-                $match: {
-                    listingId: { $in: listingIds },
-                    status: { $in: ["confirmed", "checked_in", "checked_out"] },
-                },
-            },
-            {
-                $group: {
-                    _id: { listingId: "$listingId", channel: "$channelName" },
-                    revenue: { $sum: "$totalPrice" },
-                    count: { $sum: 1 },
-                },
-            },
-        ]),
+    const [invDocs, resDocs] = await Promise.all([
+      InventoryMaster.find({
+        orgId: orgOid,
+        date: { $gte: fromDate, $lte: toDate }
+      }).lean(),
+      Reservation.find({ orgId: orgOid }).lean()
     ]);
 
-    const occMap = new Map(occupancyAgg.map((r: any) => [r._id.toString(), r]));
-    const revMap = new Map(revenueAgg.map((r: any) => [r._id.toString(), r]));
+    const invByListing: Record<string, any[]> = {};
+    invDocs.forEach((d: any) => {
+      const lid = d.listingId?.toString() || "";
+      if (!invByListing[lid]) invByListing[lid] = [];
+      invByListing[lid].push(d);
+    });
 
-    const channelMap = new Map<string, { channel: string; revenue: number; count: number }[]>();
-    for (const row of channelAgg as any[]) {
-        const lid = row._id.listingId.toString();
-        if (!channelMap.has(lid)) channelMap.set(lid, []);
-        channelMap.get(lid)!.push({
-            channel: row._id.channel || "Direct",
-            revenue: row.revenue,
-            count: row.count,
-        });
-    }
+    const resByListing: Record<string, any[]> = {};
+    resDocs.forEach((r: any) => {
+      const lid = r.listingId?.toString() || "";
+      if (!resByListing[lid]) resByListing[lid] = [];
+      resByListing[lid].push(r);
+    });
 
-    const propertyTypeMap = new Map<number, string>();
-    for (const l of listings as any[]) {
-        propertyTypeMap.set(l.propertyTypeId, PROPERTY_TYPE_MAP[l.propertyTypeId] || `Type ${l.propertyTypeId}`);
-    }
+    const properties: any[] = [];
 
-    const properties = listings.map((l: any) => {
-        const id = l._id.toString();
-        const occ = occMap.get(id);
-        const rev = revMap.get(id);
-        const totalDays = occ?.totalDays || 0;
-        const bookedDays = occ?.bookedDays || 0;
-        const occupancyPct = totalDays > 0 ? Math.round((bookedDays / totalDays) * 100) : 0;
-        const channels = channelMap.get(id) || [];
-        channels.sort((a, b) => b.revenue - a.revenue);
+    for (const l of listings) {
+      const lid = l._id.toString();
+      const listingInv = invByListing[lid] || [];
+      const listingRes = resByListing[lid] || [];
 
-        const hostawayId = String(l.hostawayId || "");
-        const hostawaySuffix = hostawayId.includes("_")
-            ? hostawayId.split("_").slice(1).join("_")
-            : hostawayId;
-        const isActivated =
-            activatedIds.has(id) ||
-            selectedIds.has(id) ||
-            (hostawayId.length > 0 && (activatedIds.has(hostawayId) || selectedIds.has(hostawayId))) ||
-            (hostawaySuffix.length > 0 && (activatedIds.has(hostawaySuffix) || selectedIds.has(hostawaySuffix)));
+      const bookedDays = listingInv.filter((x: any) => x.status === "booked").length;
+      const occupancy = listingInv.length > 0 ? Math.round((bookedDays / listingInv.length) * 100) : 0;
+      
+      const sumPrices = listingInv.reduce((sum: number, x: any) => sum + Number(x.currentPrice || 0), 0);
+      const avgPrice = listingInv.length > 0 ? Math.round(sumPrices / listingInv.length) : Math.round(Number(l.price || 0));
 
-        return {
-            id,
-            name: l.name,
-            city: l.city || "",
-            area: l.area || "",
-            bedrooms: l.bedroomsNumber || 1,
-            bathrooms: l.bathroomsNumber || 1,
-            basePrice: l.price,
-            currency: l.currencyCode || "AED",
-            priceFloor: l.priceFloor || 0,
-            priceCeiling: l.priceCeiling || 0,
-            capacity: l.personCapacity || null,
-            hostawayId: l.hostawayId || null,
-            propertyType: PROPERTY_TYPE_MAP[l.propertyTypeId] || "Other",
-            isActive: l.isActive !== false,
-            isActivated,
-            occupancyPct,
-            avgPrice: occ?.avgPrice ? Math.round(occ.avgPrice) : l.price,
-            pendingProposals: occ?.pendingProposals || 0,
-            totalReservations: rev?.count || 0,
-            totalRevenue: rev?.totalRevenue || 0,
-            revenueByChannel: channels,
-            createdAt: l.createdAt,
+      const pending = listingInv.filter((x: any) => x.proposalStatus === "pending").length;
+      let revenue = listingInv
+        .filter((x: any) => x.status === "booked")
+        .reduce((sum: number, x: any) => sum + Number(x.currentPrice || 0), 0);
+
+      if (revenue === 0 && listingRes.length > 0) {
+        revenue = listingRes
+          .filter((r: any) => r.status !== "cancelled")
+          .reduce((sum: number, r: any) => sum + Number(r.totalPrice || 0), 0);
+      }
+
+      const channelMap: Record<string, { channel: string; revenue: number; count: number }> = {};
+      listingRes.forEach((r: any) => {
+        const channel = r.channelName || "Direct";
+        if (!channelMap[channel]) {
+          channelMap[channel] = { channel, revenue: 0, count: 0 };
+        }
+        channelMap[channel].revenue += Number(r.totalPrice || 0);
+        channelMap[channel].count += 1;
+      });
+
+      const totalChannelRev = Object.values(channelMap).reduce((sum: number, ch: any) => sum + ch.revenue, 0);
+      if (revenue > totalChannelRev) {
+        const diff = revenue - totalChannelRev;
+        channelMap["Other"] = {
+          channel: "Other",
+          revenue: Math.round(diff * 100) / 100,
+          count: 1
         };
-    });
+      }
 
-    const revenueByType: Record<string, number> = {};
-    for (const p of properties) {
-        revenueByType[p.propertyType] = (revenueByType[p.propertyType] || 0) + p.totalRevenue;
+      properties.push({
+        id: lid,
+        _id: lid,
+        name: l.name,
+        city: l.city,
+        area: l.area,
+        bedrooms: l.bedroomsNumber || 0,
+        bathrooms: l.bathroomsNumber || 0,
+        basePrice: Number(l.price || 0),
+        price: Number(l.price || 0),
+        currency: l.currencyCode || "AED",
+        currencyCode: l.currencyCode || "AED",
+        priceFloor: Number(l.priceFloor || 0),
+        priceCeiling: Number(l.priceCeiling || 0),
+        capacity: l.personCapacity,
+        hostawayId: l.hostawayId,
+        propertyType: String((l as any).propertyType || l.propertyTypeId || "Apartment"),
+        isActive: Boolean(l.isActive),
+        isActivated: Boolean(l.isActive),
+        occupancyPct: occupancy,
+        avgPrice: avgPrice,
+        pendingProposals: pending,
+        totalReservations: listingRes.length,
+        totalRevenue: Math.round(revenue * 100) / 100,
+        revenueByChannel: Object.values(channelMap),
+        createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
+      });
     }
 
-    return NextResponse.json({
-        total: properties.length,
-        activated: properties.filter((p) => p.isActivated).length,
-        portfolioTotalRevenue: properties.reduce((s, p) => s + p.totalRevenue, 0),
-        revenueByPropertyType: Object.entries(revenueByType).map(([type, revenue]) => ({ type, revenue })),
-        properties,
-    });
+    return NextResponse.json({ properties }, { status: 200 });
+  } catch (err: any) {
+    console.error("[api/properties]", err);
+    return NextResponse.json({ properties: [], error: err.message }, { status: 500 });
+  }
 }

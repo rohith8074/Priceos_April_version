@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MarketEventsTable } from "@/components/events/market-events-table";
 import { BenchmarkWidget } from "@/components/signals/benchmark-widget";
+import { MarketOverviewWidget } from "@/components/signals/market-overview-widget";
+import { DemandPacingWidget } from "@/components/signals/demand-pacing-widget";
 import { CalendarVisualizer } from "@/components/chat/calendar-visualizer";
 import { useContextStore } from "@/stores/context-store";
 import {
@@ -198,7 +200,7 @@ export function SidebarTabbedView() {
                                                 {!calendarMetrics ? (
                                                     <span className="text-3xl font-bold text-muted-foreground/30 animate-pulse">--</span>
                                                 ) : (
-                                                    <><span className="text-3xl font-black tracking-tighter">{calendarMetrics.avgPrice.toFixed(0)}</span><span className="text-[12px] font-bold text-muted-foreground mb-0.5 ml-1">{propertyCurrency}</span></>
+                                                    <><span className="text-3xl font-black tracking-tighter">{(calendarMetrics.avgPrice ?? 0).toFixed(0)}</span><span className="text-[12px] font-bold text-muted-foreground mb-0.5 ml-1">{propertyCurrency}</span></>
                                                 )}
                                             </div>
                                         </div>
@@ -217,7 +219,16 @@ export function SidebarTabbedView() {
                     <TabsContent value="signals" className="h-full m-0 p-0 overflow-auto focus-visible:ring-0">
                         <div className="flex flex-col gap-0">
                             <MarketEventsTable />
-                            <div className="px-3 pb-3">
+                            <div className="px-3 pb-3 mt-3">
+                                <MarketOverviewWidget
+                                    month={dateRange?.from ? format(dateRange.from, "yyyy-MM") : format(new Date(), "yyyy-MM")}
+                                    currency={propertyCurrency}
+                                />
+                                <DemandPacingWidget
+                                    dateFrom={dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : null}
+                                    dateTo={dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : null}
+                                    currency={propertyCurrency}
+                                />
                                 <BenchmarkWidget
                                     listingId={propertyId ?? null}
                                     dateFrom={dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : null}

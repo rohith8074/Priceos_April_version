@@ -11,6 +11,7 @@ import {
   BarChart2,
   Filter,
   RefreshCw,
+  ExternalLink,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -42,9 +43,11 @@ interface MarketEvent {
   category: string;
   area: string;
   source?: string;
+  url?: string;
 }
 
 interface Props {
+  orgId: string;
   events: MarketEvent[];
   occupancyPct: number;
   avgNightly: number;
@@ -80,7 +83,7 @@ function daysUntil(dateStr: string) {
   return `In ${days}d`;
 }
 
-export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, listings }: Props) {
+export function MarketIntelligenceClient({ orgId, events, occupancyPct, avgNightly, listings }: Props) {
   const router = useRouter();
   const [selectedListingId, setSelectedListingId] = useState<string>(listings[0]?.id ?? "");
   const [filterImpact, setFilterImpact] = useState<"all" | "high" | "medium" | "low">("all");
@@ -95,14 +98,14 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
       const res = await fetch("/api/v1/system/events/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ daysAhead: 90, marketCity: "Dubai" }),
+        body: JSON.stringify({ orgId, daysAhead: 90, marketCity: "Dubai" }),
       });
       const json = await res.json();
       if (!res.ok) {
         setSyncMsg(json?.error?.message || "Sync failed");
       } else {
-        const { inserted = 0, updated = 0 } = json.data ?? {};
-        setSyncMsg(`Synced — ${inserted} new, ${updated} updated`);
+        const { inserted = 0, updated = 0, benchmarksRefreshed = 0 } = json.data ?? {};
+        setSyncMsg(`Synced — ${inserted} events, ${benchmarksRefreshed} benchmarks`);
         router.refresh();
       }
     } catch {
@@ -177,7 +180,7 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
             },
             {
               label: "Avg Nightly Rate",
-              value: avgNightly > 0 ? `AED ${avgNightly.toLocaleString("en-US")}` : "—",
+              value: avgNightly > 0 ? `${listings[0]?.currencyCode ?? "AED"} ${avgNightly.toLocaleString("en-US")}` : "—",
               sub: "Portfolio average",
               icon: TrendingUp,
               color: "text-blue-400",
@@ -335,10 +338,33 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
                       )}
                     </TableCell>
                     <TableCell className="align-top py-3 max-w-[min(360px,50vw)]">
-                      <div className="font-medium text-foreground leading-snug">{event.title}</div>
-                      {event.description && (
-                        <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{event.description}</div>
-                      )}
+                      {(() => {
+                        const href = event.url || (event.source?.startsWith("http") ? event.source : null);
+                        return href ? (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="group/link inline-flex flex-col gap-1"
+                          >
+                            <span className="font-medium text-foreground leading-snug group-hover/link:text-amber underline-offset-2 group-hover/link:underline flex items-center gap-1.5">
+                              {event.title}
+                              <ExternalLink className="h-3 w-3 shrink-0 opacity-40 group-hover/link:opacity-100 transition-opacity" />
+                            </span>
+                            {event.description && (
+                              <span className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{event.description}</span>
+                            )}
+                          </a>
+                        ) : (
+                          <>
+                            <div className="font-medium text-foreground leading-snug">{event.title}</div>
+                            {event.description && (
+                              <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{event.description}</div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="align-top py-3">
                       <span
@@ -387,35 +413,6 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
         )}
       </div>
 
-      {/* Demand Signal Summary */}
-      {(upcomingHigh.length > 0 || upcomingMedium.length > 0) && (
-        <div className="rounded-xl border border-amber/20 bg-amber/5 p-5">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-4 w-4 text-amber mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-amber mb-1">Demand Signal Summary</p>
-              <p className="text-xs text-text-secondary leading-relaxed">
-                {upcomingHigh.length > 0 && (
-                  <>
-                    <strong className="text-text-primary">{upcomingHigh.length} high-impact event{upcomingHigh.length > 1 ? "s" : ""}</strong>
-                    {" "}detected in the next 90 days
-                    {upcomingHigh[0] && `: ${upcomingHigh[0].title}${upcomingHigh.length > 1 ? ` +${upcomingHigh.length - 1} more` : ""}`}.
-                    {" "}
-                  </>
-                )}
-                {upcomingMedium.length > 0 && (
-                  <>
-                    <strong className="text-text-primary">{upcomingMedium.length} medium-impact</strong>
-                    {" "}events also detected.{" "}
-                  </>
-                )}
-                Run Market Analysis to get the latest event data and trigger pricing proposals.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Competitor Benchmark Panel */}
       {listings.length > 0 && (
         <div className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden">
@@ -438,6 +435,7 @@ export function MarketIntelligenceClient({ events, occupancyPct, avgNightly, lis
           </div>
           <div className="p-5">
             <BenchmarkPanel
+              orgId={orgId}
               listingId={selectedListingId}
               listingName={listings.find((l) => l.id === selectedListingId)?.name ?? ""}
               currency={listings.find((l) => l.id === selectedListingId)?.currencyCode ?? "AED"}

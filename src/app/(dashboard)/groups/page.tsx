@@ -1,27 +1,21 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { getOrgId } from "@/lib/auth/client";
 import {
   Layers,
   Plus,
-  Trash2,
-  Pencil,
-  ChevronRight,
-  Home,
-  X,
   Loader2,
+  Home,
+  ChevronRight,
+  MapPin,
+  X,
   Save,
-  ShieldCheck,
-  Sun,
-
-  TrendingDown,
-  AlignLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -31,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -42,36 +35,6 @@ interface Listing {
   bedroomsNumber?: number;
 }
 
-interface PricingRule {
-  _id: string;
-  ruleType: "SEASON" | "EVENT" | "ADMIN_BLOCK" | "LOS_DISCOUNT";
-  ruleCategory?:
-    | "GUARDRAILS"
-    | "SEASONS"
-    | "LEAD_TIME"
-    | "GAP_LOGIC"
-    | "LOS_DISCOUNTS"
-    | "DATE_OVERRIDES"
-    | "OCCUPANCY";
-  name: string;
-  enabled: boolean;
-  priority: number;
-  startDate?: string;
-  endDate?: string;
-  daysOfWeek?: number[];
-  minNights?: number;
-  priceAdjPct?: number;
-  priceOverride?: number;
-  minPriceOverride?: number;
-  maxPriceOverride?: number;
-  minStayOverride?: number;
-  isBlocked?: boolean;
-  closedToArrival?: boolean;
-  closedToDeparture?: boolean;
-  suspendLastMinute?: boolean;
-  suspendGapFill?: boolean;
-}
-
 interface PropertyGroup {
   _id: string;
   name: string;
@@ -80,64 +43,12 @@ interface PropertyGroup {
   listingIds: string[];
 }
 
-// ── Colour palette ─────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 const PALETTE = [
   "#6366f1", "#8b5cf6", "#ec4899", "#f97316",
   "#eab308", "#22c55e", "#14b8a6", "#3b82f6",
 ];
-
-// ── Rule type icons ────────────────────────────────────────────────────────────
-
-const RULE_ICONS: Record<string, React.ReactNode> = {
-  SEASON: <Sun className="w-3.5 h-3.5" />,
-  EVENT: <ShieldCheck className="w-3.5 h-3.5" />,
-  ADMIN_BLOCK: <AlignLeft className="w-3.5 h-3.5" />,
-  LOS_DISCOUNT: <TrendingDown className="w-3.5 h-3.5" />,
-};
-
-const RULE_TYPE_LABELS: Record<string, string> = {
-  SEASON: "Seasonal",
-  EVENT: "Event",
-  ADMIN_BLOCK: "Block",
-  LOS_DISCOUNT: "LOS Discount",
-};
-const RULE_CATEGORY_LABELS: Record<string, string> = {
-  GUARDRAILS: "Guardrails",
-  SEASONS: "Seasons",
-  LEAD_TIME: "Lead Time",
-  GAP_LOGIC: "Gap Logic",
-  LOS_DISCOUNTS: "LOS Discounts",
-  DATE_OVERRIDES: "Date Overrides",
-  OCCUPANCY: "Occupancy",
-};
-const CATEGORY_TO_RULE_TYPE: Record<string, PricingRule["ruleType"]> = {
-  GUARDRAILS: "EVENT",
-  SEASONS: "SEASON",
-  LEAD_TIME: "EVENT",
-  GAP_LOGIC: "EVENT",
-  LOS_DISCOUNTS: "LOS_DISCOUNT",
-  DATE_OVERRIDES: "ADMIN_BLOCK",
-  OCCUPANCY: "EVENT",
-};
-function fallbackCategoryFromRuleType(ruleType: PricingRule["ruleType"]) {
-  if (ruleType === "SEASON") return "SEASONS";
-  if (ruleType === "ADMIN_BLOCK") return "DATE_OVERRIDES";
-  if (ruleType === "LOS_DISCOUNT") return "LOS_DISCOUNTS";
-  return "LEAD_TIME";
-}
-
-const WEEKDAY_OPTIONS = [
-  { value: 0, label: "Mon" },
-  { value: 1, label: "Tue" },
-  { value: 2, label: "Wed" },
-  { value: 3, label: "Thu" },
-  { value: 4, label: "Fri" },
-  { value: 5, label: "Sat" },
-  { value: 6, label: "Sun" },
-];
-
-// ── API helpers ────────────────────────────────────────────────────────────────
 
 async function api(path: string, options?: RequestInit) {
   const res = await fetch(path, {
@@ -151,38 +62,54 @@ async function api(path: string, options?: RequestInit) {
   return res.json();
 }
 
-// ── Group form (create / edit) ─────────────────────────────────────────────────
+function extractCategory(name: string): string {
+  const parts = name.split(" · ");
+  if (parts.length > 1) {
+    const loc = parts[0].trim();
+    return loc === "Unknown" ? "Other" : loc;
+  }
+  return "Other";
+}
 
-function GroupForm({
-  initial,
+const LOCATION_COLORS: Record<string, string> = {
+  Dubai: "#f97316",
+  JVC: "#6366f1",
+  "Down Town": "#ec4899",
+  Downtown: "#ec4899",
+  "Emaar Beachfront": "#14b8a6",
+  JBR: "#3b82f6",
+  "Business Bay": "#22c55e",
+  Other: "#6b7280",
+};
+
+function getCategoryColor(cat: string) {
+  return LOCATION_COLORS[cat] ?? "#8b5cf6";
+}
+
+// ── Group-create form (modal overlay) ─────────────────────────────────────────
+
+function GroupCreateForm({
   allListings,
   onSave,
   onCancel,
 }: {
-  initial?: PropertyGroup;
   allListings: Listing[];
   onSave: (g: PropertyGroup) => void;
   onCancel: () => void;
 }) {
   const safeListings = Array.isArray(allListings) ? allListings : [];
-  const [name, setName] = useState(initial?.name ?? "");
-  const [description, setDescription] = useState(initial?.description ?? "");
-  const [color, setColor] = useState(initial?.color ?? "#6366f1");
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    new Set(initial?.listingIds ?? [])
-  );
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [color, setColor] = useState("#6366f1");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
-  const [locationFilter, setLocationFilter] = useState<string>("all");
-  const [bedroomFilter, setBedroomFilter] = useState<string>("all");
+  const [locationFilter, setLocationFilter] = useState("all");
+  const [bedroomFilter, setBedroomFilter] = useState("all");
 
   const locations = useMemo(
     () =>
       Array.from(
-        new Set(
-          safeListings
-            .map((listing) => listing.area?.trim())
-            .filter((value): value is string => Boolean(value))
-        )
+        new Set(safeListings.map((l) => l.area?.trim()).filter(Boolean) as string[])
       ).sort((a, b) => a.localeCompare(b)),
     [safeListings]
   );
@@ -191,108 +118,41 @@ function GroupForm({
     () =>
       Array.from(
         new Set(
-          safeListings.map((listing) =>
-            listing.bedroomsNumber && listing.bedroomsNumber > 0
-              ? `${listing.bedroomsNumber}BR`
-              : "Studio / Other"
+          safeListings.map((l) =>
+            l.bedroomsNumber && l.bedroomsNumber > 0 ? `${l.bedroomsNumber}BR` : "Studio / Other"
           )
         )
       ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
     [safeListings]
   );
 
-  const toggle = (id: string) => {
+  const toggle = (id: string) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+
+  const matchesFilters = (l: Listing) => {
+    const loc = l.area?.trim() || "Unknown";
+    const br = l.bedroomsNumber && l.bedroomsNumber > 0 ? `${l.bedroomsNumber}BR` : "Studio / Other";
+    return (locationFilter === "all" || loc === locationFilter) && (bedroomFilter === "all" || br === bedroomFilter);
   };
 
-  const matchesFilters = (listing: Listing) => {
-    const listingLocation = listing.area?.trim() || "Unknown";
-    const listingBedroom =
-      listing.bedroomsNumber && listing.bedroomsNumber > 0
-        ? `${listing.bedroomsNumber}BR`
-        : "Studio / Other";
-
-    const locationOk = locationFilter === "all" || listingLocation === locationFilter;
-    const bedroomOk = bedroomFilter === "all" || listingBedroom === bedroomFilter;
-    return locationOk && bedroomOk;
-  };
-
-  const applySmartGrouping = (mode: "location" | "bedrooms" | "location_bedrooms") => {
-    const matchingListings = safeListings.filter((listing) => {
-      const hasLocation = Boolean(listing.area?.trim());
-      const hasBedroomValue = typeof listing.bedroomsNumber === "number";
-
-      if (mode === "location") return hasLocation;
-      if (mode === "bedrooms") return hasBedroomValue;
-      return hasLocation && hasBedroomValue;
-    });
-
-    if (matchingListings.length === 0) {
-      toast.error("No matching properties found for that grouping.");
-      return;
-    }
-
-    const nextSelected = new Set(matchingListings.map((listing) => listing._id));
-    setSelectedIds(nextSelected);
-
-    const first = matchingListings[0];
-    if (mode === "location") {
-      const location = first.area?.trim() || "Unknown";
-      setLocationFilter(location);
-      setBedroomFilter("all");
-      if (!name.trim()) setName(`${location} Group`);
-    } else if (mode === "bedrooms") {
-      const bucket =
-        first.bedroomsNumber && first.bedroomsNumber > 0
-          ? `${first.bedroomsNumber}BR`
-          : "Studio / Other";
-      setLocationFilter("all");
-      setBedroomFilter(bucket);
-      if (!name.trim()) setName(`${bucket} Group`);
-    } else {
-      const location = first.area?.trim() || "Unknown";
-      const bucket =
-        first.bedroomsNumber && first.bedroomsNumber > 0
-          ? `${first.bedroomsNumber}BR`
-          : "Studio / Other";
-      setLocationFilter(location);
-      setBedroomFilter(bucket);
-      if (!name.trim()) setName(`${location} ${bucket} Group`);
-    }
-  };
-
-  const selectFilteredListings = () => {
-    const matching = safeListings.filter(matchesFilters);
-    if (matching.length === 0) {
-      toast.error("No properties match the selected filters.");
-      return;
-    }
-    setSelectedIds(new Set(matching.map((listing) => listing._id)));
-  };
-
-  const clearFiltersAndSelection = () => {
-    setLocationFilter("all");
-    setBedroomFilter("all");
-    setSelectedIds(new Set(initial?.listingIds ?? []));
-  };
-
-  const visibleListings = safeListings.filter((listing) => {
-    if (locationFilter === "all" && bedroomFilter === "all") return true;
-    return matchesFilters(listing);
-  });
+  const visibleListings = safeListings.filter((l) =>
+    locationFilter === "all" && bedroomFilter === "all" ? true : matchesFilters(l)
+  );
 
   const handleSave = async () => {
     if (!name.trim()) { toast.error("Group name is required"); return; }
+    const orgId = getOrgId();
+    if (!orgId) { toast.error("Session expired, please log in again"); return; }
     setSaving(true);
     try {
-      const payload = { name, description, color, listingIds: [...selectedIds] };
-      const saved = initial
-        ? await api(`/api/groups/${initial._id}`, { method: "PUT", body: JSON.stringify(payload) })
-        : await api("/api/groups", { method: "POST", body: JSON.stringify(payload) });
+      const saved = await api(`/api/groups?orgId=${orgId}`, {
+        method: "POST",
+        body: JSON.stringify({ name, description, color, listingIds: [...selectedIds] }),
+      });
       onSave(saved);
     } catch (e: any) {
       toast.error(e.message);
@@ -302,636 +162,186 @@ function GroupForm({
   };
 
   return (
-    <div className="bg-surface-1 border border-border-default rounded-xl p-5 space-y-5">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-text-primary">
-          {initial ? "Edit Group" : "New Group"}
-        </h3>
-        <button onClick={onCancel} className="text-text-tertiary hover:text-text-primary">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      {/* Name + colour */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label>Group name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Marina Portfolio" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-surface-1 border border-border-default rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl space-y-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-text-primary">Create new group</h2>
+            <p className="text-xs text-text-tertiary mt-0.5">
+              Group rules override overlapping property rules.
+            </p>
+          </div>
+          <button onClick={onCancel} className="text-text-tertiary hover:text-text-primary p-1 rounded-lg hover:bg-surface-2">
+            <X className="w-5 h-5" />
+          </button>
         </div>
+
+        {/* Name + colour */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>Group name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Marina Portfolio"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Colour</Label>
+            <div className="flex gap-2 flex-wrap pt-0.5">
+              {PALETTE.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setColor(c)}
+                  className={cn(
+                    "w-6 h-6 rounded-full border-2 transition-transform",
+                    color === c ? "border-white scale-110 shadow-md" : "border-transparent"
+                  )}
+                  style={{ background: c }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
         <div className="space-y-1.5">
-          <Label>Colour</Label>
-          <div className="flex gap-2 flex-wrap pt-0.5">
-            {PALETTE.map((c) => (
-              <button
-                key={c}
-                onClick={() => setColor(c)}
-                className={cn(
-                  "w-6 h-6 rounded-full border-2 transition-transform",
-                  color === c ? "border-white scale-110 shadow-md" : "border-transparent"
+          <Label>
+            Description{" "}
+            <span className="text-text-tertiary text-xs">(optional)</span>
+          </Label>
+          <Input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g. Dubai Marina beachfront units"
+          />
+        </div>
+
+        {/* Property selector */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label>
+              Properties{" "}
+              <span className="text-text-tertiary text-xs">({selectedIds.size} selected)</span>
+            </Label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Select value={locationFilter} onValueChange={setLocationFilter}>
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder="All locations" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All locations</SelectItem>
+                {locations.map((loc) => <SelectItem key={loc} value={loc}>{loc}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={bedroomFilter} onValueChange={setBedroomFilter}>
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                {bedroomBuckets.map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="border border-border-default rounded-lg divide-y divide-border-default max-h-52 overflow-y-auto">
+            {visibleListings.length === 0 && (
+              <p className="p-3 text-xs text-text-tertiary">No properties found.</p>
+            )}
+            {visibleListings.map((l) => (
+              <label
+                key={l._id}
+                className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-surface-2 transition-colors"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(l._id)}
+                  onChange={() => toggle(l._id)}
+                  className="rounded border-border-default"
+                />
+                <span className="flex-1 text-sm text-text-primary truncate">{l.name}</span>
+                {l.area && <span className="text-xs text-text-tertiary shrink-0">{l.area}</span>}
+                {l.bedroomsNumber != null && (
+                  <span className="text-xs text-text-tertiary shrink-0">{l.bedroomsNumber}BR</span>
                 )}
-                style={{ background: c }}
-              />
+              </label>
             ))}
           </div>
         </div>
-      </div>
 
-      {/* Description */}
-      <div className="space-y-1.5">
-        <Label>Description <span className="text-text-tertiary text-xs">(optional)</span></Label>
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Dubai Marina beachfront units" />
-      </div>
-
-      {/* Property selector */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>Properties in this group <span className="text-text-tertiary text-xs">({selectedIds.size} selected)</span></Label>
-          <span className="text-[11px] text-text-tertiary">{safeListings.length} total</span>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="outline" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+            ) : (
+              <Save className="w-4 h-4 mr-1.5" />
+            )}
+            Create group
+          </Button>
         </div>
-        <div className="rounded-lg border border-border-default bg-surface-0 p-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-medium text-text-tertiary">Quick group from onboarding:</span>
-            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => applySmartGrouping("bedrooms")}>
-              Group by 1BR / 2BR
-            </Button>
-            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => applySmartGrouping("location")}>
-              Group by location
-            </Button>
-            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" onClick={() => applySmartGrouping("location_bedrooms")}>
-              Group by location + type
-            </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Group card ─────────────────────────────────────────────────────────────────
+
+function GroupCard({ group, onClick }: { group: PropertyGroup; onClick: () => void }) {
+  const typeLabel = (() => {
+    const parts = group.name.split(" · ");
+    return parts.length > 1 ? parts[1].replace(" Group", "").trim() : "";
+  })();
+
+  return (
+    <div
+      onClick={onClick}
+      className="group relative cursor-pointer rounded-xl border border-border-default bg-surface-1 hover:bg-surface-2 hover:border-primary/40 hover:shadow-lg transition-all overflow-hidden"
+    >
+      {/* Color accent top strip */}
+      <div className="h-1" style={{ background: group.color }} />
+
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <div
+              className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5"
+              style={{ background: group.color }}
+            />
+            <p className="text-sm font-semibold text-text-primary leading-tight truncate">
+              {group.name}
+            </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Filter by location</Label>
-              <Select value={locationFilter} onValueChange={setLocationFilter}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="All locations" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All locations</SelectItem>
-                  {locations.map((location) => (
-                    <SelectItem key={location} value={location}>
-                      {location}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Filter by type</Label>
-              <Select value={bedroomFilter} onValueChange={setBedroomFilter}>
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="All types" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All types</SelectItem>
-                  {bedroomBuckets.map((bucket) => (
-                    <SelectItem key={bucket} value={bucket}>
-                      {bucket}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" size="sm" className="h-8 text-xs" onClick={selectFilteredListings}>
-              Select filtered properties
-            </Button>
-            <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={clearFiltersAndSelection}>
-              Clear filters
-            </Button>
-            <span className="text-[11px] text-text-tertiary">
-              Showing {visibleListings.length} matching properties
+          <ChevronRight className="w-4 h-4 text-text-tertiary group-hover:text-primary shrink-0 mt-0.5 transition-colors" />
+        </div>
+
+        {group.description && (
+          <p className="text-xs text-text-tertiary mb-3 line-clamp-2 leading-relaxed">
+            {group.description}
+          </p>
+        )}
+
+        <div className="flex items-center justify-between mt-auto pt-1">
+          <div className="flex items-center gap-1.5">
+            <Home className="w-3.5 h-3.5 text-text-tertiary" />
+            <span className="text-xs text-text-tertiary">
+              {group.listingIds.length}{" "}
+              {group.listingIds.length === 1 ? "property" : "properties"}
             </span>
           </div>
-        </div>
-        <div className="border border-border-default rounded-lg divide-y divide-border-default max-h-[26rem] overflow-y-auto">
-          {visibleListings.length === 0 && (
-            <p className="p-3 text-xs text-text-tertiary">No properties found.</p>
-          )}
-          {visibleListings.map((l) => (
-            <label
-              key={l._id}
-              className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-surface-2 transition-colors"
+          {typeLabel && (
+            <span
+              className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+              style={{
+                background: `${group.color}22`,
+                color: group.color,
+                border: `1px solid ${group.color}44`,
+              }}
             >
-              <input
-                type="checkbox"
-                checked={selectedIds.has(l._id)}
-                onChange={() => toggle(l._id)}
-                className="rounded border-border-default"
-              />
-              <span className="flex-1 text-sm text-text-primary truncate">{l.name}</span>
-              {l.bedroomsNumber != null && (
-                <span className="text-xs text-text-tertiary shrink-0">{l.bedroomsNumber}BR</span>
-              )}
-            </label>
-          ))}
-        </div>
-        {visibleListings.length > 10 && (
-          <p className="text-[11px] text-text-tertiary">Scroll to see all properties.</p>
-        )}
-      </div>
-
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
-        <Button size="sm" onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : <Save className="w-4 h-4 mr-1.5" />}
-          {initial ? "Save changes" : "Create group"}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ── Rule row ───────────────────────────────────────────────────────────────────
-
-function RuleRow({
-  rule,
-  groupId,
-  onToggle,
-  onDelete,
-}: {
-  rule: PricingRule;
-  groupId: string;
-  onToggle: (r: PricingRule) => void;
-  onDelete: (id: string) => void;
-}) {
-  const [deleting, setDeleting] = useState(false);
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await api(`/api/groups/${groupId}/rules/${rule._id}`, { method: "DELETE" });
-      onDelete(rule._id);
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const handleToggle = async () => {
-    try {
-      const updated = await api(`/api/groups/${groupId}/rules/${rule._id}`, {
-        method: "PUT",
-        body: JSON.stringify({ enabled: !rule.enabled }),
-      });
-      onToggle(updated);
-    } catch (e: any) {
-      toast.error(e.message);
-    }
-  };
-
-  const detail = rule.priceAdjPct != null
-    ? `${rule.priceAdjPct > 0 ? "+" : ""}${rule.priceAdjPct}%`
-    : rule.priceOverride != null
-    ? `Fixed price`
-    : rule.isBlocked
-    ? "Blocked"
-    : "—";
-  const categoryLabel = RULE_CATEGORY_LABELS[
-    (rule.ruleCategory || fallbackCategoryFromRuleType(rule.ruleType)) as keyof typeof RULE_CATEGORY_LABELS
-  ];
-
-  return (
-    <div className={cn(
-      "flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors",
-      rule.enabled
-        ? "bg-surface-1 border-border-default"
-        : "bg-surface-0 border-border-subtle opacity-60"
-    )}>
-      <span className="text-text-tertiary">{RULE_ICONS[rule.ruleType]}</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-text-primary truncate">{rule.name}</p>
-        <p className="text-xs text-text-tertiary">
-          {categoryLabel} · {RULE_TYPE_LABELS[rule.ruleType]} · {detail}
-          {rule.startDate && ` · ${rule.startDate} → ${rule.endDate ?? "?"}`}
-        </p>
-      </div>
-      <Switch checked={rule.enabled} onCheckedChange={handleToggle} />
-      <button
-        onClick={handleDelete}
-        disabled={deleting}
-        className="text-text-tertiary hover:text-red-500 transition-colors p-1"
-      >
-        {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-      </button>
-    </div>
-  );
-}
-
-// ── Add-rule mini form ─────────────────────────────────────────────────────────
-
-function AddRuleForm({
-  groupId,
-  initialCategory,
-  onAdded,
-  onCancel,
-}: {
-  groupId: string;
-  initialCategory: NonNullable<PricingRule["ruleCategory"]>;
-  onAdded: (r: PricingRule) => void;
-  onCancel: () => void;
-}) {
-  const [ruleCategory] = useState<NonNullable<PricingRule["ruleCategory"]>>(initialCategory);
-  const [name, setName] = useState("");
-  const [priceAdjPct, setPriceAdjPct] = useState("");
-  const [priceOverride, setPriceOverride] = useState("");
-  const [minPriceOverride, setMinPriceOverride] = useState("");
-  const [maxPriceOverride, setMaxPriceOverride] = useState("");
-  const [minStayOverride, setMinStayOverride] = useState("");
-  const [minNights, setMinNights] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([]);
-  const [isBlocked, setIsBlocked] = useState(ruleCategory === "DATE_OVERRIDES");
-  const [closedToArrival, setClosedToArrival] = useState(false);
-  const [closedToDeparture, setClosedToDeparture] = useState(false);
-  const [suspendLastMinute, setSuspendLastMinute] = useState(ruleCategory === "GAP_LOGIC");
-  const [suspendGapFill, setSuspendGapFill] = useState(ruleCategory === "GAP_LOGIC");
-  const [saving, setSaving] = useState(false);
-
-  const toggleDay = (day: number) => {
-    setDaysOfWeek((prev) =>
-      prev.includes(day) ? prev.filter((value) => value !== day) : [...prev, day].sort((a, b) => a - b)
-    );
-  };
-
-  const handleSave = async () => {
-    if (!name.trim()) { toast.error("Rule name is required"); return; }
-    setSaving(true);
-    try {
-      const payload: Record<string, unknown> = {
-        ruleType: CATEGORY_TO_RULE_TYPE[ruleCategory],
-        ruleCategory,
-        name: name.trim(),
-        enabled: true,
-        priority: 0,
-        isBlocked,
-        closedToArrival,
-        closedToDeparture,
-        suspendLastMinute,
-        suspendGapFill,
-      };
-      if (priceAdjPct !== "") payload.priceAdjPct = Number(priceAdjPct);
-      if (priceOverride !== "") payload.priceOverride = Number(priceOverride);
-      if (minPriceOverride !== "") payload.minPriceOverride = Number(minPriceOverride);
-      if (maxPriceOverride !== "") payload.maxPriceOverride = Number(maxPriceOverride);
-      if (minStayOverride !== "") payload.minStayOverride = Number(minStayOverride);
-      if (minNights !== "") payload.minNights = Number(minNights);
-      if (startDate) payload.startDate = startDate;
-      if (endDate) payload.endDate = endDate;
-      if (daysOfWeek.length > 0) payload.daysOfWeek = daysOfWeek;
-
-      const rule = await api(`/api/groups/${groupId}/rules`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      onAdded(rule);
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="rounded-xl border border-border-default bg-surface-0 p-4 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold text-text-primary">
-            Add {RULE_CATEGORY_LABELS[ruleCategory]}
-          </p>
-          <p className="text-[11px] text-text-tertiary">
-            This group rule applies to all properties in the selected group and overrides overlapping property rules.
-          </p>
-        </div>
-        <Badge variant="secondary" className="text-[10px]">
-          {RULE_CATEGORY_LABELS[ruleCategory]}
-        </Badge>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <Label className="text-xs">Name</Label>
-          <Input className="h-8 text-xs" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Eid Uplift" />
-        </div>
-        {(ruleCategory === "SEASONS" || ruleCategory === "LEAD_TIME" || ruleCategory === "LOS_DISCOUNTS" || ruleCategory === "OCCUPANCY") && (
-          <div className="space-y-1">
-            <Label className="text-xs">Price adj %</Label>
-            <Input className="h-8 text-xs" type="number" value={priceAdjPct} onChange={(e) => setPriceAdjPct(e.target.value)} placeholder="e.g. 20" />
-          </div>
-        )}
-        {(ruleCategory === "DATE_OVERRIDES" || ruleCategory === "GUARDRAILS") && (
-          <div className="space-y-1">
-            <Label className="text-xs">Fixed price</Label>
-            <Input className="h-8 text-xs" type="number" value={priceOverride} onChange={(e) => setPriceOverride(e.target.value)} placeholder="e.g. 950" />
-          </div>
-        )}
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <div className="space-y-1">
-          <Label className="text-xs">Start date</Label>
-          <Input className="h-8 text-xs" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">End date</Label>
-          <Input className="h-8 text-xs" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        </div>
-        {(ruleCategory === "SEASONS" || ruleCategory === "LOS_DISCOUNTS" || ruleCategory === "DATE_OVERRIDES" || ruleCategory === "GUARDRAILS") && (
-          <div className="space-y-1">
-            <Label className="text-xs">Min stay override</Label>
-            <Input className="h-8 text-xs" type="number" value={minStayOverride} onChange={(e) => setMinStayOverride(e.target.value)} placeholder="e.g. 3" />
-          </div>
-        )}
-      </div>
-
-      {ruleCategory === "GUARDRAILS" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <div className="space-y-1">
-            <Label className="text-xs">Min price override</Label>
-            <Input className="h-8 text-xs" type="number" value={minPriceOverride} onChange={(e) => setMinPriceOverride(e.target.value)} placeholder="e.g. 400" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Max price override</Label>
-            <Input className="h-8 text-xs" type="number" value={maxPriceOverride} onChange={(e) => setMaxPriceOverride(e.target.value)} placeholder="e.g. 2500" />
-          </div>
-        </div>
-      )}
-
-      {(ruleCategory === "LOS_DISCOUNTS" || ruleCategory === "LEAD_TIME" || ruleCategory === "GAP_LOGIC") && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <div className="space-y-1">
-            <Label className="text-xs">Minimum nights</Label>
-            <Input className="h-8 text-xs" type="number" value={minNights} onChange={(e) => setMinNights(e.target.value)} placeholder="e.g. 2" />
-          </div>
-          {ruleCategory === "GAP_LOGIC" && (
-            <div className="space-y-1">
-              <Label className="text-xs">Min stay override</Label>
-              <Input className="h-8 text-xs" type="number" value={minStayOverride} onChange={(e) => setMinStayOverride(e.target.value)} placeholder="e.g. 1" />
-            </div>
-          )}
-        </div>
-      )}
-
-      {(ruleCategory === "LEAD_TIME" || ruleCategory === "OCCUPANCY") && (
-        <div className="space-y-2">
-          <Label className="text-xs">Days of week</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {WEEKDAY_OPTIONS.map((day) => {
-              const active = daysOfWeek.includes(day.value);
-              return (
-                <button
-                  key={day.value}
-                  type="button"
-                  onClick={() => toggleDay(day.value)}
-                  className={cn(
-                    "rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors",
-                    active
-                      ? "border-amber-500 bg-amber-500 text-black"
-                      : "border-border-default bg-background text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  {day.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {(ruleCategory === "GAP_LOGIC" || ruleCategory === "DATE_OVERRIDES") && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <label className="flex items-center justify-between rounded-lg border border-border-default bg-background px-3 py-2">
-            <span className="text-xs text-foreground">Block date</span>
-            <Switch checked={isBlocked} onCheckedChange={setIsBlocked} />
-          </label>
-          <label className="flex items-center justify-between rounded-lg border border-border-default bg-background px-3 py-2">
-            <span className="text-xs text-foreground">Closed to arrival</span>
-            <Switch checked={closedToArrival} onCheckedChange={setClosedToArrival} />
-          </label>
-          <label className="flex items-center justify-between rounded-lg border border-border-default bg-background px-3 py-2">
-            <span className="text-xs text-foreground">Closed to departure</span>
-            <Switch checked={closedToDeparture} onCheckedChange={setClosedToDeparture} />
-          </label>
-          {ruleCategory === "GAP_LOGIC" && (
-            <>
-              <label className="flex items-center justify-between rounded-lg border border-border-default bg-background px-3 py-2">
-                <span className="text-xs text-foreground">Suspend last-minute logic</span>
-                <Switch checked={suspendLastMinute} onCheckedChange={setSuspendLastMinute} />
-              </label>
-              <label className="flex items-center justify-between rounded-lg border border-border-default bg-background px-3 py-2">
-                <span className="text-xs text-foreground">Suspend gap-fill logic</span>
-                <Switch checked={suspendGapFill} onCheckedChange={setSuspendGapFill} />
-              </label>
-            </>
-          )}
-        </div>
-      )}
-
-      <div className="rounded-lg border border-border-default bg-background px-3 py-2 text-[11px] text-muted-foreground">
-        {ruleCategory === "GUARDRAILS" && "Use this to enforce temporary min/max pricing bounds or fixed-rate exceptions across the whole group."}
-        {ruleCategory === "SEASONS" && "Use date ranges plus price and stay changes for seasonal periods shared by all group members."}
-        {ruleCategory === "LEAD_TIME" && "Use this to raise or lower pricing for selected weekdays or booking windows across the group."}
-        {ruleCategory === "GAP_LOGIC" && "Use this to protect short gaps, change arrival/departure behavior, or suspend listing-level automation during special windows."}
-        {ruleCategory === "LOS_DISCOUNTS" && "Use this to apply group-wide discounts or min-stay rules tied to booking length."}
-        {ruleCategory === "DATE_OVERRIDES" && "Use this to block dates, set fixed prices, or force stay rules on specific dates for every property in the group."}
-        {ruleCategory === "OCCUPANCY" && "Use this to add occupancy-driven price adjustments that the group should apply before any listing-specific rule."}
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onCancel}>Cancel</Button>
-        <Button size="sm" className="h-7 text-xs" onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-          Add rule
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ── Group detail panel ─────────────────────────────────────────────────────────
-
-function GroupDetail({
-  group,
-  allListings,
-  onUpdated,
-  onDeleted,
-  onClose,
-}: {
-  group: PropertyGroup;
-  allListings: Listing[];
-  onUpdated: (g: PropertyGroup) => void;
-  onDeleted: (id: string) => void;
-  onClose: () => void;
-}) {
-  const [rules, setRules] = useState<PricingRule[]>([]);
-  const [loadingRules, setLoadingRules] = useState(true);
-  const [showRuleForm, setShowRuleForm] = useState(false);
-  const [activeRuleCategory, setActiveRuleCategory] = useState<NonNullable<PricingRule["ruleCategory"]>>("GUARDRAILS");
-  const [editing, setEditing] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    setLoadingRules(true);
-    api(`/api/groups/${group._id}/rules`)
-      .then(setRules)
-      .catch(() => toast.error("Failed to load rules"))
-      .finally(() => setLoadingRules(false));
-  }, [group._id]);
-
-  const memberListings = allListings.filter((l) => group.listingIds.includes(l._id));
-  const filteredRules = rules.filter(
-    (r) => (r.ruleCategory || fallbackCategoryFromRuleType(r.ruleType)) === activeRuleCategory
-  );
-
-  const handleDelete = async () => {
-    if (!confirm(`Delete group "${group.name}" and all its rules?`)) return;
-    setDeleting(true);
-    try {
-      await api(`/api/groups/${group._id}`, { method: "DELETE" });
-      onDeleted(group._id);
-    } catch (e: any) {
-      toast.error(e.message);
-      setDeleting(false);
-    }
-  };
-
-  if (editing) {
-    return (
-      <GroupForm
-        initial={group}
-        allListings={allListings}
-        onSave={(g) => { onUpdated(g); setEditing(false); }}
-        onCancel={() => setEditing(false)}
-      />
-    );
-  }
-
-  return (
-    <div className="bg-surface-1 border border-border-default rounded-xl overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-border-default">
-        <div className="w-3 h-3 rounded-full shrink-0" style={{ background: group.color }} />
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-text-primary truncate">{group.name}</p>
-          {group.description && (
-            <p className="text-xs text-text-tertiary truncate">{group.description}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditing(true)}>
-            <Pencil className="w-3.5 h-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-red-500 hover:text-red-600"
-            onClick={handleDelete}
-            disabled={deleting}
-          >
-            {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-          </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
-            <X className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      </div>
-
-      <div className="p-4 space-y-5">
-        {/* Members */}
-        <div>
-          <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-2">
-            Properties ({memberListings.length})
-          </p>
-          {memberListings.length === 0 ? (
-            <p className="text-xs text-text-tertiary italic">No properties assigned yet.</p>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {memberListings.map((l) => (
-                <Badge key={l._id} variant="secondary" className="text-xs gap-1">
-                  <Home className="w-3 h-3" />
-                  {l.name}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Rules */}
-        <div>
-          <div className="flex items-center justify-between mb-2 gap-3">
-            <div>
-              <p className="text-xs font-semibold text-text-tertiary uppercase tracking-wider">
-                Group Rules ({rules.length})
-              </p>
-              <p className="text-xs text-text-tertiary mt-1">
-                These rules apply to all {memberListings.length} properties in this group.
-                When both levels define overlapping logic, group rules take precedence.
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs gap-1 shrink-0"
-              onClick={() => setShowRuleForm(true)}
-            >
-              <Plus className="w-3 h-3" /> Add rule
-            </Button>
-          </div>
-          <Tabs value={activeRuleCategory} onValueChange={(v) => { setActiveRuleCategory(v as NonNullable<PricingRule["ruleCategory"]>); setShowRuleForm(false); }} className="mb-4">
-            <TabsList className="flex flex-wrap gap-1.5 h-auto bg-surface-2/60 p-1.5 rounded-lg border border-border-subtle">
-              {(Object.entries(RULE_CATEGORY_LABELS) as [NonNullable<PricingRule["ruleCategory"]>, string][]).map(([value, label]) => (
-                <TabsTrigger
-                  key={value}
-                  value={value}
-                  className={cn(
-                    "gap-1.5 text-xs font-semibold transition-all rounded-md px-3 py-1.5 border relative",
-                    activeRuleCategory === value
-                      ? "bg-amber-500 text-black border-amber-500 shadow-lg ring-2 ring-amber-500/40 scale-[1.02]"
-                      : "bg-transparent text-muted-foreground border-transparent hover:bg-background hover:text-foreground"
-                  )}
-                >
-                  {label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-
-          {loadingRules ? (
-            <div className="flex items-center gap-2 text-xs text-text-tertiary py-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading rules…
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {filteredRules.map((r) => (
-                <RuleRow
-                  key={r._id}
-                  rule={r}
-                  groupId={group._id}
-                  onToggle={(updated) =>
-                    setRules((prev) => prev.map((x) => (x._id === updated._id ? updated : x)))
-                  }
-                  onDelete={(id) => setRules((prev) => prev.filter((x) => x._id !== id))}
-                />
-              ))}
-              {filteredRules.length === 0 && !showRuleForm && (
-                <p className="text-xs text-text-tertiary italic">
-                  No {RULE_CATEGORY_LABELS[activeRuleCategory].toLowerCase()} group rules yet.
-                </p>
-              )}
-            </div>
-          )}
-
-          {showRuleForm && (
-            <div className="mt-2">
-              <AddRuleForm
-                groupId={group._id}
-                initialCategory={activeRuleCategory}
-                onAdded={(r) => { setRules((prev) => [...prev, r]); setShowRuleForm(false); }}
-                onCancel={() => setShowRuleForm(false)}
-              />
-            </div>
+              {typeLabel}
+            </span>
           )}
         </div>
       </div>
@@ -942,26 +352,25 @@ function GroupDetail({
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function GroupsPage() {
+  const router = useRouter();
   const [groups, setGroups] = useState<PropertyGroup[]>([]);
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
+    const orgId = getOrgId();
+    if (!orgId) { setLoading(false); return; }
     try {
       const [gs, ls] = await Promise.all([
-        api("/api/groups"),
-        api("/api/properties"),
+        api(`/api/groups?orgId=${orgId}`),
+        api(`/api/properties?orgId=${orgId}`),
       ]);
       const normalizedGroups = Array.isArray(gs) ? gs : gs?.groups ?? [];
       const rawListings = Array.isArray(ls) ? ls : ls?.properties ?? [];
       const normalizedListings = (rawListings as any[])
-        .map((l) => ({
-          ...l,
-          _id: String(l?._id ?? l?.id ?? ""),
-        }))
+        .map((l) => ({ ...l, _id: String(l?._id ?? l?.id ?? "") }))
         .filter((l) => l._id.length > 0);
       setGroups(normalizedGroups);
       setListings(normalizedListings);
@@ -974,10 +383,23 @@ export default function GroupsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const selectedGroup = groups.find((g) => g._id === selectedId) ?? null;
+  // Categorise by location extracted from group name
+  const categorized = useMemo(() => {
+    const map: Record<string, PropertyGroup[]> = {};
+    for (const g of groups) {
+      const cat = extractCategory(g.name);
+      if (!map[cat]) map[cat] = [];
+      map[cat].push(g);
+    }
+    return Object.entries(map).sort(([a], [b]) => {
+      if (a === "Other") return 1;
+      if (b === "Other") return -1;
+      return a.localeCompare(b);
+    });
+  }, [groups]);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-6 max-w-7xl mx-auto space-y-8">
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
@@ -989,86 +411,89 @@ export default function GroupsPage() {
             Group rules override overlapping property rules.
           </p>
         </div>
-        <Button onClick={() => { setShowCreate(true); setSelectedId(null); }} className="gap-1.5">
+        <Button onClick={() => setShowCreate(true)} className="gap-1.5">
           <Plus className="w-4 h-4" /> New group
         </Button>
       </div>
 
-      {/* Create form */}
+      {/* Create modal */}
       {showCreate && (
-        <GroupForm
+        <GroupCreateForm
           allListings={listings}
-          onSave={(g) => { setGroups((prev) => [g, ...prev]); setShowCreate(false); setSelectedId(g._id); }}
+          onSave={(g) => {
+            setGroups((prev) => [g, ...prev]);
+            setShowCreate(false);
+            router.push(`/groups/${g._id}`);
+          }}
           onCancel={() => setShowCreate(false)}
         />
       )}
 
-      {/* Main layout: list + detail */}
-      <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-4">
-        {/* Group list */}
-        <div className="space-y-2">
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-text-tertiary py-6">
-              <Loader2 className="w-4 h-4 animate-spin" /> Loading groups…
-            </div>
-          ) : groups.length === 0 ? (
-            <div className="border border-dashed border-border-default rounded-xl p-8 text-center">
-              <Layers className="w-8 h-8 text-text-tertiary mx-auto mb-2" />
-              <p className="text-sm font-medium text-text-primary">No groups yet</p>
-              <p className="text-xs text-text-tertiary mt-1">
-                Create a group to apply pricing rules to multiple properties at once.
-              </p>
-            </div>
-          ) : (
-            groups.map((g) => {
-              const memberCount = g.listingIds.length;
-              const isSelected = g._id === selectedId;
-              return (
-                <button
-                  key={g._id}
-                  onClick={() => { setSelectedId(g._id); setShowCreate(false); }}
-                  className={cn(
-                    "w-full text-left flex items-center gap-3 px-3 py-3 rounded-xl border transition-all",
-                    isSelected
-                      ? "border-primary bg-primary/5"
-                      : "border-border-default bg-surface-1 hover:bg-surface-2"
-                  )}
-                >
-                  <div className="w-3 h-3 rounded-full shrink-0" style={{ background: g.color }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-text-primary truncate">{g.name}</p>
-                    <p className="text-xs text-text-tertiary">
-                      {memberCount} {memberCount === 1 ? "property" : "properties"}
-                    </p>
-                  </div>
-                  <ChevronRight className={cn("w-4 h-4 text-text-tertiary transition-transform", isSelected && "rotate-90")} />
-                </button>
-              );
-            })
-          )}
-        </div>
-
-        {/* Detail panel */}
-        <div>
-          {selectedGroup ? (
-            <GroupDetail
-              key={selectedGroup._id}
-              group={selectedGroup}
-              allListings={listings}
-              onUpdated={(g) => setGroups((prev) => prev.map((x) => (x._id === g._id ? g : x)))}
-              onDeleted={(id) => { setGroups((prev) => prev.filter((x) => x._id !== id)); setSelectedId(null); }}
-              onClose={() => setSelectedId(null)}
-            />
-          ) : (
-            !showCreate && (
-              <div className="border border-dashed border-border-default rounded-xl p-10 text-center h-full flex flex-col items-center justify-center">
-                <Layers className="w-8 h-8 text-text-tertiary mb-2" />
-                <p className="text-sm text-text-tertiary">Select a group to view details and manage rules.</p>
+      {/* Loading state */}
+      {loading && (
+        <div className="space-y-8">
+          {[1, 2].map((i) => (
+            <div key={i} className="space-y-3 animate-pulse">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="h-5 w-5 rounded-full bg-surface-2" />
+                <div className="h-5 w-28 rounded-lg bg-surface-2" />
+                <div className="flex-1 h-px bg-border-subtle" />
               </div>
-            )
-          )}
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+                {[1, 2, 3].map((j) => (
+                  <div key={j} className="rounded-xl border border-border-default bg-surface-1 overflow-hidden">
+                    <div className="h-1 bg-surface-2" />
+                    <div className="p-4 space-y-3">
+                      <div className="h-4 w-3/4 rounded-md bg-surface-2" />
+                      <div className="h-3 w-1/2 rounded-md bg-surface-2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && groups.length === 0 && (
+        <div className="border border-dashed border-border-default rounded-2xl p-16 text-center flex flex-col items-center">
+          <Layers className="w-10 h-10 text-text-tertiary mx-auto mb-3" />
+          <p className="text-base font-medium text-text-primary">No groups yet</p>
+          <p className="text-sm text-text-tertiary mt-1 mb-4">
+            Create a group to apply pricing rules to multiple properties at once.
+          </p>
+          <Button onClick={() => setShowCreate(true)} className="gap-1.5">
+            <Plus className="w-4 h-4" /> Create first group
+          </Button>
+        </div>
+      )}
+
+      {/* Categorised card grid */}
+      {!loading && categorized.map(([category, catGroups]) => (
+        <section key={category}>
+          {/* Category header */}
+          <div className="flex items-center gap-3 mb-4">
+            <MapPin className="w-4 h-4 shrink-0" style={{ color: getCategoryColor(category) }} />
+            <h2 className="text-base font-bold text-text-primary">{category}</h2>
+            <span className="text-xs text-text-tertiary bg-surface-2 border border-border-subtle px-2 py-0.5 rounded-full">
+              {catGroups.length} {catGroups.length === 1 ? "group" : "groups"}
+            </span>
+            <div className="flex-1 h-px bg-border-subtle" />
+          </div>
+
+          {/* Cards grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+            {catGroups.map((g) => (
+              <GroupCard
+                key={g._id}
+                group={g}
+                onClick={() => router.push(`/groups/${g._id}`)}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

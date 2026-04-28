@@ -1,95 +1,71 @@
-import { connectDB, InventoryMaster, MarketEvent, Listing } from "@/lib/db";
 import { MarketIntelligenceClient } from "./market-client";
 import { getSession } from "@/lib/auth/server";
-import mongoose from "mongoose";
+import { redirect } from "next/navigation";
+import { connectToDatabase } from "@/lib/db/mongodb";
+import { MarketEvent, Listing } from "@/lib/db/models";
+import { Types } from "mongoose";
 
 export default async function MarketPage() {
   const session = await getSession();
   if (!session?.orgId) {
-    return (
-      <MarketIntelligenceClient
-        events={[]}
-        occupancyPct={0}
-        avgNightly={0}
-        listings={[]}
-      />
-    );
+    redirect("/login");
   }
 
-  await connectDB();
-  const orgId = new mongoose.Types.ObjectId(session.orgId);
+  const orgObjectId = session.orgId;
 
-  const today = new Date();
-  const todayStr = today.toISOString().split("T")[0];
-  const plus90 = new Date(today);
-  plus90.setDate(plus90.getDate() + 90);
-  const plus90Str = plus90.toISOString().split("T")[0];
+  let formattedEvents: any[] = [];
+  let formattedListings: any[] = [];
+  let avgOccupancyPct = 0;
+  let avgNightlyRate = 0;
 
-  // Fetch upcoming market events (next 90 days)
-  const events = await MarketEvent.find({
-    orgId,
-    startDate: { $lte: plus90Str },
-    endDate: { $gte: todayStr },
-  })
-    .sort({ startDate: 1 })
-    .limit(200)
-    .lean();
+  try {
+    await connectToDatabase();
+    const orgOid = new Types.ObjectId(orgObjectId);
 
-  // Fetch portfolio occupancy next 30 days
-  const plus30 = new Date(today);
-  plus30.setDate(plus30.getDate() + 29);
-  const plus30Str = plus30.toISOString().split("T")[0];
+    const [events, listings] = await Promise.all([
+      MarketEvent.find({ orgId: orgOid }).lean(),
+      Listing.find({ orgId: orgOid }).lean()
+    ]);
 
-  const occupancyResult = await InventoryMaster.aggregate([
-    { $match: { orgId, date: { $gte: todayStr, $lte: plus30Str } } },
-    {
-      $group: {
-        _id: null,
-        totalDays: { $sum: 1 },
-        bookedDays: { $sum: { $cond: [{ $eq: ["$status", "booked"] }, 1, 0] } },
-        blockedDays: { $sum: { $cond: [{ $eq: ["$status", "blocked"] }, 1, 0] } },
-        avgPrice: { $avg: "$currentPrice" },
-      },
-    },
-  ]);
+    formattedEvents = events.map((e: any) => ({
+      id: e._id.toString(),
+      title: e.name,
+      startDate: e.startDate,
+      endDate: e.endDate,
+      impact: e.impactLevel,
+      suggestedPremiumPct: e.upliftPct,
+      description: e.description || "",
+      category: e.category || "General",
+      area: e.area || "Dubai",
+      source: e.source,
+    }));
 
-  const occ = occupancyResult[0] || { totalDays: 0, bookedDays: 0, blockedDays: 0, avgPrice: 0 };
-  const availDays = occ.totalDays - occ.blockedDays;
-  const occupancyPct = availDays > 0 ? Math.round((occ.bookedDays / availDays) * 100) : 0;
-  const avgNightly = Math.round(Number(occ.avgPrice) || 0);
+    formattedListings = listings.map((l: any) => ({
+      id: l._id.toString(),
+      name: l.name,
+      currencyCode: l.currencyCode || "AED",
+      area: l.area,
+    }));
 
-  // Fetch listings for benchmark selector
-  const listingDocs = await Listing.find({ orgId, isActive: true })
-    .select("_id name currencyCode area")
-    .lean();
+    const totalOcc = listings.reduce((sum: number, l: any) => sum + (l.occupancyPct || 0), 0);
+    avgOccupancyPct = listings.length > 0 ? Math.round(totalOcc / listings.length) : 0;
 
-  const listings = listingDocs.map((l: any) => ({
-    id: l._id.toString(),
-    name: l.name as string,
-    currencyCode: (l.currencyCode as string) || "AED",
-    area: (l.area as string) || "",
-  }));
+    const totalRate = listings.reduce((sum: number, l: any) => sum + (l.avgPrice || l.price || 0), 0);
+    avgNightlyRate = listings.length > 0 ? Math.round(totalRate / listings.length) : 0;
 
-  const serializedEvents = events.map((e: any) => ({
-    id: e._id.toString(),
-    listingId: e.listingId ? e.listingId.toString() : null,
-    title: (e.title || e.name) as string,
-    startDate: e.startDate as string,
-    endDate: e.endDate as string,
-    impact: (e.impact || e.impactLevel || "medium") as "high" | "medium" | "low",
-    suggestedPremiumPct: (e.suggestedPremiumPct ?? e.upliftPct ?? 0) as number,
-    description: (e.description || "") as string,
-    category: (e.category || e.source || "event") as string,
-    area: (e.area || (e.areas && e.areas[0]) || "") as string,
-    source: (e.source || "ai_detected") as string,
-  }));
+  } catch (err) {
+    console.error("[market page] database fetch error", err);
+  }
 
   return (
     <MarketIntelligenceClient
-      events={serializedEvents}
-      occupancyPct={occupancyPct}
-      avgNightly={avgNightly}
-      listings={listings}
+      orgId={orgObjectId}
+      events={formattedEvents}
+      occupancyPct={avgOccupancyPct}
+      avgNightly={avgNightlyRate}
+      listings={formattedListings}
     />
   );
 }
+
+

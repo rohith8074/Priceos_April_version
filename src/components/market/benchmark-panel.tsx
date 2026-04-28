@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { format, addDays } from "date-fns";
 import {
   TrendingUp, TrendingDown, Minus, BarChart2,
   RefreshCw, ExternalLink, ChevronDown, ChevronUp,
@@ -40,6 +41,7 @@ interface BenchmarkSummary {
 }
 
 interface Props {
+  orgId: string;
   listingId: string;
   listingName: string;
   currency?: string;
@@ -74,20 +76,59 @@ function percentileBar(pct: number | undefined) {
   );
 }
 
-export function BenchmarkPanel({ listingId, listingName, currency = "AED" }: Props) {
+export function BenchmarkPanel({ orgId, listingId, listingName, currency = "AED" }: Props) {
   const [data, setData] = useState<BenchmarkSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [showComps, setShowComps] = useState(false);
 
   useEffect(() => {
-    if (!listingId) return;
+    if (!listingId || !orgId) return;
     setLoading(true);
-    fetch(`/api/benchmark?listingId=${listingId}`)
+    setData(null);
+    const today = new Date();
+    const dateFrom = format(today, "yyyy-MM-dd");
+    const dateTo = format(addDays(today, 29), "yyyy-MM-dd");
+    fetch(`/api/agent-tools/benchmark?orgId=${orgId}&listingId=${listingId}&dateFrom=${dateFrom}&dateTo=${dateTo}`)
       .then((r) => r.json())
-      .then((d) => setData(d.hasData ? d.summary : null))
-      .catch(() => {})
+      .then((d) => {
+        // source="none" means no data anywhere
+        if (!d || d.source === "none" || (!d.p25 && !d.p50 && !d.p75)) {
+          setData(null);
+          return;
+        }
+        // Normalise comp objects — cache vs BenchmarkData have slightly different shapes
+        const comps: Comp[] = (d.comps ?? []).map((c: any) => ({
+          name: c.name || c.listing_name || "Unknown",
+          source: c.source || c.platform || "Market",
+          sourceUrl: c.sourceUrl || c.url,
+          rating: c.rating ?? c.starRating,
+          reviews: c.reviews ?? c.reviewCount,
+          avgRate: c.avgRate ?? c.avgAdr ?? c.price ?? 0,
+          weekdayRate: c.weekdayRate ?? c.weekday_rate,
+          weekendRate: c.weekendRate ?? c.weekend_rate,
+        }));
+        setData({
+          listingId,
+          dateFrom,
+          dateTo,
+          p25Rate: d.p25,
+          p50Rate: d.p50,
+          p75Rate: d.p75,
+          p90Rate: d.p90,
+          avgWeekday: d.avgWeekday,
+          avgWeekend: d.avgWeekend,
+          recommendedWeekday: d.recommendedWeekday,
+          recommendedWeekend: d.recommendedWeekend,
+          verdict: d.verdict,
+          rateTrend: d.rateTrend,
+          trendPct: d.trendPct,
+          reasoning: d.reasoning,
+          comps,
+        });
+      })
+      .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, [listingId]);
+  }, [listingId, orgId]);
 
   if (loading) {
     return (
@@ -103,7 +144,7 @@ export function BenchmarkPanel({ listingId, listingName, currency = "AED" }: Pro
       <div className="rounded-xl border border-white/5 bg-white/[0.02] px-5 py-8 text-center">
         <BarChart2 className="h-7 w-7 text-text-disabled mx-auto mb-2" />
         <p className="text-text-tertiary text-sm">No benchmark data for <strong className="text-text-primary">{listingName}</strong></p>
-        <p className="text-text-disabled text-xs mt-1">Run Market Analysis to fetch comp set rates.</p>
+        <p className="text-text-disabled text-xs mt-1">Click <strong>Sync Events</strong> above to fetch live competitor rates from the market.</p>
       </div>
     );
   }

@@ -1,65 +1,72 @@
-/**
- * GET  /api/groups/[id]/rules   — list all rules for this group
- * POST /api/groups/[id]/rules   — create a new rule scoped to this group
- *
- * Creating one group rule automatically fans it out to all group members
- * at pipeline-run time (pipeline.ts merges group rules with +1000 priority offset).
- */
-
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/server";
-import { connectDB, PropertyGroup, PricingRule } from "@/lib/db";
-import mongoose from "mongoose";
+import { connectToDatabase } from "@/lib/db/mongodb";
+import { PricingRule } from "@/lib/db/models";
+import { Types } from "mongoose";
 
-type Ctx = { params: Promise<{ id: string }> };
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  try {
+    const params = await props.params;
+    const { id } = params;
 
-function categoryFromRuleType(ruleType: string) {
-  if (ruleType === "SEASON") return "SEASONS";
-  if (ruleType === "ADMIN_BLOCK") return "DATE_OVERRIDES";
-  if (ruleType === "LOS_DISCOUNT") return "LOS_DISCOUNTS";
-  return "LEAD_TIME";
+    if (!id || !Types.ObjectId.isValid(id)) {
+      return NextResponse.json([], { status: 400 });
+    }
+
+    await connectToDatabase();
+    const groupOid = new Types.ObjectId(id);
+
+    const rules = await PricingRule.find({ groupId: groupOid }).lean();
+
+    const mappedRules = rules.map((r: any) => ({
+      ...r,
+      _id: r._id.toString(),
+      orgId: r.orgId.toString(),
+      listingId: r.listingId?.toString() || null,
+      groupId: r.groupId?.toString() || null
+    }));
+
+    return NextResponse.json(mappedRules, { status: 200 });
+  } catch (err: any) {
+    console.error(`[api/groups/rules] GET error`, err);
+    return NextResponse.json([], { status: 500 });
+  }
 }
 
-export async function GET(_req: NextRequest, { params }: Ctx) {
-  const { id } = await params;
-  const session = await getSession();
-  if (!session?.orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  try {
+    const params = await props.params;
+    const { id } = params;
+    const body = await req.json();
 
-  await connectDB();
-  const gid = new mongoose.Types.ObjectId(id);
-  const orgId = new mongoose.Types.ObjectId(session.orgId);
+    if (!id || !Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid groupId" }, { status: 400 });
+    }
 
-  const group = await PropertyGroup.findOne({ _id: gid, orgId }).lean();
-  if (!group) return NextResponse.json({ error: "Group not found" }, { status: 404 });
+    await connectToDatabase();
+    const { PropertyGroup } = await import("@/lib/db/models");
+    const group = await PropertyGroup.findById(new Types.ObjectId(id)).lean();
+    if (!group) {
+      return NextResponse.json({ error: "Group not found" }, { status: 404 });
+    }
 
-  const rules = await PricingRule.find({ groupId: gid, scope: "group" })
-    .sort({ priority: 1 })
-    .lean();
+    const doc = await PricingRule.create({
+      ...body,
+      orgId: group.orgId,
+      groupId: group._id,
+      scope: "group"
+    });
 
-  return NextResponse.json(rules);
-}
+    const mapped = {
+      ...doc.toObject(),
+      _id: doc._id.toString(),
+      orgId: doc.orgId.toString(),
+      groupId: doc.groupId?.toString() || null,
+      listingId: doc.listingId?.toString() || null
+    };
 
-export async function POST(req: NextRequest, { params }: Ctx) {
-  const { id } = await params;
-  const session = await getSession();
-  if (!session?.orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  await connectDB();
-  const gid = new mongoose.Types.ObjectId(id);
-  const orgId = new mongoose.Types.ObjectId(session.orgId);
-
-  const group = await PropertyGroup.findOne({ _id: gid, orgId }).lean();
-  if (!group) return NextResponse.json({ error: "Group not found" }, { status: 404 });
-
-  const body = await req.json();
-  const rule = await PricingRule.create({
-    ...body,
-    ruleCategory: body?.ruleCategory || categoryFromRuleType(String(body?.ruleType || "EVENT")),
-    orgId,
-    groupId: gid,
-    listingId: undefined,
-    scope: "group",
-  });
-
-  return NextResponse.json(rule, { status: 201 });
+    return NextResponse.json(mapped, { status: 201 });
+  } catch (err: any) {
+    console.error(`[api/groups/rules] POST error`, err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
 }

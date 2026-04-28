@@ -1,109 +1,111 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import mongoose from "mongoose";
-import { connectDB, Listing, InventoryMaster } from "@/lib/db";
-import { verifyAccessToken } from "@/lib/auth/jwt";
-import { ContextPanel } from "@/components/layout/context-panel";
-import { GuestChatInterface } from "@/components/chat/guest-chat-interface";
+import { verifyToken } from "@/lib/auth/jwt";
+import { GuestInboxWired } from "@/components/chat/guest-inbox-wired";
+import type { PropertyWithMetrics } from "@/types";
+import { connectToDatabase } from "@/lib/db/mongodb";
+import { Listing, InventoryMaster, Reservation } from "@/lib/db/models";
+import { Types } from "mongoose";
 
 export const metadata = {
     title: "Guest Inbox | PriceOS Intelligence",
     description: "Real-time guest communication and AI-powered relationship management.",
 };
 
-export default async function GuestChatPage({
-    searchParams,
-}: {
-    searchParams?: Promise<{ propertyId?: string; conversationId?: string }>;
-}) {
+export default async function GuestChatPage() {
     const cookieStore = await cookies();
-    const resolvedSearchParams = searchParams ? await searchParams : undefined;
-    const initialPropertyId = resolvedSearchParams?.propertyId || null;
-    const initialConversationId = resolvedSearchParams?.conversationId || null;
-
     const token = cookieStore.get("priceos-session")?.value;
     if (!token) redirect("/login");
 
-    let orgObjectId: mongoose.Types.ObjectId;
+    let orgObjectId: string;
     try {
-        const payload = verifyAccessToken(token);
-        orgObjectId = new mongoose.Types.ObjectId(payload.orgId);
+        const payload = verifyToken(token) as any;
+        if (!payload) redirect("/login");
+        orgObjectId = payload.orgId;
     } catch {
         redirect("/login");
     }
 
-    await connectDB();
+    let propertiesWithMetrics: PropertyWithMetrics[] = [];
+    try {
+        await connectToDatabase();
+        const orgOid = new Types.ObjectId(orgObjectId);
+        
+        const listings = await Listing.find({ orgId: orgOid }).lean();
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split("T")[0];
-    const plus14 = new Date(today);
-    plus14.setDate(plus14.getDate() + 14);
-    const plus14Str = plus14.toISOString().split("T")[0];
+        if (listings.length > 0) {
+            const now = new Date();
+            const fromDate = now.toISOString().split("T")[0];
+            const toDate = new Date(now.getTime() + 29 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-    // 1. Fetch only active listings for this org
-    const allListings = await Listing.find({ orgId: orgObjectId!, isActive: true }).lean();
+            const [invDocs, resDocs] = await Promise.all([
+                InventoryMaster.find({
+                    orgId: orgOid,
+                    date: { $gte: fromDate, $lte: toDate }
+                }).lean(),
+                Reservation.find({ orgId: orgOid }).lean()
+            ]);
 
-    // 2. Aggregate occupancy/avg_price for next 14 days per listing
-    const statsResult = await InventoryMaster.aggregate([
-        { $match: { orgId: orgObjectId!, date: { $gte: todayStr, $lte: plus14Str } } },
-        {
-            $group: {
-                _id: "$listingId",
-                totalDays: { $sum: 1 },
-                bookedDays: {
-                    $sum: { $cond: [{ $eq: ["$status", "booked"] }, 1, 0] },
-                },
-                blockedDays: {
-                    $sum: { $cond: [{ $eq: ["$status", "blocked"] }, 1, 0] },
-                },
-                avgPrice: { $avg: "$currentPrice" },
-            },
-        },
-    ]);
-    // Compute occupancy in JS (DocumentDB doesn't support $round)
-    statsResult.forEach((s: any) => {
-        const avail = s.totalDays - s.blockedDays;
-        s.occupancy = avail > 0 ? Math.round((s.bookedDays / avail) * 100) : 0;
-    });
+            const invByListing: Record<string, any[]> = {};
+            invDocs.forEach((d: any) => {
+                const lid = d.listingId?.toString() || "";
+                if (!invByListing[lid]) invByListing[lid] = [];
+                invByListing[lid].push(d);
+            });
 
-    // 3. Merge stats into listing objects
-    const plainListings = JSON.parse(JSON.stringify(allListings));
-    const propertiesWithMetrics = plainListings.map((listing: any) => {
-        const listingIdStr = String(listing._id);
-        const stat = statsResult.find((s) => String(s._id) === listingIdStr);
+            const resByListing: Record<string, any[]> = {};
+            resDocs.forEach((r: any) => {
+                const lid = r.listingId?.toString() || "";
+                if (!resByListing[lid]) resByListing[lid] = [];
+                resByListing[lid].push(r);
+            });
 
-        return {
-            ...listing,
-            id: listingIdStr,
-            _id: listingIdStr,
-            occupancy: stat ? Number(stat.occupancy) : 0,
-            avgPrice:
-                stat && Number(stat.avgPrice) > 0
-                    ? Number(stat.avgPrice)
-                    : Number(listing.price),
-        };
-    });
-    const initialProperty = initialPropertyId
-        ? propertiesWithMetrics.find((listing: any) => listing.id === initialPropertyId)
-        : null;
+            propertiesWithMetrics = listings.map((l: any) => {
+                const lid = l._id.toString();
+                const listingInv = invByListing[lid] || [];
+                const listingRes = resByListing[lid] || [];
+
+                const bookedDays = listingInv.filter((x: any) => x.status === "booked").length;
+                const occupancy = listingInv.length > 0 ? Math.round((bookedDays / listingInv.length) * 100) : 0;
+                
+                const sumPrices = listingInv.reduce((sum: number, x: any) => sum + Number(x.currentPrice || 0), 0);
+                const avgPrice = listingInv.length > 0 ? Math.round(sumPrices / listingInv.length) : Math.round(Number(l.price || 0));
+
+                return {
+                    id: lid,
+                    _id: lid,
+                    name: l.name || "Unknown",
+                    city: l.city || "",
+                    area: l.area || "",
+                    bedrooms: l.bedroomsNumber || 0,
+                    bathrooms: l.bathroomsNumber || 0,
+                    basePrice: Number(l.price || 0),
+                    price: Number(l.price || 0),
+                    currency: l.currencyCode || "AED",
+                    currencyCode: l.currencyCode || "AED",
+                    priceFloor: Number(l.priceFloor || 0),
+                    priceCeiling: Number(l.priceCeiling || 0),
+                    capacity: l.personCapacity || 0,
+                    hostawayId: l.hostawayId || "",
+                    propertyType: String(l.propertyTypeId || "N/A"),
+                    isActive: Boolean(l.isActive),
+                    isActivated: Boolean(l.isActive),
+                    occupancyPct: occupancy,
+                    occupancy: occupancy,
+                    avgPrice: avgPrice,
+                    pendingProposals: listingInv.filter((x: any) => x.proposalStatus === "pending").length,
+                    totalReservations: listingRes.length,
+                    createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : null,
+                };
+            });
+        }
+    } catch (err) {
+        console.error("[guest-chat page] failed to load properties", err);
+    }
 
     return (
         <div className="flex h-full overflow-hidden">
-            <div id="tour-property-list">
-                <ContextPanel properties={propertiesWithMetrics} />
-            </div>
-
-            {/* Center Guest Chat Panel */}
-            <div className="flex-1 min-w-[500px] flex flex-col h-full bg-background relative z-10 transition-all duration-300">
-                <GuestChatInterface
-                    initialPropertyId={initialPropertyId}
-                    initialPropertyName={initialProperty?.name || null}
-                    initialPropertyCurrency={initialProperty?.currencyCode || "AED"}
-                    initialConversationId={initialConversationId}
-                />
-            </div>
-
+            <GuestInboxWired orgId={orgObjectId} properties={propertiesWithMetrics} />
         </div>
     );
 }

@@ -6,6 +6,8 @@ import {
     Rule,
     BookingContext,
 } from "./waterfall";
+import { getMarketContext, AirbticsMarketContext } from "@/lib/airbtics/market-context";
+import { getEnv } from "@/lib/env";
 
 function toNum(val: string | number | null | undefined): number {
     if (val === null || val === undefined) return 0;
@@ -63,7 +65,22 @@ export async function runPipeline(
             throw new Error(`Listing ${listingId} not found`);
         }
 
-        // ── Resolve effective base price from benchmark data ───────────────────
+        // ── 0. Fetch Quantitative Market Intelligence (Airbtics) ──
+        // This is aggressively cached via DB+Memory in getMarketContext to avoid redundant API calls across properties in the same market.
+        const dubaiFallbackId = getEnv("AIRBTICS_DUBAI_MARKET_ID") || "2286";
+        const listingAny = listing as any;
+        const marketId = listingAny.marketId || dubaiFallbackId;
+        const bedrooms = listingAny.bedrooms || 1;
+        
+        let marketCtx: AirbticsMarketContext | null = null;
+        try {
+            marketCtx = await getMarketContext(marketId, bedrooms);
+            console.log(`[Pipeline] Attached Airbtics Market Intel for ${marketId} (${bedrooms}BR)`);
+        } catch (err: any) {
+            console.warn(`[Pipeline] Failed to fetch Airbtics data for ${marketId}: ${err.message}`);
+        }
+
+        // ── 1. Resolve effective base price from benchmark data ───────────────────
         // Priority: benchmark.recommendedWeekday → benchmark.p50Rate → listing.price (Hostaway)
         // This wires competitor ADR into the engine so pricing is market-anchored, not static.
         const latestBenchmark = await BenchmarkData.findOne({
@@ -381,7 +398,27 @@ export async function runPipeline(
                     )
                     : occupancyForDay;
 
-            const dayConfig: ListingConfig = { ...config, currentOccupancyPct: blendedOccupancyForDay };
+            // ── AIRBTICS MARKET PACING INJECTION ──
+            let marketPacingAdjPct = 0;
+            if (marketCtx && Array.isArray(marketCtx.pacing)) {
+                // Find pacing entry for this specific future date
+                const pacingEntry = marketCtx.pacing.find((p: any) => p.date === ds);
+                if (pacingEntry) {
+                    const pacingOccupancy = Number(pacingEntry.occupancy) || 0; // expected 0.0 to 1.0 or 0 to 100
+                    const occPct = pacingOccupancy > 1 ? pacingOccupancy : pacingOccupancy * 100;
+                    
+                    // Basic Market-driven Yield Strategy based on Airbtics data:
+                    if (occPct >= 80) marketPacingAdjPct = 20; // Severe surge
+                    else if (occPct >= 65) marketPacingAdjPct = 10; // Medium surge
+                    else if (occPct < 20 && leadTime <= 14) marketPacingAdjPct = -10; // Dead market, drop prices
+                }
+            }
+
+            const dayConfig: ListingConfig = { 
+                ...config, 
+                currentOccupancyPct: blendedOccupancyForDay,
+                marketPacingAdjPct
+            };
             const result = computeDay(currentDate, today, dayConfig, allRules, bookingCtx);
 
             bulkOps.push({

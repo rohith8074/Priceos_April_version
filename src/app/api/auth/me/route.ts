@@ -1,49 +1,84 @@
-import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/server";
-import { connectDB, Organization, MarketTemplate } from "@/lib/db";
+import { NextRequest, NextResponse } from "next/server";
+import { verifyToken } from "@/lib/auth/jwt";
+import { connectToDatabase } from "@/lib/db/mongodb";
+import { User } from "@/lib/db/models/User";
+import { Organization } from "@/lib/db/models/Organization";
 
-export const dynamic = "force-dynamic";
-
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const token = req.cookies.get("priceos-session")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    await connectDB();
-    const org = await Organization.findById(session.orgId).select("-passwordHash -refreshToken");
-    if (!org) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+    const payload = verifyToken(token) as any;
+    if (!payload || !payload.sub) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    // Attach market template defaults
-    const marketTemplate = await MarketTemplate.findOne({ marketCode: org.marketCode });
+    await connectToDatabase();
+
+    const sub = payload.sub as string;
+    const isObjectId = /^[a-f0-9]{24}$/.test(sub);
+
+    let subject: any = null;
+    let orgId: string | undefined;
+
+    // Try ObjectId lookup across both collections
+    if (isObjectId) {
+      subject = await User.findById(sub).lean();
+      if (!subject) {
+        subject = await Organization.findById(sub).lean();
+        if (subject) orgId = subject._id.toString();
+      } else {
+        orgId = subject.orgId?.toString();
+      }
+    }
+
+    // Fallback: email lookup
+    if (!subject) {
+      const email = payload.email || sub;
+      subject = await User.findOne({ email }).lean();
+      if (!subject) {
+        subject = await Organization.findOne({ email }).lean();
+        if (subject) orgId = subject._id.toString();
+      } else {
+        orgId = subject.orgId?.toString();
+      }
+    }
+
+    if (!subject) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // If subject is a User, resolve their org
+    let organization: any = null;
+    const resolvedOrgId = payload.orgId || orgId;
+    if (resolvedOrgId) {
+      organization = await Organization.findById(resolvedOrgId).lean();
+    }
 
     return NextResponse.json({
-      success: true,
       user: {
-        id: org._id.toString(),
-        email: org.email,
-        name: org.fullName || org.name,
-        role: org.role,
-        orgId: org._id.toString(),
-        plan: org.plan,
-        marketCode: org.marketCode,
-        currency: org.settings?.overrides?.currency || org.currency,
-        timezone: org.settings?.overrides?.timezone || org.timezone,
-        marketTemplate: marketTemplate
-          ? {
-              displayName: marketTemplate.displayName,
-              flag: marketTemplate.flag,
-              weekendDefinition: marketTemplate.weekendDefinition,
-              guardrailDefaults: marketTemplate.guardrailDefaults,
-            }
-          : null,
+        id: subject._id.toString(),
+        email: subject.email,
+        name: subject.name || subject.fullName || subject.email,
+        role: subject.role || "owner",
+        orgId: resolvedOrgId,
+        isApproved: subject.isApproved !== false,
+        onboardingStep: subject.onboarding?.step || subject.onboardingStep || "complete",
       },
+      organization: organization ? {
+        id: organization._id.toString(),
+        name: organization.name,
+        marketCode: organization.marketCode,
+        currency: organization.currency,
+        plan: organization.plan,
+        systemState: organization.systemState,
+      } : null,
     });
-  } catch (e) {
-    console.error("[Auth/Me]", e);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  } catch (err) {
+    console.error("[auth/me]", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

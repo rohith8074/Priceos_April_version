@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { verifyAccessToken } from "@/lib/auth/jwt";
-import { connectDB, Organization } from "@/lib/db";
+import { verifyToken } from "@/lib/auth/jwt";
 import { OnboardingWizard } from "@/components/onboarding/wizard";
 
 /**
@@ -19,9 +18,10 @@ export default async function OnboardingPage() {
     redirect("/login");
   }
 
-  let payload;
+  let payload: any;
   try {
-    payload = verifyAccessToken(token!);
+    payload = verifyToken(token!) as any;
+    if (!payload) redirect("/login");
   } catch {
     redirect("/login");
   }
@@ -30,23 +30,6 @@ export default async function OnboardingPage() {
     redirect("/pending-approval");
   }
 
-  await connectDB();
-  const org = await Organization.findById(payload.orgId)
-    .select("onboarding hostawayApiKey")
-    .lean();
-
-  if (!org) {
-    redirect("/login");
-  }
-
-  // Determine effective step (same logic as login route)
-  const step = org.onboarding?.step
-    ?? (org.hostawayApiKey ? "complete" : "connect");
-
-  // If already complete, go to dashboard
-  if (step === "complete") {
-    redirect("/dashboard");
-  }
-
-  return <OnboardingWizard initialStep={step} />;
+  // Onboarding state is fetched client-side by the wizard via /api/onboarding
+  return <OnboardingWizard initialStep="connect" />;
 }

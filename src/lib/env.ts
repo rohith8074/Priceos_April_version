@@ -30,37 +30,7 @@ export function getLyzrConfig() {
   return {
     apiKey: getEnv("LYZR_API_KEY"),
     chatUrl: getEnv("LYZR_API_URL"),
-    streamUrl: getEnv("LYZR_STREAM_URL"),
-    baseUrl: getEnv("LYZR_BASE_URL"),
-    ragBaseUrl: getEnv("LYZR_RAG_BASE_URL"),
-    uploadUrl: getEnv("LYZR_UPLOAD_URL"),
-    crawlUrl: getEnv("LYZR_RAG_CRAWL_URL"),
-    contextId: getEnv("LYZR_CONTEXT_ID"),
   };
-}
-
-export function requireLyzrChatUrl() {
-  return requireEnv("LYZR_API_URL");
-}
-
-export function requireLyzrBaseUrl() {
-  return requireEnv("LYZR_BASE_URL");
-}
-
-export function requireLyzrUploadUrl() {
-  return requireEnv("LYZR_UPLOAD_URL");
-}
-
-export function requireLyzrRagBaseUrl() {
-  return requireEnv("LYZR_RAG_BASE_URL");
-}
-
-export function requireLyzrRagCrawlUrl() {
-  return requireEnv("LYZR_RAG_CRAWL_URL");
-}
-
-export function getAgentId(name: string, ...legacyNames: string[]) {
-  return getEnv(name, ...legacyNames);
 }
 
 export function requireHostawayApiBaseUrl() {

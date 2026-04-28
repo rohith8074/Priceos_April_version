@@ -8,6 +8,7 @@ import {
   ReactNode,
 } from "react";
 import { useContextStore } from "@/stores/context-store";
+import { getOrgId } from "@/lib/auth/client";
 import type { AgentCacheContext, SyncStatusResponse } from "./types";
 import { isWithin15Minutes } from "./utils";
 
@@ -27,7 +28,11 @@ export function AgentCacheProvider({ children }: { children: ReactNode }) {
 
   const refresh = async () => {
     try {
+      const orgId = getOrgId();
+      if (!orgId) return;
+
       const params = new URLSearchParams({
+        orgId,
         context: contextType,
         ...(propertyId ? { propertyId: propertyId.toString() } : {}),
       });

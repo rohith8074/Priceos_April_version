@@ -31,6 +31,12 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // ── Turbopack root (dev mode) ────────────────────────────────────────────────
+  // Prevents Turbopack from crawling up to the parent lockfile and failing to
+  // resolve tailwindcss-animate / other CSS plugins from the wrong node_modules.
+  turbopack: {
+    root: __dirname,
+  },
   // ── Security headers on all routes ──────────────────────────────────────────
   async headers() {
     return [

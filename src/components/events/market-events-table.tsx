@@ -53,6 +53,7 @@ export function MarketEventsTable() {
             setError(null);
             try {
                 const params = new URLSearchParams();
+                params.set("orgId", "69d776a671c7b939aaf49053");
                 if (propertyId) params.set("listingId", String(propertyId));
                 if (dateRange?.from) params.set("dateFrom", format(dateRange.from, "yyyy-MM-dd"));
                 if (dateRange?.to) params.set("dateTo", format(dateRange.to, "yyyy-MM-dd"));
@@ -111,21 +112,51 @@ export function MarketEventsTable() {
         );
     }
 
+    const handleRunAgent = async () => {
+        setLoading(true);
+        try {
+            await fetch('/api/market-setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    orgId: "69d776a671c7b939aaf49053",
+                    context: {
+                        type: contextType,
+                        propertyId: propertyId
+                    },
+                    dateRange: dateRange
+                })
+            });
+            // Re-trigger the fetch which will update the UI
+            triggerMarketRefresh();
+        } catch (e) {
+            console.error("Failed to run market agent", e);
+            setLoading(false);
+        }
+    };
+
     if (events.length === 0) {
         return (
             <Card className="flex flex-col h-full border-dashed border-border/50 shadow-none bg-muted/5 min-h-[350px]">
                 <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-5 p-12 text-center">
                     <div className="h-16 w-16 rounded-full bg-background border border-border/50 shadow-sm flex items-center justify-center relative">
                         <CalendarIcon className="h-7 w-7 opacity-20" />
-                        <div className="absolute -bottom-1 -right-1 bg-muted rounded-full p-1 border border-border/50">
-                            <Sparkles className="h-3 w-3 opacity-30" />
+                        <div className="absolute -bottom-1 -right-1 bg-amber-500/10 rounded-full p-1 border border-amber-500/30">
+                            <Sparkles className="h-3 w-3 text-amber-500" />
                         </div>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                         <p className="font-black text-sm text-foreground uppercase tracking-widest">No Market Signals Found</p>
                         <p className="text-[11px] font-medium leading-relaxed max-w-[280px] mx-auto text-muted-foreground">
-                            Use the <strong className="text-foreground">"Run Aria"</strong> button in the chat area to scan the internet for events in your date range.
+                            The database has no events for this period. Run the AI Market Agent to scrape the live web for local events, news, and geopolitical signals.
                         </p>
+                        <button
+                            onClick={handleRunAgent}
+                            className="mt-2 inline-flex items-center gap-2 px-5 py-2 rounded-full bg-amber-500 text-white text-[11px] font-black uppercase tracking-widest hover:bg-amber-600 transition-all shadow-sm shadow-amber-500/20"
+                        >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            Run Market Agent
+                        </button>
                     </div>
                 </div>
             </Card>
@@ -156,6 +187,18 @@ export function MarketEventsTable() {
                         <Badge variant="secondary" className="text-[10px] font-medium font-mono">
                             {events.length} records
                         </Badge>
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleRunAgent();
+                            }}
+                            disabled={loading || isMarketAnalysisRunning}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors border border-amber-500/20 disabled:opacity-50"
+                            title="Force sync live market signals via AI"
+                        >
+                            <Sparkles className={cn("h-3 w-3", loading ? "animate-spin" : "")} />
+                            <span className="text-[9px] font-black uppercase tracking-widest">Sync Agent</span>
+                        </button>
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -239,10 +282,19 @@ export function MarketEventsTable() {
                                                     {ev.area && (
                                                         <Badge variant="outline" className="text-[9px] bg-blue-500/5 text-blue-500 border-blue-500/20">{ev.area}</Badge>
                                                     )}
+                                                    {ev.source === 'market_template' && (
+                                                        <Badge variant="outline" className="text-[9px] bg-blue-500/10 text-blue-500 border-blue-500/30">From Database</Badge>
+                                                    )}
+                                                    {ev.source === 'perplexity' && (
+                                                        <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/30 flex items-center gap-1">
+                                                            <Sparkles className="h-2 w-2" />
+                                                            Agent AI Search
+                                                        </Badge>
+                                                    )}
                                                     {ev.source && ev.source.startsWith('http') && (
-                                                        <Badge variant="outline" className="text-[9px] bg-emerald-500/5 text-emerald-600 border-emerald-500/20 flex items-center gap-1">
+                                                        <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 flex items-center gap-1">
                                                             <div className="h-1 w-1 bg-emerald-500 rounded-full animate-pulse" />
-                                                            {new URL(ev.source).hostname.replace('www.', '')} (Verified)
+                                                            Live Web Source
                                                         </Badge>
                                                     )}
                                                 </div>

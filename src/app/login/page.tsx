@@ -46,6 +46,12 @@ function SignInForm() {
                 router.push("/onboarding");
                 return;
             }
+            // Store token for direct backend calls
+            if (data.accessToken) {
+                localStorage.setItem("priceos-token", data.accessToken);
+                localStorage.setItem("priceos-orgId", data.user?.orgId || "");
+            }
+
             router.push("/dashboard");
             router.refresh();
         } catch {
@@ -139,6 +145,12 @@ function SignUpForm() {
                 setLoading(false);
                 return;
             }
+            // Store token for direct backend calls (if returned by register/auto-login)
+            if (data.accessToken) {
+                localStorage.setItem("priceos-token", data.accessToken);
+                localStorage.setItem("priceos-orgId", data.user?.orgId || "");
+            }
+
             // New users always go to pending approval
             router.push("/pending-approval");
             router.refresh();

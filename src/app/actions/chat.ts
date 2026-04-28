@@ -1,8 +1,6 @@
 'use server'
 
-import { connectDB, ChatMessage } from '@/lib/db'
 import { getSession } from '@/lib/auth/server'
-import mongoose from 'mongoose'
 
 export async function saveChatMessage(data: {
   sessionId: string
@@ -11,20 +9,9 @@ export async function saveChatMessage(data: {
   propertyId?: string
   metadata?: Record<string, unknown>
 }) {
-  await connectDB()
+  // Chat message persistence is handled by the backend API (/api/chat/history)
+  // This server action is kept for compatibility but no longer writes directly to MongoDB.
   const session = await getSession()
-  const orgId = session?.orgId
-    ? new mongoose.Types.ObjectId(session.orgId)
-    : new mongoose.Types.ObjectId()
-
-  await ChatMessage.create({
-    orgId,
-    sessionId: data.sessionId,
-    role: data.role as 'user' | 'assistant' | 'system',
-    content: data.content,
-    context: data.propertyId
-      ? { type: 'property', propertyId: new mongoose.Types.ObjectId(data.propertyId) }
-      : { type: 'portfolio' },
-    metadata: data.metadata ?? {},
-  })
+  if (!session?.orgId) return
+  void data // suppress unused var warning
 }

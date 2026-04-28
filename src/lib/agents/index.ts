@@ -25,3 +25,10 @@ export {
   type PricingProposal,
   type AnalysisResult,
 } from "./pricing-analyst-agent";
+
+export {
+  GuestAgent,
+  createGuestAgent,
+  type GuestMessageInput,
+  type GuestAgentOutput,
+} from "./guest-agent";

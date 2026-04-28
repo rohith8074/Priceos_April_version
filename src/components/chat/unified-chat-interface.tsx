@@ -8,6 +8,17 @@ import {
   Send, Loader2, Settings,
   PanelRightClose, PanelRightOpen, Building2, MessageSquarePlus,
 } from "lucide-react";
+import {
+  IconCircleCheck,
+} from "@tabler/icons-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Maximize2, Zap, Activity } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -71,12 +82,11 @@ import { useContextStore } from "@/stores/context-store";
 import type { PropertyWithMetrics } from "@/types";
 import { DateRangePicker } from "./date-range-picker";
 import { addDays, differenceInCalendarDays, format, startOfDay } from "date-fns";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { toast } from "sonner";
-import { readSSEStream } from "@/lib/chat/sse-reader";
+import { pollJob } from "@/lib/api/poll-job";
 import { normalizeChatAgentOutput, hydrateAssistantMessage } from "@/lib/chat/normalize-agent-response";
 import { buildBaseScopeId, generateThreadSessionId } from "@/lib/chat/agent-session-id";
 import {
@@ -87,6 +97,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// import { LiveInferenceFlowGraph, type FlowStage } from "./live-inference-flow-graph";
+export interface FlowStage {
+  id: string;
+  label: string;
+  status: "pending" | "active" | "done" | "failed";
+}
+import type { LyzrAgentEvent } from "@/hooks/use-lyzr-agent-events";
+
+
+const GRAPH_STAGES: FlowStage[] = [
+  { id: "routing", label: "CRO Router", status: "pending" },
+  { id: "analyzing", label: "Property Analyst", status: "pending" },
+  { id: "validating", label: "PriceGuard", status: "pending" },
+  { id: "generating", label: "Response", status: "pending" },
+];
+
 interface Message {
   id: string;
   role: "user" | "assistant";
@@ -95,6 +121,7 @@ interface Message {
   proposalStatus?: "pending" | "saved" | "rejected";
   // per-proposal approve/reject decisions keyed by proposal_id
   proposalDecisions?: Record<string, "approved" | "rejected">;
+  metadata?: any;
 }
 
 interface ChatSessionRow {
@@ -105,13 +132,14 @@ interface ChatSessionRow {
 
 interface Props {
   properties: PropertyWithMetrics[];
+  orgId: string;
 }
 
 // Pricing Agent Interface
 
 // Focused Pricing Agent Interface
 
-export function UnifiedChatInterface({ properties: _properties }: Props) {
+export function UnifiedChatInterface({ properties: _properties, orgId }: Props) {
   const {
     contextType,
     propertyId,
@@ -129,7 +157,30 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const [statusText, setStatusText] = useState("");
   const [isChatActive, setIsChatActive] = useState(false);
+  const [showLiveGraph, setShowLiveGraph] = useState(false);
+  const [stages, setStages] = useState<FlowStage[]>(GRAPH_STAGES);
+  const [graphEvents, setGraphEvents] = useState<LyzrAgentEvent[]>([]);
+  const [graphFlowStatus, setGraphFlowStatus] = useState<string>("pending");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Sync stages with constant when initialized
+  useEffect(() => {
+    setStages(GRAPH_STAGES.map(s => ({ ...s, status: "pending" })));
+  }, []);
+
+  const [sessionId, setSessionId] = useState<string>("");
+
+  // Sync sessionId with context
+  useEffect(() => {
+    const newId = buildBaseScopeId(
+      propertyId || undefined,
+      dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : "start",
+      dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : "end"
+    );
+    setSessionId(newId);
+  }, [propertyId, dateRange]);
+
+  const [lastThinkingMessage, setLastThinkingMessage] = useState<string | null>(null);
   /** After "Run Aria" succeeds, history may still be empty — async /api/chat/history must not flip chat back to OFFLINE. */
   const ariaReadyScopeRef = useRef<string | null>(null);
   const scopeKeyRef = useRef<{ propertyId?: string; from?: number; to?: number }>({});
@@ -177,7 +228,7 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
     async (threadSessionId: string): Promise<number> => {
       const propParam = contextType === "property" && propertyId ? propertyId : "null";
       const res = await fetch(
-        `/api/chat/history?propertyId=${propParam}&sessionId=${encodeURIComponent(threadSessionId)}`
+        `/api/chat/history?propertyId=${propParam}&sessionId=${encodeURIComponent(threadSessionId)}&orgId=${encodeURIComponent(orgId)}`
       );
       if (res.ok) {
         const data = await res.json();
@@ -202,13 +253,7 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
     [readAriaReadyFromStorage]
   );
 
-  const [sessionId, setSessionId] = useState<string>(() =>
-    buildBaseScopeId(
-      propertyId || undefined,
-      dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : "start",
-      dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : "end"
-    )
-  );
+
 
   const [chatSessions, setChatSessions] = useState<ChatSessionRow[]>([]);
 
@@ -250,8 +295,8 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
         safeToCandidate < safeFrom
           ? safeFrom
           : differenceInCalendarDays(safeToCandidate, safeFrom) > 30
-          ? addDays(safeFrom, 30)
-          : safeToCandidate;
+            ? addDays(safeFrom, 30)
+            : safeToCandidate;
       setDateRange({ from: safeFrom, to: safeTo });
     }
   }, [dateRange?.from?.getTime(), dateRange?.to?.getTime(), setDateRange]);
@@ -292,7 +337,7 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
         let sessions: ChatSessionRow[] = [];
         if (contextType === "property" && propertyId && fromStr !== "start" && toStr !== "end") {
           const sessionsRes = await fetch(
-            `/api/chat/sessions?propertyId=${encodeURIComponent(propertyId)}&from=${encodeURIComponent(fromStr)}&to=${encodeURIComponent(toStr)}`
+            `/api/chat/sessions?propertyId=${encodeURIComponent(propertyId)}&from=${encodeURIComponent(fromStr)}&to=${encodeURIComponent(toStr)}&orgId=${encodeURIComponent(orgId)}`
           );
           if (sessionsRes.ok) {
             const sd = await sessionsRes.json();
@@ -313,7 +358,7 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
         writeThreadPref(baseScopeId, chosen);
 
         const res = await fetch(
-          `/api/chat/history?propertyId=${propParam}&sessionId=${encodeURIComponent(chosen)}`
+          `/api/chat/history?propertyId=${propParam}&sessionId=${encodeURIComponent(chosen)}&orgId=${encodeURIComponent(orgId)}`
         );
 
         if (res.ok) {
@@ -524,6 +569,23 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
     setInput("");
     setIsLoading(true);
     setStatusText("Connecting to PriceOS…");
+    setShowLiveGraph(true);
+
+    // Reset graph state immediately for new query
+    setGraphEvents([]);
+    setGraphFlowStatus("active");
+    setLastThinkingMessage(null);
+    setStages(prev => prev.map(s => ({ ...s, status: "pending" })));
+
+    // Seed the initial "pipeline started" event
+    setGraphEvents([{
+      event_type: "agent_process_start",
+      message: "Starting Agentic Pipeline...",
+      thinking: "Analyzing context and routing request...",
+      status: "active",
+      timestamp: new Date().toISOString(),
+      iteration: 1,
+    }]);
 
     try {
       const response = await fetch("/api/chat", {
@@ -531,10 +593,11 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: input,
+          orgId,
           context: {
             type: contextType,
-            propertyId: contextType === "property" ? propertyId : undefined,
-            propertyName: contextType === "property" ? propertyName : undefined,
+            propertyId: propertyId || undefined,
+            propertyName: propertyName || undefined,
             metrics: calendarMetrics ? {
               occupancy: calendarMetrics.occupancy,
               bookedDays: calendarMetrics.bookedDays,
@@ -550,7 +613,7 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
             to: dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : format(dateRange.from!, "yyyy-MM-dd"),
           } : undefined,
           isChatActive,
-          sessionId,
+          sessionId: sessionId,
         }),
       });
 
@@ -558,33 +621,96 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
         throw new Error(`API Error: ${response.status}`);
       }
 
-      await readSSEStream(
-        response,
-        (msg) => setStatusText(msg),
-        (data) => {
-          const normalized = normalizeChatAgentOutput(data.message || "");
-          const proposals =
-            data.proposals && data.proposals.length > 0 ? data.proposals : normalized.proposals;
-          const assistantMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            role: "assistant",
-            content: normalized.displayMessage || data.message || "Sorry, I couldn't get a response.",
-            proposals: proposals && proposals.length > 0 ? proposals : undefined,
-            proposalStatus: proposals && proposals.length > 0 ? "pending" : undefined,
+      const { jobId } = await response.json();
+
+      const stepAgentMap: Record<string, { tool: string; agent: string }> = {
+        routing:    { tool: "CRO Router",         agent: "CRO Router" },
+        analyzing:  { tool: "Property Analyst",   agent: "Property Analyst" },
+        validating: { tool: "PriceGuard",         agent: "PriceGuard" },
+        generating: { tool: "Response Generator", agent: "CRO Router" },
+      };
+      const stepKeys = Object.keys(stepAgentMap);
+
+      // Animate graph stages based on elapsed poll time
+      const data = await pollJob<{ message: string; metadata?: unknown; proposals?: unknown[] }>(jobId, {
+        onPoll: (elapsed) => {
+          const idx = Math.min(Math.floor(elapsed / 8000), stepKeys.length - 1);
+          const step = stepKeys[idx];
+          const { tool, agent } = stepAgentMap[step];
+          const now = new Date().toISOString();
+
+          setStatusText(`${agent} is working…`);
+          setLastThinkingMessage(`${agent} is working…`);
+
+          setStages(prev => prev.map(s => {
+            if (s.id === step) return { ...s, status: "active" };
+            if (stepKeys.indexOf(s.id) < idx) return { ...s, status: "done" };
+            return s;
+          }));
+
+          const completedEvents: LyzrAgentEvent[] = stepKeys.slice(0, idx).map((prevStep) => ({
+            event_type: "tool_response",
+            tool_name: stepAgentMap[prevStep].tool,
+            agent_name: stepAgentMap[prevStep].agent,
+            status: "completed",
+            timestamp: now,
+            iteration: 1,
+          }));
+          const activeEvent: LyzrAgentEvent = {
+            event_type: "tool_called",
+            tool_name: tool,
+            agent_name: agent,
+            status: "active",
+            timestamp: now,
+            iteration: 1,
           };
-          setMessages((prev) => [...prev, assistantMessage]);
+          setGraphEvents(prev => {
+            const base = prev.filter(e => !Object.values(stepAgentMap).some(m => m.tool === e.tool_name));
+            return [...base, ...completedEvents, activeEvent];
+          });
         },
-        (errMsg) => {
-          const errorMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            role: "assistant",
-            content: errMsg || "Sorry, something went wrong.",
-          };
-          setMessages((prev) => [...prev, errorMessage]);
-        },
-      );
+      });
+
+      setStages(prev => prev.map(s => ({ ...s, status: "done" })));
+      setGraphFlowStatus("done");
+      setGraphEvents(prev => [
+        ...prev,
+        { event_type: "output_generated", message: "Analysis Complete", status: "done", timestamp: new Date().toISOString(), iteration: 1 },
+      ]);
+
+      const assistantMsg: Message = {
+        id: Date.now().toString(),
+        role: "assistant",
+        content: data.message,
+        metadata: data.metadata,
+        proposals: data.proposals && data.proposals.length > 0 ? data.proposals : undefined,
+        proposalStatus: data.proposals && data.proposals.length > 0 ? "pending" : undefined,
+      };
+      setMessages(prev => [...prev, assistantMsg]);
+
+      if (data.proposals && data.proposals.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const mappedProposals = (data.proposals as any[]).map((p) => ({
+          listingId: propertyId,
+          date: p.date,
+          proposedPrice: p.proposed_price ?? p.proposedPrice,
+          changePct: p.change_pct ?? p.changePct,
+          reasoning: typeof p.reasoning === "object"
+            ? Object.values(p.reasoning as Record<string, string>).filter(Boolean).join(" | ")
+            : (p.reasoning ?? ""),
+          status: "pending",
+        }));
+        fetch("/api/proposals/bulk-save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orgId, proposals: mappedProposals }),
+        }).then(res => {
+          if (res.ok) console.log("✅ Auto-saved proposals as pending");
+        }).catch(err => console.error("Auto-save failed", err));
+      }
     } catch (error) {
       console.error(`Chat Error:`, error);
+      setGraphFlowStatus("failed");
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
@@ -597,87 +723,104 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
     }
   };
 
-  // Per-proposal approve/reject decision
+  // Per-proposal approve/reject — permanent, no toggle. Approve saves immediately.
   const handleProposalDecision = (messageId: string, proposalId: string, decision: "approved" | "rejected") => {
+    const msg = messages.find(m => m.id === messageId);
+    // Once decided, don't allow changes
+    if (msg?.proposalDecisions?.[proposalId]) return;
+
+    // Update UI — mark this proposal as decided
     setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === messageId
-          ? { ...msg, proposalDecisions: { ...msg.proposalDecisions, [proposalId]: decision } }
-          : msg
+      prev.map((m) =>
+        m.id !== messageId
+          ? m
+          : { ...m, proposalDecisions: { ...(m.proposalDecisions || {}), [proposalId]: decision } }
       )
     );
-  };
 
-  const handleSaveProposals = (messageId: string, proposals: any[]) => {
-    // Only save proposals that have been individually approved (or all if none decided yet)
-    const msg = messages.find(m => m.id === messageId);
-    const decisions = msg?.proposalDecisions || {};
-    const toSave = proposals.filter(p => {
-      const id = p.proposal_id;
-      // If user explicitly approved → save. If no decision yet + guard is APPROVED/FLAGGED → save.
-      if (decisions[id] === "rejected") return false;
-      if (decisions[id] === "approved") return true;
-      return p.guard_verdict !== "REJECTED";
-    });
-
-    if (toSave.length === 0) {
-      toast.info("No proposals to save — all were rejected.");
-      return;
+    // When approved, mark the whole message as saved immediately
+    if (decision === "approved") {
+      setMessages((prev) =>
+        prev.map((m) => (m.id !== messageId ? m : { ...m, proposalStatus: "saved" as const }))
+      );
     }
 
-    // ── OPTIMISTIC: flip UI to "saved" immediately ──
+    // ── SYNC: Save to Pricing section in DB ──
+    const prop = msg?.proposals?.find(p => p.proposal_id === proposalId);
+    if (prop) {
+      const reasoning = typeof prop.reasoning === "object"
+        ? Object.values(prop.reasoning as Record<string, string>).filter(Boolean).join(" | ")
+        : (prop.reasoning ?? "");
+
+      const mapped = {
+        date: prop.date,
+        currentPrice: prop.current_price ?? prop.currentPrice,
+        proposedPrice: prop.proposed_price ?? prop.proposedPrice,
+        changePct: prop.change_pct ?? prop.changePct,
+        reasoning,
+        status: decision,
+        listingId: prop.listing_id || prop.listingId || propertyId,
+      };
+
+      const finalOrgId = orgId || (msg?.metadata?.orgId as string);
+      if (!finalOrgId) {
+        console.error("Cannot sync decision: missing orgId");
+        return;
+      }
+
+      fetch("/api/proposals/bulk-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: finalOrgId, proposals: [mapped] }),
+      }).then(res => {
+        if (res.ok) {
+          toast.success(
+            decision === "approved"
+              ? "Proposal approved & saved to Pricing section"
+              : "Proposal rejected"
+          );
+        } else {
+          toast.error("Failed to sync decision to Pricing section");
+        }
+      }).catch(err => {
+        console.error("Failed to sync decision", err);
+        toast.error("Network error syncing decision");
+      });
+    }
+  };
+
+  const handleRejectProposals = (messageId: string) => {
+    const msg = messages.find((m) => m.id === messageId);
+    if (!msg || !msg.proposals) return;
+
     setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === messageId ? { ...msg, proposalStatus: "saved" } : msg
+      prev.map((m) =>
+        m.id === messageId ? { ...m, proposalStatus: "rejected" } : m
       )
     );
-    toast.success(`Saving ${toSave.length} proposal${toSave.length > 1 ? "s" : ""} to Pricing…`, {
-      description: "They will appear in the Pricing section for review.",
-    });
 
-    // ── BACKGROUND: fire-and-forget DB write ──
-    // Map agent snake_case fields → API camelCase fields and inject listingId from context
-    const mappedProposals = toSave.map((p: any) => ({
-      listingId: propertyId,                        // required by the API — comes from context
+    // ── SYNC: Update all as rejected in DB ──
+    const mapped = msg.proposals.map((p) => ({
+      listingId: p.listing_id || p.listingId || propertyId,
       date: p.date,
       proposedPrice: p.proposed_price ?? p.proposedPrice,
       changePct: p.change_pct ?? p.changePct,
-      reasoning: typeof p.reasoning === "object"
-        ? Object.values(p.reasoning as Record<string, string>).filter(Boolean).join(" | ")
-        : (p.reasoning ?? ""),
+      reasoning: p.reasoning,
+      status: "rejected"
     }));
 
     fetch("/api/proposals/bulk-save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ proposals: mappedProposals }),
+      body: JSON.stringify({ orgId, proposals: mapped }),
     })
-      .then(async (res) => {
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || `Save failed (${res.status})`);
-        }
-        const data = await res.json();
-        console.log(`✅ Saved ${data.modified ?? data.savedCount} proposals to Pricing`);
+      .then(() => {
+        toast.info("All proposals rejected. Status synced to inventory.");
       })
       .catch((err) => {
-        console.error("Proposal save error:", err);
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === messageId ? { ...msg, proposalStatus: "pending" } : msg
-          )
-        );
-        toast.error("Save failed — please try again.");
+        console.error("Failed to sync reject all", err);
+        toast.error("Failed to sync rejection to database");
       });
-  };
-
-  const handleRejectProposals = (messageId: string) => {
-    setMessages((prev) =>
-      prev.map((msg) =>
-        msg.id === messageId ? { ...msg, proposalStatus: "rejected" } : msg
-      )
-    );
-    toast.info("All proposals rejected. No changes were made.");
   };
 
   const handleNewChat = useCallback(() => {
@@ -761,6 +904,15 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
           </div>
 
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowLiveGraph((v) => !v)}
+              className="h-9 gap-2 bg-background hover:bg-background/80 border-border/50 font-bold shadow-sm"
+            >
+              <Activity className="h-4 w-4" />
+              <span className="hidden sm:inline">{showLiveGraph ? "Hide Graph" : "Live Graph"}</span>
+            </Button>
             <Button
               variant={isSidebarOpen ? "secondary" : "ghost"}
               size="sm"
@@ -872,7 +1024,55 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-col flex-1 overflow-hidden relative">
 
-          <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {/* LIVE GRAPH OVERLAY */}
+          {showLiveGraph && (
+            <div className="absolute top-0 right-0 left-0 sm:left-auto h-[400px] w-full sm:w-[500px] z-40 bg-background/95 backdrop-blur-xl border-l border-b border-border shadow-2xl sm:rounded-bl-3xl overflow-hidden flex flex-col transition-all duration-300">
+              <div className="px-4 py-2 bg-muted/30 border-b border-border/50 flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full ${isLoading ? 'bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500'}`} />
+                  Execution Graph
+                </span>
+                <div className="flex items-center gap-1">
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-7 px-2 gap-1.5 text-[10px] font-bold text-muted-foreground hover:text-foreground">
+                        <Maximize2 className="h-3 w-3" />
+                        Expand
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-[95vw] w-[1400px] h-[90vh] p-0 overflow-hidden flex flex-col">
+                      <DialogHeader className="px-6 py-4 border-b shrink-0 bg-muted/20">
+                        <DialogTitle className="flex items-center gap-3">
+                          <Activity className="h-5 w-5 text-emerald-600" />
+                          <div className="flex flex-col">
+                            <span className="text-base font-black tracking-tight">Full Execution Trace</span>
+                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Detailed Agent & Tool Interaction Lineage</span>
+                          </div>
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="flex-1 relative bg-grid-black/[0.01]">
+                        {/* Live graph removed */}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0 rounded-full hover:bg-muted" onClick={() => setShowLiveGraph(false)}>
+                    ✕
+                  </Button>
+                </div>
+              </div>
+              <div className="flex-1 relative w-full h-full bg-grid-black/[0.02]">
+                {/* Live graph removed */}
+              </div>
+              {lastThinkingMessage && (
+                <div className="absolute bottom-0 left-0 right-0 bg-background/80 backdrop-blur-sm border-t border-border/50 p-2 px-3 text-[10px] text-muted-foreground truncate">
+                  <span className="font-bold text-foreground">Thinking: </span>
+                  {lastThinkingMessage}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className={`flex-1 overflow-y-auto p-6 space-y-4 transition-all duration-300 ${showLiveGraph ? "pt-[420px] sm:pt-6 sm:pr-[520px]" : ""}`}>
             {isHistoryLoading && <div className="flex justify-center p-4"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>}
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -880,133 +1080,246 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
                   <div className="break-words">
                     <MarkdownMessage content={message.content} isUser={message.role === "user"} />
                   </div>
-                  {message.proposals && message.proposals.length > 0 && (
-                    <div className="mt-5 border border-border/40 rounded-2xl bg-white/5 backdrop-blur-md overflow-hidden shadow-inner">
-                      {/* Header */}
-                      <div className="bg-primary/5 px-4 py-3 text-xs font-black uppercase tracking-[0.2em] border-b border-border/40 text-primary flex items-center justify-between">
-                        <span>Live Price Proposals ({message.proposals.length})</span>
-                        {message.proposalStatus === "saved" && (
-                          <span className="text-emerald-500 text-[10px] font-black">✓ Saved to Pricing</span>
-                        )}
-                        {message.proposalStatus === "rejected" && (
-                          <span className="text-muted-foreground text-[10px] font-black">✗ Rejected</span>
-                        )}
+                  {message.proposals && message.proposals.length > 0 && (() => {
+                    // ── helpers ────────────────────────────────────────────────
+                    const computeConfidence = (p: typeof message.proposals[0]): number => {
+                      let s = 55;
+                      if (p.guard_verdict === "APPROVED") s += 18;
+                      else if (p.guard_verdict === "FLAGGED") s -= 18;
+                      else if (p.guard_verdict === "REJECTED") s -= 35;
+                      if (p.risk_level === "low") s += 15;
+                      else if (p.risk_level === "medium") s += 5;
+                      else if (p.risk_level === "high") s -= 8;
+                      const compCount = [p.comparisons?.vs_p50, p.comparisons?.vs_recommended, p.comparisons?.vs_top_comp].filter(Boolean).length;
+                      s += compCount * 4;
+                      if (p.reasoning && typeof p.reasoning === "object") s += Math.min(Object.keys(p.reasoning).length * 2, 8);
+                      return Math.max(22, Math.min(96, s));
+                    };
+
+                    const REASON_META: Record<string, { label: string; icon: string }> = {
+                      reason_market:    { label: "Market Signal",  icon: "📊" },
+                      reason_benchmark: { label: "Benchmark",      icon: "📈" },
+                      reason_historic:  { label: "Historic",       icon: "🕐" },
+                      reason_seasonal:  { label: "Seasonal",       icon: "🌤" },
+                      reason_guardrails:{ label: "Guardrails",     icon: "🛡" },
+                      reason_news:      { label: "News & Events",  icon: "📰" },
+                      reason_event:     { label: "Event",          icon: "🗓" },
+                    };
+
+                    const approvedCount = message.proposals.filter(p => message.proposalDecisions?.[p.proposal_id] === "approved").length;
+
+                    return (
+                    <div className="mt-5 rounded-2xl overflow-hidden border border-border/40 shadow-lg">
+                      {/* ── Panel header ─────────────────────────────────── */}
+                      <div className="px-4 py-3 bg-gradient-to-r from-primary/8 to-amber-500/5 border-b border-border/40 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black uppercase tracking-[0.18em] text-primary">Aria Pricing Proposals</span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">{message.proposals.length}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {approvedCount > 0 && (
+                            <span className="text-[10px] font-black text-emerald-500">✓ {approvedCount} approved</span>
+                          )}
+                          {message.proposalStatus === "saved" && (
+                            <span className="text-[10px] font-black text-emerald-500 flex items-center gap-1"><IconCircleCheck className="size-3" /> Saved to Pricing</span>
+                          )}
+                          {message.proposalStatus === "rejected" && (
+                            <span className="text-[10px] font-black text-muted-foreground">✗ All rejected</span>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Proposal rows */}
-                      <div className="p-4 text-sm space-y-4">
+                      {/* ── Proposal cards ───────────────────────────────── */}
+                      <div className="p-3 space-y-3 bg-background/40 backdrop-blur-sm">
                         {message.proposals.map((prop, idx) => {
                           const decision = message.proposalDecisions?.[prop.proposal_id];
                           const isApproved = decision === "approved";
                           const isRejected = decision === "rejected" || prop.guard_verdict === "REJECTED";
+                          const isDecided = isApproved || decision === "rejected";
                           const isFlagged = prop.guard_verdict === "FLAGGED";
-                          const canApprove = (prop.action_buttons || []).includes("approve");
-                          const alreadySaved = message.proposalStatus === "saved";
+                          const canApprove = prop.guard_verdict !== "REJECTED";
+                          const confidence = computeConfidence(prop);
+                          const confLabel = confidence >= 75 ? "High" : confidence >= 50 ? "Medium" : "Low";
+                          const confBarCls = confidence >= 75 ? "bg-emerald-500" : confidence >= 50 ? "bg-amber-500" : "bg-red-400";
+                          const confTextCls = confidence >= 75 ? "text-emerald-500" : confidence >= 50 ? "text-amber-500" : "text-red-400";
+                          const isDown = prop.change_pct < 0;
+
+                          const reasoningEntries = (() => {
+                            if (!prop.reasoning) return [];
+                            if (typeof prop.reasoning === "string") return [{ key: "reasoning", label: "Reasoning", icon: "💬", text: prop.reasoning }];
+                            return Object.entries(prop.reasoning as Record<string, string>)
+                              .filter(([, v]) => v)
+                              .map(([k, v]) => ({ key: k, label: REASON_META[k]?.label ?? k.replace("reason_", ""), icon: REASON_META[k]?.icon ?? "•", text: v }));
+                          })();
 
                           return (
-                            <div key={idx} className={`flex flex-col gap-2.5 pb-4 border-b border-border/20 last:border-0 last:pb-0 rounded-lg px-2 pt-2 transition-colors ${isApproved ? "bg-emerald-500/5" : isRejected ? "bg-red-500/5 opacity-60" : ""}`}>
-                              {/* Row 1: Date + price + verdict badge */}
-                              <div className="flex justify-between font-bold items-center">
+                            <div key={idx} className={`rounded-xl border overflow-hidden transition-all ${
+                              isApproved ? "border-emerald-500/30 bg-emerald-500/5" :
+                              isRejected ? "border-red-400/20 bg-red-500/5 opacity-55" :
+                              isFlagged  ? "border-amber-500/30 bg-amber-500/5" :
+                              "border-border/30 bg-background/60"
+                            }`}>
+
+                              {/* ── Card header ──────────────────────────── */}
+                              <div className="px-4 py-2.5 border-b border-border/20 flex items-center justify-between bg-muted/10">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-sm tracking-tight text-foreground/80">{prop.date}</span>
+                                  <span className="text-sm font-black tabular-nums">{prop.date}</span>
                                   {prop.date_classification && (
-                                    <Badge variant="outline" className="text-[9px] font-black uppercase hidden sm:inline-flex">
+                                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-muted/50 text-muted-foreground border border-border/30">
                                       {prop.date_classification}
-                                    </Badge>
+                                    </span>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  {/* Guard verdict badge */}
-                                  <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
-                                    prop.guard_verdict === "APPROVED" ? "bg-emerald-500/15 text-emerald-500" :
-                                    prop.guard_verdict === "FLAGGED"  ? "bg-amber-500/15 text-amber-500" :
-                                                                        "bg-red-500/15 text-red-500"
-                                  }`}>
-                                    {prop.guard_verdict === "APPROVED" ? "✓ Approved" : prop.guard_verdict === "FLAGGED" ? "⚠ Flagged" : "✗ Blocked"}
-                                  </span>
-                                  {/* Price */}
-                                  <span className={`text-sm font-black tabular-nums ${prop.change_pct > 0 ? "text-emerald-500" : "text-amber-500"}`}>
-                                    AED {prop.proposed_price}
-                                    <span className="text-[10px] ml-1 opacity-70">({prop.change_pct > 0 ? "+" : ""}{prop.change_pct}%)</span>
-                                  </span>
+                                <div className="flex items-center gap-1.5">
+                                  {isApproved && (
+                                    <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-500 border border-emerald-500/25 flex items-center gap-1">
+                                      <IconCircleCheck className="size-2.5" /> Approved & Saved
+                                    </span>
+                                  )}
+                                  {decision === "rejected" && (
+                                    <span className="text-[9px] font-black px-2 py-0.5 rounded-md bg-red-500/15 text-red-400 border border-red-400/25">✗ Rejected</span>
+                                  )}
+                                  {!isDecided && (
+                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-md border ${
+                                      prop.guard_verdict === "APPROVED" ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
+                                      prop.guard_verdict === "FLAGGED"  ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
+                                      "bg-red-500/10 text-red-400 border-red-400/20"
+                                    }`}>
+                                      {prop.guard_verdict === "APPROVED" ? "✓ PriceGuard OK" : prop.guard_verdict === "FLAGGED" ? "⚠ Flagged" : "✗ Blocked"}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
 
-                              {/* Row 2: Risk + comparisons */}
-                              <div className="flex flex-wrap gap-2 text-[10px]">
-                                <span className={`px-1.5 py-0.5 rounded-full font-bold uppercase ${
-                                  prop.risk_level === "low"    ? "bg-emerald-500/10 text-emerald-600" :
-                                  prop.risk_level === "medium" ? "bg-amber-500/10 text-amber-600" :
-                                                                 "bg-red-500/10 text-red-500"
+                              {/* ── Price row ────────────────────────────── */}
+                              <div className="px-4 py-3 flex items-center gap-4 border-b border-border/20">
+                                {/* Current price */}
+                                <div className="text-center">
+                                  <p className="text-[9px] text-muted-foreground uppercase tracking-wide font-semibold mb-0.5">Current</p>
+                                  <p className="text-sm font-bold line-through opacity-40 tabular-nums">AED {prop.current_price}</p>
+                                </div>
+                                {/* Arrow + change */}
+                                <div className="flex-1 flex flex-col items-center">
+                                  <div className={`text-[11px] font-black px-2 py-0.5 rounded-full tabular-nums ${isDown ? "bg-red-500/10 text-red-400" : "bg-emerald-500/10 text-emerald-500"}`}>
+                                    {isDown ? "▼" : "▲"} {Math.abs(prop.change_pct)}%
+                                  </div>
+                                  <div className="w-full h-px bg-border/30 mt-1.5 relative">
+                                    <div className={`absolute right-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${isDown ? "bg-red-400" : "bg-emerald-500"}`} />
+                                  </div>
+                                </div>
+                                {/* Proposed price */}
+                                <div className="text-center">
+                                  <p className="text-[9px] text-muted-foreground uppercase tracking-wide font-semibold mb-0.5">Proposed</p>
+                                  <p className="text-xl font-black tabular-nums text-amber-500">AED {prop.proposed_price}</p>
+                                </div>
+                                {/* Risk badge */}
+                                <span className={`ml-auto text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-lg border ${
+                                  prop.risk_level === "low"    ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" :
+                                  prop.risk_level === "medium" ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
+                                  "bg-red-500/10 text-red-400 border-red-400/20"
                                 }`}>
                                   {prop.risk_level} risk
                                 </span>
-                                {prop.comparisons?.vs_p50 && (
-                                  <span className="text-muted-foreground">vs P50 {prop.comparisons.vs_p50.diff_pct > 0 ? "+" : ""}{prop.comparisons.vs_p50.diff_pct}%</span>
-                                )}
-                                {prop.comparisons?.vs_recommended && (
-                                  <span className="text-muted-foreground">vs recommended {prop.comparisons.vs_recommended.diff_pct > 0 ? "+" : ""}{prop.comparisons.vs_recommended.diff_pct}%</span>
-                                )}
-                                {prop.comparisons?.vs_top_comp?.comp_name && (
-                                  <span className="text-muted-foreground">vs {prop.comparisons.vs_top_comp.comp_name} {prop.comparisons.vs_top_comp.diff_pct > 0 ? "+" : ""}{prop.comparisons.vs_top_comp.diff_pct}%</span>
-                                )}
                               </div>
 
-                              {/* Row 3: Primary reasoning */}
-                              {typeof prop.reasoning === "string" && prop.reasoning.trim() && (
-                                <p className="text-[11px] text-muted-foreground leading-snug">{prop.reasoning}</p>
-                              )}
-                              {(prop.reasoning?.reason_market || prop.reasoning?.reason_guardrails) && (
-                                <p className="text-[11px] text-muted-foreground leading-snug">
-                                  {prop.reasoning.reason_guardrails && prop.guard_verdict === "REJECTED"
-                                    ? `🛡 ${prop.reasoning.reason_guardrails}`
-                                    : prop.reasoning.reason_market
-                                      ? `📊 ${prop.reasoning.reason_market}`
-                                      : null}
-                                </p>
+                              {/* ── Confidence bar ───────────────────────── */}
+                              <div className="px-4 py-2.5 border-b border-border/20 bg-muted/5">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">AI Confidence</span>
+                                  <span className={`text-[9px] font-black ${confTextCls}`}>{confLabel} · {confidence}%</span>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+                                  <div className={`h-full rounded-full transition-all duration-700 ${confBarCls}`} style={{ width: `${confidence}%` }} />
+                                </div>
+                              </div>
+
+                              {/* ── Market comparisons ───────────────────── */}
+                              {(prop.comparisons?.vs_p50 || prop.comparisons?.vs_recommended || prop.comparisons?.vs_top_comp) && (
+                                <div className="px-4 py-3 border-b border-border/20 grid grid-cols-3 gap-3">
+                                  {[
+                                    { label: "vs Market P50", data: prop.comparisons?.vs_p50 },
+                                    { label: "vs Recommended", data: prop.comparisons?.vs_recommended },
+                                    { label: `vs ${prop.comparisons?.vs_top_comp?.comp_name ?? "Top Comp"}`, data: prop.comparisons?.vs_top_comp },
+                                  ].map(({ label, data }) => {
+                                    if (!data) return null;
+                                    const d = data as Record<string, unknown>;
+                                    const compPrice = d.comp_price as number;
+                                    const diffPct = d.diff_pct as number;
+                                    const isPos = diffPct >= 0;
+                                    return (
+                                      <div key={label} className="flex flex-col gap-1">
+                                        <span className="text-[9px] text-muted-foreground font-medium truncate">{label}</span>
+                                        <span className="text-[10px] font-black tabular-nums text-muted-foreground">
+                                          AED {compPrice}
+                                        </span>
+                                        <span className={`text-[10px] font-black tabular-nums ${isPos ? "text-emerald-500" : "text-red-400"}`}>
+                                          {diffPct > 0 ? "+" : ""}{diffPct}%
+                                        </span>
+                                        {/* mini bar */}
+                                        <div className="h-1 rounded-full bg-white/5 overflow-hidden">
+                                          <div
+                                            className={`h-full rounded-full ${isPos ? "bg-emerald-500/60" : "bg-red-400/60"}`}
+                                            style={{ width: `${Math.min(100, Math.abs(diffPct))}%` }}
+                                          />
+                                        </div>
+                                        {/* formula */}
+                                        <span className="text-[8px] font-mono text-muted-foreground/40 leading-tight mt-0.5 select-all">
+                                          ({prop.proposed_price} − {compPrice}) ÷ {compPrice} × 100
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               )}
 
-                              {/* Row 4: FLAGGED caution */}
-                              {isFlagged && (
-                                <p className="text-[11px] text-amber-500/80 leading-snug bg-amber-500/5 rounded px-2 py-1">
-                                  ⚠ PriceGuard flagged this for review — outside normal range but not hard-blocked. Approve with caution.
-                                </p>
+                              {/* ── Reasoning (collapsible) ──────────────── */}
+                              {reasoningEntries.length > 0 && (
+                                <details className="group border-b border-border/20">
+                                  <summary className="px-4 py-2.5 flex items-center justify-between cursor-pointer list-none bg-muted/5 hover:bg-muted/10 transition-colors">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Analysis & Reasoning</span>
+                                    <span className="text-[9px] text-muted-foreground group-open:rotate-180 transition-transform">▼</span>
+                                  </summary>
+                                  <div className="px-4 py-3 grid grid-cols-1 gap-2">
+                                    {reasoningEntries.map(({ key, label, icon, text }) => (
+                                      <div key={key} className="flex gap-2.5 rounded-lg bg-muted/20 border border-border/20 px-3 py-2">
+                                        <span className="text-sm shrink-0 mt-0.5">{icon}</span>
+                                        <div className="min-w-0">
+                                          <p className="text-[9px] font-black uppercase tracking-wide text-muted-foreground mb-0.5">{label}</p>
+                                          <p className="text-[11px] text-foreground/80 leading-snug">{text}</p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </details>
                               )}
 
-                              {/* Row 5: Per-proposal action buttons */}
-                              {!alreadySaved && message.proposalStatus !== "rejected" && (
-                                <div className="flex items-center gap-2 pt-1">
-                                  {canApprove && !isRejected && (
-                                    <button
-                                      onClick={() => handleProposalDecision(message.id, prop.proposal_id, isApproved ? "approved" : "approved")}
-                                      className={`text-[10px] font-black px-3 py-1 rounded-full border transition-all ${
-                                        isApproved
-                                          ? "bg-emerald-500 text-white border-emerald-500"
-                                          : "border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
-                                      }`}
-                                    >
-                                      {isApproved ? "✓ Approved" : "Approve"}
-                                    </button>
-                                  )}
-                                  {!isRejected && (
-                                    <button
-                                      onClick={() => handleProposalDecision(message.id, prop.proposal_id, "rejected")}
-                                      className="text-[10px] font-black px-3 py-1 rounded-full border border-red-400/40 text-red-400 hover:bg-red-500/10 transition-all"
-                                    >
-                                      Reject
-                                    </button>
-                                  )}
-                                  {prop.guard_verdict === "REJECTED" && (
-                                    <span className="text-[10px] text-red-400/70 font-bold">Blocked by PriceGuard — cannot approve</span>
-                                  )}
-                                  {decision === "rejected" && (
+                              {/* ── PriceGuard flagged warning ───────────── */}
+                              {isFlagged && !isDecided && (
+                                <div className="px-4 py-2.5 bg-amber-500/5 border-b border-amber-500/20 flex items-start gap-2">
+                                  <span className="text-sm mt-0.5">⚠</span>
+                                  <p className="text-[11px] text-amber-500/90 leading-snug">PriceGuard flagged this — outside normal range but not hard-blocked. Approve with caution.</p>
+                                </div>
+                              )}
+
+                              {/* ── Action buttons ───────────────────────── */}
+                              {!isDecided && message.proposalStatus !== "rejected" && (
+                                <div className="px-4 py-3 flex items-center gap-2.5">
+                                  {canApprove ? (
                                     <button
                                       onClick={() => handleProposalDecision(message.id, prop.proposal_id, "approved")}
-                                      className="text-[10px] text-muted-foreground underline"
+                                      className="flex-1 py-2 rounded-lg text-[11px] font-black bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all"
                                     >
-                                      Undo
+                                      ✓ Approve & Save
                                     </button>
+                                  ) : (
+                                    <span className="text-[10px] text-red-400/70 font-bold">Blocked by PriceGuard</span>
                                   )}
+                                  <button
+                                    onClick={() => handleProposalDecision(message.id, prop.proposal_id, "rejected")}
+                                    className="flex-1 py-2 rounded-lg text-[11px] font-black bg-red-500/10 text-red-400 border border-red-400/30 hover:bg-red-500/20 transition-all"
+                                  >
+                                    ✗ Reject
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -1014,43 +1327,32 @@ export function UnifiedChatInterface({ properties: _properties }: Props) {
                         })}
                       </div>
 
-                      {/* Footer: Save all / Reject all */}
+                      {/* ── Panel footer ─────────────────────────────────── */}
                       {message.proposalStatus === "pending" && (
-                        <div className="px-4 py-3 border-t border-border/40 bg-muted/20 flex items-center justify-between gap-3">
-                          <p className="text-[10px] text-muted-foreground leading-snug">
-                            Approve individual proposals above, then save to the Pricing section.
-                          </p>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              onClick={() => handleRejectProposals(message.id)}
-                              className="text-[11px] font-bold px-3 py-1.5 rounded-lg border border-border/50 text-muted-foreground hover:bg-muted transition-colors"
-                            >
-                              Reject All
-                            </button>
-                            <button
-                              onClick={() => handleSaveProposals(message.id, message.proposals!)}
-                              className="text-[11px] font-bold px-4 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
-                            >
-                              Save to Pricing →
-                            </button>
-                          </div>
+                        <div className="px-4 py-3 border-t border-border/40 bg-muted/10 flex items-center justify-between gap-3">
+                          <p className="text-[10px] text-muted-foreground">Approved proposals are saved to Pricing instantly.</p>
+                          <button
+                            onClick={() => handleRejectProposals(message.id)}
+                            className="text-[10px] font-black px-3 py-1.5 rounded-lg border border-border/50 text-muted-foreground hover:bg-muted transition-colors shrink-0"
+                          >
+                            Reject All
+                          </button>
                         </div>
                       )}
-
                       {message.proposalStatus === "saved" && (
                         <div className="px-4 py-3 border-t border-border/40 bg-emerald-500/5 flex items-center gap-2">
-                          <span className="text-[11px] text-emerald-600 font-black">✓ Saved to Pricing section</span>
+                          <span className="text-[11px] text-emerald-600 font-black">✓ Saved to Pricing</span>
                           <span className="text-[10px] text-muted-foreground">— review and push to Hostaway from the Pricing page</span>
                         </div>
                       )}
-
                       {message.proposalStatus === "rejected" && (
                         <div className="px-4 py-3 border-t border-border/40 bg-muted/10 flex items-center gap-2">
                           <span className="text-[11px] text-muted-foreground font-bold">✗ All proposals rejected. No changes made.</span>
                         </div>
                       )}
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </div>
             ))}

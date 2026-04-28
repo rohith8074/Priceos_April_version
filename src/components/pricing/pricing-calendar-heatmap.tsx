@@ -298,7 +298,7 @@ export function PricingCalendarHeatmap({ listings }: Props) {
             <SelectTrigger className="h-9 w-72 text-sm bg-background border-border/70 text-foreground shadow-sm dark:bg-white/[0.04] dark:border-white/15">
               <SelectValue placeholder="Select a property" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-64 overflow-y-auto">
               {listings.map((l) => (
                 <SelectItem key={l.id} value={l.id} className="text-sm">
                   {l.name}

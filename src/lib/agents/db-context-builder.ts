@@ -1,6 +1,7 @@
 import { connectDB, Listing, InventoryMaster, MarketEvent, PricingRule, Reservation } from "@/lib/db";
 import { format, addDays } from "date-fns";
 import mongoose from "mongoose";
+import { getMarketContext } from "@/lib/airbtics/market-context";
 
 export interface ContextDateRange {
   from: string;
@@ -56,6 +57,7 @@ export async function buildAgentContext(
     current_price: `${listing.currencyCode} ${listing.price}`,
     floor_price: `${listing.currencyCode} ${listing.priceFloor}`,
     ceiling_price: `${listing.currencyCode} ${listing.priceCeiling}`,
+    amenities: listing.amenities || [],
   };
 
   const calendar = await InventoryMaster.find({
@@ -130,6 +132,37 @@ export async function buildAgentContext(
     premium_pct: e.upliftPct,
     description: e.description,
   }));
+
+  // Airbtics quantitative pacing — high-demand days in range so agent can explain WHY prices surge
+  try {
+    const marketId = (listing as any).marketId || process.env.AIRBTICS_DUBAI_MARKET_ID || "2286";
+    const airbticsCtx = await getMarketContext(marketId, listing.bedroomsNumber || 1);
+    const highDemandDays = (airbticsCtx.pacing || [])
+      .filter((d: any) => {
+        const rate = d.occupancy_rate || d.occupancyRate || 0;
+        const inRange = d.date >= startStr && d.date <= endStr;
+        return inRange && rate >= 0.65;
+      })
+      .slice(0, 15)
+      .map((d: any) => ({
+        date: d.date,
+        market_occupancy_pct: Math.round((d.occupancy_rate || d.occupancyRate || 0) * 100),
+        signal: (d.occupancy_rate || d.occupancyRate || 0) >= 0.80 ? "surge" : "elevated",
+      }));
+
+    if (highDemandDays.length > 0) {
+      context.market_pacing = {
+        source: "airbtics",
+        market_id: marketId,
+        note: "Real-time STR market booking pace. Use to explain price surges to host.",
+        high_demand_days: highDemandDays,
+        p50_adr: airbticsCtx.marketMetrics?.p50 ?? null,
+        p75_adr: airbticsCtx.marketMetrics?.p75 ?? null,
+      };
+    }
+  } catch {
+    // Non-blocking — agent works fine without pacing data
+  }
 
   return JSON.stringify(context);
 }

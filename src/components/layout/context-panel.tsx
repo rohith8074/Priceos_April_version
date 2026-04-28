@@ -1,10 +1,11 @@
 "use client";
 
-import { LayoutGrid } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from "react";
 import { CompactPropertyCard } from "./compact-property-card";
 import { useContextStore } from "@/stores/context-store";
+import { getOrgId } from "@/lib/auth/client";
 import { useChatStore } from "@/stores/chat-store";
+import { usePathname } from "next/navigation";
 import type { PropertyWithMetrics } from "@/types";
 
 interface Props {
@@ -19,6 +20,38 @@ export function ContextPanel({ properties }: Props) {
     setPropertyContext,
   } = useContextStore();
   const { switchContext } = useChatStore();
+  const pathname = usePathname();
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+
+  // Fetch per-property unread message counts on the guest-chat page
+  useEffect(() => {
+    if (!pathname?.includes("guest-chat")) return;
+    let disposed = false;
+
+    const fetchCounts = async () => {
+      try {
+        const orgId = getOrgId();
+        if (!orgId || disposed) return;
+        const r = await fetch(`/api/hostaway/conversations/cached?orgId=${orgId}`);
+        if (!r.ok || disposed) return;
+        const data = await r.json();
+        const counts: Record<string, number> = {};
+        for (const c of data.conversations ?? []) {
+          if (c.status === "needs_reply") {
+            const lid = String(c.listingId || "");
+            if (lid) counts[lid] = (counts[lid] ?? 0) + Math.max(1, c.unreadCount ?? 1);
+          }
+        }
+        if (!disposed) setUnreadCounts(counts);
+      } catch {
+        // best-effort
+      }
+    };
+
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 60_000);
+    return () => { disposed = true; clearInterval(interval); };
+  }, [pathname]);
 
   const handlePortfolioClick = () => {
     setPortfolioContext();
@@ -26,8 +59,14 @@ export function ContextPanel({ properties }: Props) {
   };
 
   const handlePropertyClick = (property: PropertyWithMetrics) => {
-    setPropertyContext(property.id, property.name, (property as any).currencyCode || "AED");
-    switchContext({ type: "property", propertyId: property.id });
+    if (contextType === "property" && propertyId === property.id) {
+      // Deselect: clicking the active property returns to portfolio view
+      setPortfolioContext();
+      switchContext({ type: "portfolio" });
+    } else {
+      setPropertyContext(property.id, property.name, (property as any).currencyCode || "AED");
+      switchContext({ type: "property", propertyId: property.id });
+    }
   };
 
   return (
@@ -56,6 +95,7 @@ export function ContextPanel({ properties }: Props) {
               }
               onClick={() => handlePropertyClick(property)}
               occupancy={property.occupancy || 0}
+              unreadCount={unreadCounts[property.id] ?? 0}
             />
           ))}
         </div>

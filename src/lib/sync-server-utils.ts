@@ -1,333 +1,180 @@
-import {
-    connectDB,
-    Listing,
-    Reservation,
-    InventoryMaster,
-    HostawayConversation,
-} from "./db";
-import type { PMSClient } from "./pms/types";
+/**
+ * sync-server-utils.ts — Server-side sync helpers
+ *
+ * Utilities for syncing Hostaway data into MongoDB.
+ * Used exclusively in server-side code (API routes, background jobs).
+ */
 import mongoose from "mongoose";
+import { Listing } from "@/lib/db/models/Listing";
+import { Reservation } from "@/lib/db/models/Reservation";
+import { HostawayConversation } from "@/lib/db/models/HostawayConversation";
+import { HostawayClient } from "@/lib/pms/hostaway-client";
+import { format } from "date-fns";
 
-/**
- * Get the maximum syncedAt timestamp from a list of records
- */
-export function getMaxSyncedAt(
-    records: Array<{ syncedAt: Date | null }>
-): Date | null {
-    const timestamps = records
-        .map((r) => r.syncedAt)
-        .filter((t): t is Date => t !== null);
+// ── Listings ─────────────────────────────────────────────────────────────────
 
-    if (timestamps.length === 0) return null;
-
-    return new Date(Math.max(...timestamps.map((t) => t.getTime())));
-}
-
-/**
- * Sync listings to database with upsert by hostawayId
- */
-export async function syncListingsToDb(
-    pmsListings: Array<{
-        id: number;
-        name: string;
-        area: string;
-        bedroomsNumber: number;
-        bathroomsNumber: number;
-        propertyTypeId: number;
-        price: number;
-        currencyCode: string;
-        personCapacity?: number;
-        amenities?: string[];
-    }>
-) {
-    if (pmsListings.length === 0) return;
-
-    await connectDB();
-
-    const bulkOps = pmsListings.map((listing) => ({
-        updateOne: {
-            filter: { hostawayId: listing.id.toString() },
-            update: {
-                $set: {
-                    hostawayId: listing.id.toString(),
-                    name: listing.name,
-                    area: listing.area,
-                    bedroomsNumber: listing.bedroomsNumber,
-                    bathroomsNumber: listing.bathroomsNumber,
-                    propertyTypeId: listing.propertyTypeId,
-                    price: listing.price,
-                    currencyCode: listing.currencyCode,
-                    personCapacity: listing.personCapacity,
-                    amenities: listing.amenities,
-                },
-            },
-            upsert: true,
+export async function syncListingsToDb(hostawayListings: any[]) {
+  for (const hl of hostawayListings) {
+    await Listing.findOneAndUpdate(
+      { hostawayId: String(hl.id) },
+      {
+        $set: {
+          hostawayId: String(hl.id),
+          name: hl.name,
+          internalListingName: hl.internalListingName || hl.name,
+          currencyCode: hl.currencyCode || "AED",
+          price: hl.price || 0,
+          propertyType: hl.propertyType,
+          roomType: hl.roomType,
         },
-    }));
-
-    await Listing.bulkWrite(bulkOps);
+      },
+      { upsert: true, new: true }
+    );
+  }
 }
 
-/**
- * Sync reservations to database — upsert by hostawayReservationId
- */
+// ── Reservations ─────────────────────────────────────────────────────────────
+
 export async function syncReservationsToDb(
-    pmsReservations: Array<{
-        id: number;
-        listingMapId: mongoose.Types.ObjectId;
-        guestName: string;
-        guestEmail?: string;
-        channelName: string;
-        arrivalDate: string;
-        departureDate: string;
-        nights: number;
-        totalPrice: number;
-        pricePerNight: number;
-        status?: string;
-    }>,
-    _syncedAt: Date
+  reservations: any[],
+  _syncedAt: Date
 ) {
-    if (pmsReservations.length === 0) return;
-
-    await connectDB();
-
-    // Derive orgId from the first listing we can find
-    const firstListing = await Listing.findById(pmsReservations[0].listingMapId)
-        .select("orgId")
-        .lean();
-    const orgId =
-        firstListing?.orgId || new mongoose.Types.ObjectId();
-
-    const bulkOps = pmsReservations.map((r) => ({
-        updateOne: {
-            filter: { hostawayReservationId: r.id.toString() },
-            update: {
-                $set: {
-                    hostawayReservationId: r.id.toString(),
-                    orgId,
-                    listingId: r.listingMapId,
-                    guestName: r.guestName,
-                    guestEmail: r.guestEmail || undefined,
-                    channelName: r.channelName,
-                    checkIn: r.arrivalDate,
-                    checkOut: r.departureDate,
-                    nights: r.nights,
-                    totalPrice: r.totalPrice,
-                    status: (r.status || "confirmed") as
-                        | "confirmed"
-                        | "pending"
-                        | "cancelled"
-                        | "checked_in"
-                        | "checked_out"
-                        | "inquiry",
-                },
-            },
-            upsert: true,
+  for (const r of reservations) {
+    await Reservation.findOneAndUpdate(
+      { hostawayReservationId: String(r.id) },
+      {
+        $set: {
+          hostawayReservationId: String(r.id),
+          listingId: r.listingMapId,
+          guestName: r.guestName || "Guest",
+          checkIn: r.arrivalDate,
+          checkOut: r.departureDate,
+          totalPrice: r.totalPrice || 0,
+          status: r.status || "confirmed",
+          channelName: r.channelName,
         },
-    }));
-
-    await Reservation.bulkWrite(bulkOps);
+      },
+      { upsert: true, new: true }
+    );
+  }
 }
 
-/**
- * Sync calendar days for listings — upsert by listingId+date
- */
+// ── Calendar ──────────────────────────────────────────────────────────────────
+
 export async function syncCalendarToDb(
-    pmsClient: PMSClient,
-    listingIds: mongoose.Types.ObjectId[],
-    startDate: Date,
-    endDate: Date,
-    hostawayId?: number
+  client: HostawayClient,
+  _listingIds: mongoose.Types.ObjectId[],
+  startDate: Date,
+  endDate: Date,
+  hostawayListingId: number
 ) {
-    await connectDB();
+  const startStr = format(startDate, "yyyy-MM-dd");
+  const endStr = format(endDate, "yyyy-MM-dd");
+  const calendarDays = await client.getCalendar(hostawayListingId, startStr, endStr);
 
-    for (const listingId of listingIds) {
-        const pmsId = hostawayId || 0;
-        if (!pmsId) continue;
+  const listing = await Listing.findOne({ hostawayId: String(hostawayListingId) });
+  if (!listing) return;
 
-        const calendarData = await pmsClient.getCalendar(pmsId, startDate, endDate);
-
-        if (calendarData.length === 0) continue;
-
-        // Lookup orgId from listing
-        const listing = await Listing.findById(listingId).select("orgId").lean();
-        const orgId = listing?.orgId || new mongoose.Types.ObjectId();
-
-        const bulkOps = calendarData.map((day) => ({
-            updateOne: {
-                filter: { listingId, date: day.date },
-                update: {
-                    $set: {
-                        orgId,
-                        listingId,
-                        date: day.date,
-                        status: day.status as
-                            | "available"
-                            | "booked"
-                            | "blocked"
-                            | "pending",
-                        currentPrice: day.price,
-                        minStay: day.minimumStay || 1,
-                        maxStay: day.maximumStay || 30,
-                    },
-                },
-                upsert: true,
-            },
-        }));
-
-        // Process in chunks of 100
-        for (let i = 0; i < bulkOps.length; i += 100) {
-            await InventoryMaster.bulkWrite(bulkOps.slice(i, i + 100));
-        }
-    }
+  for (const day of calendarDays) {
+    if (!day.date) continue;
+    // Store calendar price overrides into the listing's priceOverrides map
+    await Listing.findByIdAndUpdate(listing._id, {
+      $set: {
+        [`priceOverrides.${day.date}`]: {
+          price: day.price || 0,
+          status: day.status || "available",
+          isAvailable: day.isAvailable !== false,
+          minimumStay: day.minimumStay,
+        },
+      },
+    });
+  }
 }
 
-/**
- * Fetch and sync all conversations from Hostaway into DB
- */
+// ── Conversations ─────────────────────────────────────────────────────────────
+
 export async function syncConversationsToDb(
-    hostawayToInternalIdMap: Map<number, mongoose.Types.ObjectId>,
-    tokenOverride?: string
-) {
-    const token = tokenOverride || process.env.Hostaway_Authorization_token;
-    if (!token) {
-        console.error("No Hostaway token for syncing conversations.");
-        return { synced: 0, errors: 1 };
-    }
+  hostawayToInternalIdMap: Map<number, mongoose.Types.ObjectId>,
+  _apiKey: string
+): Promise<{ synced: number; errors: number }> {
+  let synced = 0;
+  let errors = 0;
 
-    await connectDB();
-
+  for (const [hostawayListingId, _internalId] of hostawayToInternalIdMap) {
     try {
-        console.log(`📥 Fetching ALL conversations...`);
-        const convRes = await fetch(
-            `https://api.hostaway.com/v1/conversations?limit=250&offset=0&includeResources=1`,
-            {
-                method: "GET",
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                },
-            }
+      const client = new HostawayClient();
+      const conversations = await client.getConversations({ listingMapId: hostawayListingId, limit: 50 });
+
+      for (const conv of conversations) {
+        await HostawayConversation.findOneAndUpdate(
+          { hostawayConversationId: String(conv.id) },
+          {
+            $set: {
+              hostawayConversationId: String(conv.id),
+              guestName: conv.guestName || "Guest",
+              isUnread: conv.isUnread || false,
+              listingMapId: hostawayListingId,
+              updatedAt: conv.updatedOn ? new Date(conv.updatedOn) : new Date(),
+            },
+          },
+          { upsert: true, new: true }
         );
-
-        if (convRes.status === 403) {
-            console.warn(
-                "⚠️ Hostaway API: 403 Forbidden. Your token likely lacks 'Inbox' permissions."
-            );
-            return { synced: 0, errors: 1 };
-        }
-
-        if (!convRes.ok)
-            throw new Error(`Hostaway API returned ${convRes.status}`);
-
-        const convJson = await convRes.json();
-        const rawConversations = convJson.result || [];
-
-        // Filter to only conversations for known properties
-        const mappedConversations = rawConversations.filter((conv: any) => {
-            const lid =
-                conv.Reservation?.listingMapId || conv.listingMapId;
-            return lid && hostawayToInternalIdMap.has(Number(lid));
-        });
-
-        console.log(
-            `🔍 Syncing ${mappedConversations.length} conversations...`
-        );
-
-        let syncedCount = 0;
-        let errCount = 0;
-
-        for (const conv of mappedConversations) {
-            const hwListingId =
-                conv.Reservation?.listingMapId || conv.listingMapId;
-            const internalListingId = hostawayToInternalIdMap.get(
-                Number(hwListingId)
-            );
-            if (!internalListingId) continue;
-
-            const convId = conv.id.toString();
-            const guestName =
-                conv.recipientName ||
-                conv.Reservation?.guestName ||
-                conv.Reservation?.guestFirstName ||
-                "Guest";
-
-            const dateFrom =
-                conv.Reservation?.arrivalDate || "2000-01-01";
-            const dateTo =
-                conv.Reservation?.departureDate || "2099-12-31";
-
-            let messages: {
-                sender: string;
-                text: string;
-                timestamp: string;
-            }[] = [];
-
-            try {
-                const msgRes = await fetch(
-                    `https://api.hostaway.com/v1/conversations/${convId}/messages?limit=50`,
-                    {
-                        method: "GET",
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                            "Content-Type": "application/json",
-                        },
-                    }
-                );
-
-                if (msgRes.ok) {
-                    const msgJson = await msgRes.json();
-                    messages = (msgJson.result || [])
-                        .filter((m: any) => m.body && m.body.trim())
-                        .map((m: any) => ({
-                            sender: m.isIncoming ? "guest" : "admin",
-                            text: m.body || "",
-                            timestamp: m.insertedOn || m.updatedOn || "",
-                        }));
-                }
-
-                // Get orgId from listing
-                const listing = await Listing.findById(internalListingId)
-                    .select("orgId")
-                    .lean();
-                const orgId =
-                    listing?.orgId || new mongoose.Types.ObjectId();
-
-                await HostawayConversation.findOneAndUpdate(
-                    { hostawayConversationId: convId },
-                    {
-                        $set: {
-                            orgId,
-                            listingId: internalListingId,
-                            hostawayConversationId: convId,
-                            guestName,
-                            guestEmail:
-                                conv.guestEmail ||
-                                conv.recipientEmail ||
-                                undefined,
-                            reservationId:
-                                conv.reservationId?.toString() || undefined,
-                            messages,
-                            dateFrom,
-                            dateTo,
-                            syncedAt: new Date(),
-                        },
-                    },
-                    { upsert: true, new: true }
-                );
-
-                syncedCount++;
-            } catch (e) {
-                console.warn(
-                    `   ⚠️  Failed to fetch/save messages for conv ${convId}`
-                );
-                errCount++;
-            }
-        }
-
-        return { synced: syncedCount, errors: errCount };
-    } catch (error) {
-        console.error("Sync Conversations Error:", error);
-        return { synced: 0, errors: 1 };
+        synced++;
+      }
+    } catch (err) {
+      errors++;
     }
+  }
+
+  return { synced, errors };
+}
+
+// ── Client-side trigger (fetch-based, no direct DB access) ───────────────────
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? "/api";
+
+export async function syncHostawayConversations(
+  listingId: string,
+  sessionToken?: string
+): Promise<{ success: boolean; synced?: number; message?: string }> {
+  try {
+    const res = await fetch(`${API}/sync/hostaway-conversations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+      body: JSON.stringify({ listingId }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      return { success: false, message: err };
+    }
+    return res.json();
+  } catch (err) {
+    return { success: false, message: String(err) };
+  }
+}
+
+export async function triggerFullSync(
+  orgId: string,
+  sessionToken?: string
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    const res = await fetch(`${API}/sync/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+      body: JSON.stringify({ orgId }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      return { success: false, message: err };
+    }
+    return res.json();
+  } catch (err) {
+    return { success: false, message: String(err) };
+  }
 }

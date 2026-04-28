@@ -9,6 +9,7 @@ interface Props {
   isActive: boolean;
   onClick: () => void;
   occupancy?: number;
+  unreadCount?: number;
 }
 
 export function CompactPropertyCard({
@@ -16,6 +17,7 @@ export function CompactPropertyCard({
   isActive,
   onClick,
   occupancy = 0,
+  unreadCount = 0,
 }: Props) {
   return (
     <button
@@ -43,14 +45,21 @@ export function CompactPropertyCard({
               <Building2 className="h-4 w-4" />
             </div>
             <div className="min-w-0 flex-1">
-              <p
-                className={cn(
-                  "text-sm font-bold truncate tracking-tight transition-colors",
-                  isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
+              <div className="flex items-center gap-1.5">
+                <p
+                  className={cn(
+                    "text-sm font-bold truncate tracking-tight transition-colors flex-1",
+                    isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
+                  )}
+                >
+                  {property.name}
+                </p>
+                {unreadCount > 0 && (
+                  <span className="shrink-0 inline-flex items-center justify-center h-4 min-w-[1rem] px-1 rounded-full bg-amber-500 text-[9px] font-black text-white">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
                 )}
-              >
-                {property.name}
-              </p>
+              </div>
               {property.area && (
                 <div className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider text-muted-foreground/60 mt-0.5">
                   <MapPin className="h-2.5 w-2.5 shrink-0" />

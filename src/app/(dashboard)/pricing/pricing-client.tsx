@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { format, parseISO, differenceInDays } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -37,9 +38,21 @@ import {
   X,
   Upload,
   Zap,
+  Maximize2,
+  Activity,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { backendFetch } from "@/lib/api/backend-client";
+// import { LiveInferenceFlowGraph, FlowStage } from "@/components/chat/live-inference-flow-graph";
+export interface FlowStage {
+  id: string;
+  label: string;
+  status: "pending" | "active" | "done" | "failed";
+}
+import { readSSEStream } from "@/lib/chat/sse-reader";
+import { SUPPORT_AGENT_STREAM_EVENT, SupportAgentStreamEventPayload } from "@/lib/chat/inference-events";
+import { useLyzrAgentEvents } from "@/hooks/use-lyzr-agent-events";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -50,7 +63,7 @@ export type ProposalData = {
   currentPrice: string;
   proposedPrice: string | null;
   changePct: number | null;
-  reasoning: string | null;
+  reasoning: any;
   minStay: number | null;
   maxStay: number | null;
   closedToArrival: boolean;
@@ -131,13 +144,27 @@ function RiskBadge({ pct }: { pct: number | null }) {
   );
 }
 
-function ReasoningCell({ reasoning }: { reasoning: string | null }) {
+function ReasoningCell({ reasoning }: { reasoning: any }) {
   const [open, setOpen] = useState(false);
   if (!reasoning) return <span className="text-muted-foreground text-xs">—</span>;
-  const short = reasoning.length > 90;
+
+  // Convert object reasoning to string if needed
+  const text = useMemo(() => {
+    if (typeof reasoning === "string") return reasoning;
+    if (typeof reasoning === "object") {
+      return Object.values(reasoning as Record<string, string>)
+        .filter(Boolean)
+        .join(" | ");
+    }
+    return String(reasoning);
+  }, [reasoning]);
+
+  if (!text) return <span className="text-muted-foreground text-xs">—</span>;
+  const short = text.length > 90;
+
   return (
     <div className="text-xs text-foreground/80 leading-relaxed">
-      <span>{open || !short ? reasoning : `${reasoning.slice(0, 90)}…`}</span>
+      <span>{open || !short ? text : `${text.slice(0, 90)}…`}</span>
       {short && (
         <button
           onClick={(e) => {
@@ -203,14 +230,41 @@ function ConstraintBadges({ row }: { row: ProposalData }) {
 export function PricingClient({
   initialProposals,
   allListings = [],
+  orgId,
 }: {
   initialProposals: ProposalData[];
   allListings?: { id: string; name: string }[];
+  orgId: string;
 }) {
+  const router = useRouter();
   const [proposals, setProposals] = useState<ProposalData[]>(initialProposals);
   const [activeTab, setActiveTab] = useState<StatusTab>("pending");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // ── Live Graph State ───────────────────────────────────────────────────────
+  const [showLiveGraph, setShowLiveGraph] = useState(false);
+  const [isGraphProcessing, setIsGraphProcessing] = useState(false);
+  const [isGraphExpanded, setIsGraphExpanded] = useState(false);
+  const [graphSessionId, setGraphSessionId] = useState<string>("pricing-idle");
+  const [graphStages, setGraphStages] = useState<FlowStage[]>([
+    { id: "routing", label: "Router", status: "pending" },
+    { id: "analyzing", label: "Analysis", status: "pending" },
+    { id: "validating", label: "Pricing Guard", status: "pending" },
+    { id: "generating", label: "Generator", status: "pending" },
+  ]);
+
+  const { isConnected: isGraphConnected, events: graphEvents } = useLyzrAgentEvents(
+    graphSessionId,
+    isGraphProcessing
+  );
+
+  const GRAPH_STAGES = [
+    { id: "routing", label: "Router" },
+    { id: "analyzing", label: "Analysis" },
+    { id: "validating", label: "Pricing Guard" },
+    { id: "generating", label: "Generator" },
+  ];
 
   // Modify state — inline price edit
   const [modifyingId, setModifyingId] = useState<string | null>(null);
@@ -220,22 +274,93 @@ export function PricingClient({
 
   const handleGenerateProposals = async () => {
     setIsGenerating(true);
+    setShowLiveGraph(true);
+    setIsGraphProcessing(true);
+    setGraphStages(GRAPH_STAGES.map(s => ({ ...s, status: "pending" as const })));
+
+    const currentSessionId = `pricing-run-${Date.now()}`;
+    setGraphSessionId(currentSessionId);
+
     try {
-      const res = await fetch("/api/engine/run-all", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/engine/run-all?orgId=${orgId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trigger: "manual" }),
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("priceos-token")}`,
+        }
       });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(
-          `Generated proposals for ${data.summary?.succeeded ?? 0} properties — refreshing…`
-        );
-        setTimeout(() => window.location.reload(), 1200);
-      } else {
-        toast.error(data.error || "Failed to generate proposals.");
-      }
-    } catch {
+
+      if (!response.ok) throw new Error("Failed to start engine run");
+
+      await readSSEStream(
+        response,
+        (msg, step) => {
+          if (step) {
+            setGraphStages(prev => prev.map(s => {
+              if (s.id === step) return { ...s, status: "active" };
+              const currentIndex = GRAPH_STAGES.findIndex(gs => gs.id === step);
+              const stageIndex = GRAPH_STAGES.findIndex(gs => gs.id === s.id);
+              if (stageIndex < currentIndex) return { ...s, status: "done" };
+              return s;
+            }));
+          }
+
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent<SupportAgentStreamEventPayload>(SUPPORT_AGENT_STREAM_EVENT, {
+              detail: {
+                sessionId: currentSessionId,
+                event: {
+                  timestamp: new Date().toISOString(),
+                  event_type: "agent_thinking",
+                  message: msg,
+                  thinking: msg,
+                  status: "active"
+                }
+              }
+            }));
+          }
+        },
+        (data) => {
+          setGraphStages(prev => prev.map(s => ({ ...s, status: "done" })));
+          toast.success("Proposal generation complete — refreshing list…");
+          
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent<SupportAgentStreamEventPayload>(SUPPORT_AGENT_STREAM_EVENT, {
+              detail: {
+                sessionId: currentSessionId,
+                event: {
+                  timestamp: new Date().toISOString(),
+                  event_type: "output_generated",
+                  message: "Generation Complete",
+                  status: "done"
+                }
+              }
+            }));
+          }
+
+          setTimeout(() => {
+            setIsGraphProcessing(false);
+            setShowLiveGraph(false);
+            router.refresh();
+          }, 1500);
+        },
+        (err) => {
+          setIsGenerating(false);
+          setIsGraphProcessing(false);
+          toast.error(err);
+        },
+        (evt) => {
+          // Bridging for tool calls and thinking logs
+          if (evt.type === "agent_event" && evt.payload && typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent<SupportAgentStreamEventPayload>(SUPPORT_AGENT_STREAM_EVENT, {
+              detail: {
+                sessionId: currentSessionId,
+                event: evt.payload
+              }
+            }));
+          }
+        }
+      );
+    } catch (error) {
       toast.error("Network error — please try again.");
     } finally {
       setIsGenerating(false);
@@ -524,7 +649,7 @@ export function PricingClient({
           <SelectTrigger className="h-8 w-44 text-xs bg-background border-border/70 text-foreground shadow-sm">
             <SelectValue placeholder="All properties" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-64 overflow-y-auto">
             <SelectItem value="all" className="text-xs">All properties</SelectItem>
             {propertyOptions.map((p) => (
               <SelectItem key={p.id} value={p.name} className="text-xs">{p.name}</SelectItem>
@@ -639,8 +764,9 @@ export function PricingClient({
         </div>
       ) : (
         <div className="rounded-2xl border border-border/70 overflow-hidden bg-card shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+          <div className="overflow-x-auto overflow-y-auto max-h-[70vh] scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
           <Table>
-            <TableHeader className="bg-muted/50 dark:bg-white/[0.04]">
+            <TableHeader className="bg-muted/50 dark:bg-white/[0.04] sticky top-0 z-10">
               <TableRow className="border-border/70 dark:border-white/10 hover:bg-transparent">
                 {(activeTab === "pending" || activeTab === "rejected") && (
                   <TableHead className="w-10 pl-4">
@@ -654,7 +780,7 @@ export function PricingClient({
                 <TableHead className="min-w-[180px] text-xs font-semibold text-foreground">Property</TableHead>
                 <TableHead className="w-[180px] text-xs font-semibold text-foreground">Price</TableHead>
                 <TableHead className="w-[80px] text-center text-xs font-semibold text-foreground">Risk</TableHead>
-                <TableHead className="text-xs font-semibold text-foreground">Reasoning</TableHead>
+                <TableHead className="min-w-[220px] text-xs font-semibold text-foreground">Reasoning</TableHead>
                 {(activeTab === "pending" || activeTab === "approved" || activeTab === "rejected") && (
                   <TableHead className="w-[200px] text-right text-xs font-semibold text-foreground pr-4">Actions</TableHead>
                 )}
@@ -847,6 +973,7 @@ export function PricingClient({
             })}
             </TableBody>
           </Table>
+          </div>
 
           {/* High-risk warning */}
           {activeTab === "pending" && displayProposals.filter((p) => riskLevel(p.changePct) === "high").length > 0 && (
@@ -857,6 +984,53 @@ export function PricingClient({
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Live Execution Graph Overlay */}
+      {showLiveGraph && (
+        <div className={cn(
+          "fixed z-[100] transition-all duration-300 ease-in-out shadow-2xl border border-border/40 bg-card/95 backdrop-blur-md overflow-hidden flex flex-col",
+          isGraphExpanded 
+            ? "inset-8 rounded-2xl" 
+            : "bottom-24 right-8 w-[420px] h-[520px] rounded-xl"
+        )}>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 shrink-0 bg-muted/30">
+            <div className="flex items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${isGraphConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Engine Execution Graph
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-7 w-7 p-0 rounded-full hover:bg-muted" 
+                onClick={() => setIsGraphExpanded(!isGraphExpanded)}
+                title={isGraphExpanded ? "Shrink" : "Expand"}
+              >
+                <Maximize2 className="h-3.5 w-3.5" />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => {
+                  setShowLiveGraph(false);
+                  setIsGraphProcessing(false);
+                }}
+                className="h-7 w-7 p-0 rounded-full hover:bg-muted text-slate-400 hover:text-rose-500"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Graph Body */}
+          <div className="flex-1 relative bg-black/20">
+            {/* Live graph removed */}
+          </div>
         </div>
       )}
     </div>

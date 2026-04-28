@@ -18,9 +18,10 @@ type TabId = typeof TABS[number]["id"];
 interface Props {
   initialProposals: ProposalData[];
   listings: { id: string; name: string; currencyCode: string }[];
+  orgId: string;
 }
 
-export function PricingPageTabs({ initialProposals, listings }: Props) {
+export function PricingPageTabs({ initialProposals, listings, orgId }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("calendar");
 
   return (
@@ -61,7 +62,7 @@ export function PricingPageTabs({ initialProposals, listings }: Props) {
         )}
         {activeTab === "proposals" && (
           <div className="p-8 pt-6">
-            <PricingClient initialProposals={initialProposals} allListings={listings} />
+            <PricingClient initialProposals={initialProposals} allListings={listings} orgId={orgId} />
           </div>
         )}
         {activeTab === "rules" && (

@@ -1,27 +1,33 @@
+/**
+ * dashboard/page.tsx — Server Component
+ *
+ * Fetches portfolio data from the FastAPI backend.
+ * All MongoDB queries moved to priceos-backend; this page is pure UI + data fetch.
+ */
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import mongoose from "mongoose";
-import { connectDB, Listing, InventoryMaster, Reservation } from "@/lib/db";
-import { verifyAccessToken } from "@/lib/auth/jwt";
+import { verifyToken } from "@/lib/auth/jwt";
 import { OverviewClient } from "./overview-client";
 
+import { connectToDatabase } from "@/lib/db/mongodb";
+import { Listing, InventoryMaster, Reservation } from "@/lib/db/models";
+import { Types } from "mongoose";
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+
 export default async function OverviewPage() {
-  // ── 1. Identify the logged-in user's org ─────────────────────────────────
   const cookieStore = await cookies();
   const token = cookieStore.get("priceos-session")?.value;
   if (!token) redirect("/login");
 
   let orgId: string;
   try {
-    const payload = verifyAccessToken(token!);
+    const payload = verifyToken(token!) as any;
+    if (!payload) redirect("/login");
     orgId = payload.orgId;
   } catch {
     redirect("/login");
   }
-
-  const orgObjectId = new mongoose.Types.ObjectId(orgId!);
-
-  await connectDB();
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -29,71 +35,79 @@ export default async function OverviewPage() {
   const plus29 = new Date(today);
   plus29.setDate(plus29.getDate() + 29);
   const plus29Str = plus29.toISOString().split("T")[0];
+  
+  const minus365 = new Date(today);
+  minus365.setDate(minus365.getDate() - 365);
+  const minus365Str = minus365.toISOString().split("T")[0];
 
-  // ── 2. Fetch only THIS org's listings ─────────────────────────────────────
-  const allListings = await Listing.find({ orgId: orgObjectId, isActive: true }).lean();
+  let allListings: any[] = [];
+  let inventory: any[] = [];
+  let reservations: any[] = [];
 
-  // ── 3. Aggregate stats scoped to orgId ────────────────────────────────────
-  const statsResult = await InventoryMaster.aggregate([
-    { $match: { orgId: orgObjectId, date: { $gte: todayStr, $lte: plus29Str } } },
-    {
-      $group: {
-        _id: "$listingId",
-        totalDays: { $sum: 1 },
-        bookedDays: {
-          $sum: { $cond: [{ $eq: ["$status", "booked"] }, 1, 0] },
-        },
-        blockedDays: {
-          $sum: { $cond: [{ $eq: ["$status", "blocked"] }, 1, 0] },
-        },
-        avgPrice: { $avg: "$currentPrice" },
-        totalRevenue: {
-          $sum: { $cond: [{ $eq: ["$status", "booked"] }, "$currentPrice", 0] },
-        },
-      },
-    },
-  ]);
+  try {
+    await connectToDatabase();
+    const orgOid = new Types.ObjectId(orgId);
 
-  statsResult.forEach((s: any) => {
-    const avail = s.totalDays - s.blockedDays;
-    s.occupancy = avail > 0 ? Math.round((s.bookedDays / avail) * 100) : 0;
-  });
+    const [listingDocs, invDocs, resDocs] = await Promise.all([
+      Listing.find({ orgId: orgOid }).lean(),
+      InventoryMaster.find({
+        orgId: orgOid,
+        date: { $gte: todayStr, $lte: plus29Str }
+      }).lean(),
+      Reservation.find({ orgId: orgOid }).lean(),
+    ]);
 
-  // ── 4. Historical revenue scoped to orgId ─────────────────────────────────
-  const historicalResult = await Reservation.aggregate([
-    { $match: { orgId: orgObjectId, status: "confirmed" } },
-    { $group: { _id: null, total: { $sum: "$totalPrice" } } },
-  ]);
-  const totalHistoricalRevenue = Number(historicalResult[0]?.total || 0);
+    allListings = listingDocs.map((ls: any) => ({
+      id: ls._id.toString(),
+      _id: ls._id.toString(),
+      ...ls,
+    }));
 
-  // ── 5. Calendar + reservations scoped to orgId ────────────────────────────
-  const calDocs = await InventoryMaster.find({
-    orgId: orgObjectId,
-    date: { $gte: todayStr, $lte: plus29Str },
-  }).lean();
+    inventory = invDocs.map((r: any) => ({
+      id: r._id.toString(),
+      _id: r._id.toString(),
+      ...r,
+      listingId: r.listingId?.toString(),
+    }));
 
-  const resDocs = await Reservation.find({
-    orgId: orgObjectId,
-    checkIn: { $lte: plus29Str },
-    checkOut: { $gte: todayStr },
-  }).lean();
+    reservations = resDocs.map((r: any) => ({
+      id: r._id.toString(),
+      _id: r._id.toString(),
+      ...r,
+      listingId: r.listingId?.toString(),
+    }));
+  } catch (err) {
+    console.error("[OverviewPage] direct db query error", err);
+  }
 
-  // ── 6. Build per-listing metrics ──────────────────────────────────────────
+  // Compute per-listing metrics client-side from raw API data
   let totalPortfolioRevenue = 0;
   let totalOccupancySum = 0;
   let totalAvgPriceSum = 0;
   let activePropertiesCount = 0;
 
-  const propertiesWithMetrics = allListings.map((listing) => {
-    const listingIdStr = listing._id.toString();
+  const propertiesWithMetrics = allListings.map((listing: any) => {
+    const listingId = listing.id ?? listing._id;
 
-    const stat = statsResult.find((s) => s._id.toString() === listingIdStr);
-    const occupancy = stat ? Number(stat.occupancy) : 0;
-    const avgPrice =
-      stat && Number(stat.avgPrice) > 0
-        ? Math.round(Number(stat.avgPrice))
-        : Number(listing.price);
-    const revenue = stat ? Number(stat.totalRevenue) : 0;
+    const listingInv = inventory.filter((r) => (r.listingId ?? r.listing_id) === listingId);
+    const bookedInv = listingInv.filter((r) => r.status === "booked" || r.status === "reserved");
+    const bookedDays = bookedInv.length;
+    const totalDays = listingInv.length;
+    const occupancy = totalDays > 0 ? Math.round((bookedDays / totalDays) * 100) : 0;
+
+    // ADR from actual Hostaway-synced reservations (totalPrice / nights per booking)
+    const listingReservations = reservations.filter(
+      (r) => (r.listingId ?? r.listing_id) === listingId && r.status !== "cancelled"
+    );
+    const adrEntries = listingReservations
+      .filter((r) => Number(r.totalPrice) > 0 && Number(r.nights) > 0)
+      .map((r) => Number(r.totalPrice) / Number(r.nights));
+    const avgPrice = adrEntries.length > 0
+      ? Math.round(adrEntries.reduce((a, b) => a + b, 0) / adrEntries.length)
+      : Number(listing.price ?? 0);
+
+    // Revenue = sum of all confirmed reservation payouts (historical + upcoming)
+    const revenue = listingReservations.reduce((sum, r) => sum + Number(r.totalPrice ?? 0), 0);
 
     totalPortfolioRevenue += revenue;
     if (occupancy > 0) {
@@ -102,36 +116,31 @@ export default async function OverviewPage() {
       activePropertiesCount++;
     }
 
-    const listingCal = calDocs
-      .filter((r) => r.listingId.toString() === listingIdStr)
-      .map((r) => ({
-        date: r.date,
-        status: r.status,
-        price: Number(r.currentPrice),
-        minimumStay: Number(r.minStay || 1),
-        maximumStay: Number(r.maxStay || 30),
-      }));
+    const calendarDays = listingInv.map((r) => ({
+      date: r.date,
+      status: r.status,
+      price: Number(r.proposedPrice ?? r.currentPrice ?? 0),
+      minimumStay: Number(r.minStay ?? 1),
+      maximumStay: Number(r.maxStay ?? 30),
+    }));
 
-    const listingRes = resDocs
-      .filter((r) => r.listingId.toString() === listingIdStr)
+    const listingRes = reservations
+      .filter((r) => (r.listingId ?? r.listing_id) === listingId)
       .map((r) => ({
-        title: r.guestName || "Guest",
-        email: r.guestEmail || undefined,
+        title: r.guestName ?? "Guest",
+        email: r.guestEmail,
         startDate: r.checkIn,
         endDate: r.checkOut,
         financials: {
-          totalPrice: Number(r.totalPrice || 0),
-          pricePerNight:
-            r.nights > 0
-              ? Math.round(Number(r.totalPrice) / r.nights)
-              : Number(r.totalPrice),
+          totalPrice: Number(r.totalPrice ?? 0),
+          pricePerNight: r.nights > 0 ? Math.round(Number(r.totalPrice) / r.nights) : Number(r.totalPrice),
           channelName: r.channelName,
           reservationStatus: r.status,
         },
       }));
 
     return {
-      id: listingIdStr,
+      id: listingId,
       name: listing.name,
       area: listing.area,
       bedroomsNumber: listing.bedroomsNumber,
@@ -139,28 +148,23 @@ export default async function OverviewPage() {
       occupancy,
       avgPrice,
       revenue,
-      calendarDays: listingCal,
+      calendarDays,
       reservations: listingRes,
     };
   });
 
-  const avgPortfolioOccupancy =
-    activePropertiesCount > 0
-      ? Math.round(totalOccupancySum / activePropertiesCount)
-      : 0;
-  const avgPortfolioPrice =
-    activePropertiesCount > 0
-      ? Math.round(totalAvgPriceSum / activePropertiesCount)
-      : 0;
+  const avgPortfolioOccupancy = activePropertiesCount > 0 ? Math.round(totalOccupancySum / activePropertiesCount) : 0;
+  const avgPortfolioPrice = activePropertiesCount > 0 ? Math.round(totalAvgPriceSum / activePropertiesCount) : 0;
 
   return (
     <OverviewClient
+      orgId={orgId}
       properties={propertiesWithMetrics}
       totalProperties={allListings.length}
       avgPortfolioOccupancy={avgPortfolioOccupancy}
       avgPortfolioPrice={avgPortfolioPrice}
       totalPortfolioRevenue={totalPortfolioRevenue}
-      totalHistoricalRevenue={totalHistoricalRevenue}
+      totalHistoricalRevenue={totalPortfolioRevenue}
     />
   );
 }

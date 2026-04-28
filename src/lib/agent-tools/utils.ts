@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import { z } from "zod";
 import { getSession, type SessionPayload } from "@/lib/auth/server";
 import { apiError } from "@/lib/api/response";
@@ -10,9 +9,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const TOOL_API_KEY = process.env.AGENT_TOOLS_JWT_SECRET;
 
+export type ObjectIdString = string;
+
 export interface ScopedSession {
   session: SessionPayload;
-  orgId: mongoose.Types.ObjectId;
+  orgId: ObjectIdString;
 }
 
 export async function requireScopedSession(request?: Request, endpoint = "unknown"): Promise<ScopedSession> {
@@ -32,8 +33,8 @@ export async function requireScopedSession(request?: Request, endpoint = "unknow
           request.headers.get("x-tool-org-id") ||
           url.searchParams.get("orgId") ||
           "";
-        if (orgIdRaw && mongoose.Types.ObjectId.isValid(orgIdRaw)) {
-          const orgId = new mongoose.Types.ObjectId(orgIdRaw);
+        if (orgIdRaw && isObjectId(orgIdRaw)) {
+          const orgId = orgIdRaw;
           log.authSuccess(endpoint, orgIdRaw, "api_key");
           return {
             session: {
@@ -64,7 +65,7 @@ export async function requireScopedSession(request?: Request, endpoint = "unknow
   log.authSuccess(endpoint, session.orgId, "session_cookie");
   return {
     session,
-    orgId: new mongoose.Types.ObjectId(session.orgId),
+    orgId: session.orgId,
   };
 }
 
@@ -100,11 +101,11 @@ export function parseBody<T extends z.ZodTypeAny>(schema: T, body: unknown): z.i
 }
 
 export function isObjectId(value: string) {
-  return mongoose.Types.ObjectId.isValid(value);
+  return /^[a-fA-F0-9]{24}$/.test(value);
 }
 
 export function toObjectId(value: string) {
-  return new mongoose.Types.ObjectId(value);
+  return value;
 }
 
 export function handleToolError(error: unknown, endpoint = "unknown") {

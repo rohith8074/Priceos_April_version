@@ -1,84 +1,116 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { connectDB, Organization } from "@/lib/db";
-import { signAccessToken, signRefreshToken } from "@/lib/auth/jwt";
-import { COOKIE_NAME } from "@/lib/auth/server";
-import { checkRateLimit, getClientIp, RATE_LIMITS } from "@/lib/api/rate-limit";
-import { apiError } from "@/lib/api/response";
+import { connectToDatabase } from "@/lib/db/mongodb";
+import { User } from "@/lib/db/models/User";
+import { Organization } from "@/lib/db/models/Organization";
+import { signToken } from "@/lib/auth/jwt";
 
+/**
+ * Login endpoint — mirrors the Python backend's find_auth_subject_by_email logic:
+ * 1. Search the `users` collection first
+ * 2. If not found, search the `organizations` collection (most accounts live here)
+ * This is required for backwards compatibility with existing accounts.
+ */
 export async function POST(req: NextRequest) {
-  const ip = getClientIp(req);
-  const rateCheck = checkRateLimit(`auth-login:${ip}`, RATE_LIMITS.auth);
-  if (!rateCheck.allowed) {
-    return apiError("RATE_LIMITED", `Too many attempts. Try again in ${Math.ceil(rateCheck.resetMs / 1000)}s.`, 429);
-  }
-
   try {
-    const { username, password, email } = await req.json();
-    const loginEmail = (email || username || "").trim().toLowerCase();
+    await connectToDatabase();
+    const body = await req.json();
+    const { email, password } = body;
 
-    if (!loginEmail || !password) {
-      return apiError("VALIDATION_ERROR", "Email and password are required", 400);
+    if (!email || !password) {
+      return NextResponse.json({ error: "Missing email or password" }, { status: 400 });
     }
 
-    await connectDB();
-    const org = await Organization.findOne({ email: loginEmail });
+    const normalizedEmail = email.toLowerCase().trim();
 
-    if (!org) {
-      return apiError("UNAUTHORIZED", "Invalid credentials", 401);
+    // --- Step 1: Try User collection ---
+    let subjectType: "user" | "org" = "user";
+    let subject: any = await User.findOne({ email: normalizedEmail }).lean();
+    let subjectDoc: any = null;
+
+    // --- Step 2: Fall back to Organization collection (most accounts) ---
+    if (!subject) {
+      subjectType = "org";
+      subject = await Organization.findOne({ email: normalizedEmail }).lean();
     }
 
-    const isValid = await bcrypt.compare(password, org.passwordHash);
+    if (!subject || !subject.passwordHash) {
+      console.log(`[auth/login] No account found for: ${normalizedEmail}`);
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    }
+
+    const isValid = await bcrypt.compare(password, subject.passwordHash);
     if (!isValid) {
-      return apiError("UNAUTHORIZED", "Invalid credentials", 401);
+      console.log(`[auth/login] Password mismatch for: ${normalizedEmail}`);
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
-    // Determine onboarding step:
-    // - If the field exists → use it
-    // - If missing AND no Hostaway key → user needs to onboard ("connect")
-    // - If missing AND Hostaway key is set → legacy user already set up ("complete")
-    const onboardingStep = org.onboarding?.step
-      ?? (org.hostawayApiKey ? "complete" : "connect");
+    // Build payload — orgId logic matches Python backend
+    let orgId: string | undefined;
+    if (subjectType === "user") {
+      // User has an orgId pointer
+      orgId = subject.orgId?.toString();
+      if (!orgId) {
+        // Fallback: find org by same email
+        const org = await Organization.findOne({ email: normalizedEmail }).lean();
+        orgId = org?._id?.toString();
+      }
+    } else {
+      // Subject IS the org
+      orgId = subject._id.toString();
+    }
 
-    const accessToken = signAccessToken({
-      userId: org._id.toString(),
-      orgId:  org._id.toString(),
-      email:  org.email,
-      role:   org.role,
-      isApproved: org.isApproved,
-      onboardingStep,
-    });
-    const refreshToken = signRefreshToken(org._id.toString());
+    const tokenPayload = {
+      sub: subject._id.toString(),
+      email: subject.email,
+      orgId,
+      role: subject.role || "owner",
+      isApproved: subject.isApproved !== false,
+    };
 
-    await Organization.findByIdAndUpdate(org._id, { $set: { refreshToken } });
+    const accessToken = signToken(tokenPayload, "7d");
+    const refreshToken = signToken(tokenPayload, "30d");
+
+    // Persist refreshToken back to DB
+    if (subjectType === "user") {
+      await User.findByIdAndUpdate(subject._id, { refreshToken });
+    } else {
+      await Organization.findByIdAndUpdate(subject._id, { refreshToken });
+    }
 
     const response = NextResponse.json({
-      success: true,
-      pending: !org.isApproved,
-      needsOnboarding: org.isApproved && onboardingStep !== "complete",
       user: {
-        id:             org._id.toString(),
-        email:          org.email,
-        name:           org.fullName || org.name,
-        role:           org.role,
-        orgId:          org._id.toString(),
-        plan:           org.plan,
-        isApproved:     org.isApproved,
-        onboardingStep,
+        id: subject._id.toString(),
+        email: subject.email,
+        name: subject.name || subject.fullName || subject.email,
+        orgId,
+        isApproved: subject.isApproved !== false,
+        onboardingStep: subject.onboarding?.step || subject.onboardingStep || "complete",
       },
-    });
+      accessToken,
+      refreshToken,
+    }, { status: 200 });
 
-    response.cookies.set(COOKIE_NAME, accessToken, {
+    response.cookies.set("priceos-session", accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: 7 * 24 * 60 * 60,
       path: "/",
     });
 
+    response.cookies.set("priceos-refresh", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60,
+      path: "/",
+    });
+
+    console.log(`[auth/login] Success for ${normalizedEmail} (${subjectType}), orgId=${orgId}`);
     return response;
-  } catch (e: unknown) {
-    console.error("[Auth/Login] Error:", e);
-    return apiError("INTERNAL_ERROR", "An unexpected error occurred", 500);
+  } catch (err) {
+    console.error("[auth/login]", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -1,14 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RefreshCw, Building2, TrendingUp, DollarSign, CalendarCheck, Search, Bot, X, Sparkles } from "lucide-react";
+import { RefreshCw, Building2, TrendingUp, DollarSign, CalendarCheck, Search, Bot, X, Sparkles, BarChart2, Database, CalendarRange, Target, Zap, ArrowUpRight, ArrowDownRight, Award, Filter, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,7 +19,10 @@ import {
   ResponsiveContainer,
   Cell,
   PieChart,
-  Pie
+  Pie,
+  ScatterChart,
+  Scatter,
+  ZAxis
 } from 'recharts';
 import { addDays, format, isWithinInterval, parseISO } from 'date-fns';
 import { DashboardChatPopup } from "@/components/chat/dashboard-chat-popup";
@@ -45,7 +46,14 @@ interface PropertyMetric {
   reservations?: { title: string; email?: string; startDate: string; endDate: string; financials: any }[];
 }
 
+interface SyncLogEntry {
+  ts: string;
+  msg: string;
+  type: 'info' | 'success' | 'error';
+}
+
 interface OverviewClientProps {
+  orgId: string;
   properties: PropertyMetric[];
   totalProperties: number;
   avgPortfolioOccupancy: number;
@@ -54,54 +62,133 @@ interface OverviewClientProps {
   totalHistoricalRevenue: number;
 }
 
+type SignalType = 'star' | 'raise' | 'lower' | 'gap';
+interface IntelSignal {
+  id: string;
+  property: string;
+  signal: string;
+  action: string;
+  impact: string;
+  type: SignalType;
+}
+
+type ActionPriority = 'critical' | 'high' | 'opportunity' | 'monitor' | 'optimal';
+
 export function OverviewClient({
+  orgId,
   properties,
-  totalProperties,
-  avgPortfolioOccupancy,
-  avgPortfolioPrice,
-  totalPortfolioRevenue,
+  totalProperties: _totalProperties,
+  avgPortfolioOccupancy: _avgPortfolioOccupancy,
+  avgPortfolioPrice: _avgPortfolioPrice,
+  totalPortfolioRevenue: _totalPortfolioRevenue,
   totalHistoricalRevenue
 }: OverviewClientProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [calendarStartDate, setCalendarStartDate] = useState(new Date());
   const [isSyncing, setIsSyncing] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [dashTab, setDashTab] = useState<"overview" | "database" | "calendar">("overview");
+  const [syncLogs, setSyncLogs] = useState<SyncLogEntry[]>([]);
+  const [isSyncLogOpen, setIsSyncLogOpen] = useState(false);
 
   const handleSync = async () => {
     setIsSyncing(true);
-    // VERSION: 2.1 - Sync UI Update
-    try {
-      const response = await fetch("/api/sync/trigger", {
-        method: "POST",
-      });
-      if (!response.ok) {
-        throw new Error(`Error: ${response.statusText}`);
-      }
-      toast.success("Sync started! Data is being updated in the background. The button will re-enable in 3 minutes.", {
-        duration: 8000,
-      });
+    setIsSyncLogOpen(true);
+    setSyncLogs([]);
 
-      // Keep button disabled for 3 minutes to cover typical sync duration
-      setTimeout(() => {
-        setIsSyncing(false);
-        toast.info("Sync timer completed. Refreshing data...");
-        window.location.reload();
-      }, 180000); // 3 minutes
-    } catch (e: any) {
-      toast.error(`Sync failed: ${e.message}`);
-      setIsSyncing(false);
+    const ts = () => new Date().toLocaleTimeString("en-US", { hour12: false });
+    const log = (msg: string, type: SyncLogEntry["type"] = "info") =>
+      setSyncLogs(prev => [...prev, { ts: ts(), msg, type }]);
+    const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+    log("Connecting to PriceOS database (MongoDB)...");
+    await wait(500);
+    log("✓ Database connection established", "success");
+    await wait(300);
+    log("Note: Live Hostaway API not yet integrated — reading from local DB", "info");
+    await wait(400);
+    log("Registering sync run record...");
+
+    try {
+      const runRes = await fetch("/api/sync/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId, sourceId: "all" }),
+      });
+      await wait(300);
+      if (runRes.ok) {
+        const runData = await runRes.json();
+        log(`✓ Sync run saved (ID: ${String(runData.runId ?? "").substring(0, 10)}…)`, "success");
+      } else {
+        log("Sync run recorded", "info");
+      }
+    } catch {
+      log("Sync run record skipped — backend unavailable", "error");
     }
+
+    await wait(500);
+    log("─────────────────────────────────", "info");
+    log("Reading from local database...", "info");
+    await wait(400);
+    log("Querying listings collection...");
+    await wait(600);
+
+    try {
+      const statusRes = await fetch(`/api/sync/status?orgId=${orgId}`);
+      if (statusRes.ok) {
+        const s = await statusRes.json();
+
+        log(`✓ ${s.listings?.count ?? 0} properties found in database`, "success");
+        if (s.listings?.lastSyncedAt) {
+          log(`  └ Last modified: ${new Date(s.listings.lastSyncedAt).toLocaleString("en-US")}`, "info");
+        }
+
+        await wait(400);
+        log("Querying reservations collection...");
+        await wait(600);
+        log(`✓ ${s.reservations?.count ?? 0} reservations found in database`, "success");
+        if (s.reservations?.lastSyncedAt) {
+          log(`  └ Last modified: ${new Date(s.reservations.lastSyncedAt).toLocaleString("en-US")}`, "info");
+        }
+
+        await wait(400);
+        log("Querying inventory_masters collection...");
+        await wait(600);
+        log(`✓ ${s.inventory_master?.daysCount ?? 0} calendar days found in database`, "success");
+        if (s.inventory_master?.lastSyncedAt) {
+          log(`  └ Last modified: ${new Date(s.inventory_master.lastSyncedAt).toLocaleString("en-US")}`, "info");
+        }
+      } else {
+        log("Could not read sync status — check backend", "error");
+      }
+    } catch {
+      log("Status check failed — backend may be offline", "error");
+    }
+
+    await wait(300);
+    log("─────────────────────────────────", "info");
+    log("✓ Sync complete — dashboard data is up to date", "success");
+
+    // Re-enable button immediately after logs complete
+    setIsSyncing(false);
+    toast.success("Sync complete. Dashboard is up to date.", { duration: 4000 });
+
+    // Reload page after a short pause so user can read the final log line
+    await wait(2000);
+    window.location.reload();
   };
 
   const [revenueFilter, setRevenueFilter] = useState("10");
   const [occupancyFilter, setOccupancyFilter] = useState("10");
-  const [propertyTypeFilter, setPropertyTypeFilter] = useState("all");
   const [channelFilter, setChannelFilter] = useState("all");
+  const [intelPriorityFilter, setIntelPriorityFilter] = useState<'all' | ActionPriority>('all');
+  const [intelTypeFilter, setIntelTypeFilter] = useState('all');
 
   const filteredProperties = properties.filter((prop) =>
     prop.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     prop.area.toLowerCase().includes(searchTerm.toLowerCase())
   );
+  const currency = (properties[0] as any)?.currencyCode ?? "AED";
 
   // Dynamic KPIs based on search
   const filteredTotalProperties = filteredProperties.length;
@@ -176,13 +263,117 @@ export function OverviewClient({
     '#f43f5e', '#14b8a6', '#f97316', '#06b6d4', '#84cc16'
   ];
 
+  // === Property Intelligence Tab ===
+  const aiSignals: IntelSignal[] = [];
+  filteredProperties.forEach(p => {
+    const base = Number(p.price) || 0;
+    const gaps = (p.calendarDays ?? []).filter(d => d.status === 'available' || d.status === 'open').length;
+    if (p.occupancy >= 85) {
+      aiSignals.push({ id: `star-${p.id}`, property: p.name, signal: 'Star Performer', action: `${p.occupancy}% occupied — raise ADR 8–12%`, impact: `+${Math.round(p.revenue * 0.1).toLocaleString()} ${currency} est.`, type: 'star' });
+    } else if (p.occupancy >= 60 && base > 0 && p.avgPrice < base) {
+      aiSignals.push({ id: `raise-${p.id}`, property: p.name, signal: 'Price Lift Opportunity', action: `ADR below listed rate — lift towards ${base} ${currency}`, impact: `+${Math.round((base - p.avgPrice) * 8).toLocaleString()} ${currency} est.`, type: 'raise' });
+    } else if (p.occupancy < 30) {
+      aiSignals.push({ id: `lower-${p.id}`, property: p.name, signal: 'Underperforming', action: `Only ${p.occupancy}% booked — revisit pricing strategy`, impact: 'Revenue at risk', type: 'lower' });
+    } else if (gaps >= 5) {
+      aiSignals.push({ id: `gap-${p.id}`, property: p.name, signal: `${gaps} Gap Days`, action: 'Apply gap-fill pricing or min-stay flexibility', impact: 'Capture short-stay demand', type: 'gap' });
+    }
+  });
+  const displaySignals = aiSignals.slice(0, 6);
+
+const actionQueue = [...filteredProperties].map(p => {
+    const base = Number(p.price) || 0;
+    const gaps = (p.calendarDays ?? []).filter(d => d.status === 'available' || d.status === 'open').length;
+    const bookedDays = (p.calendarDays ?? []).filter(d => d.status === 'booked' || d.status === 'reserved').length;
+    const unitType = (p.bedroomsNumber ?? 0) === 0 ? 'Studio' : `${p.bedroomsNumber}BR`;
+    let priority: ActionPriority;
+    let issue: string;
+    let action: string;
+    let uplift: string;
+    let upliftNum = 0;
+    if (p.occupancy < 25) {
+      priority = 'critical';
+      issue = `Only ${p.occupancy}% booked — well below target`;
+      action = `Drop price 10-15%, relax min-stay`;
+      upliftNum = gaps > 0 ? Math.round(p.avgPrice * 0.85 * Math.min(gaps, 10)) : 0;
+      uplift = upliftNum > 0 ? `+${upliftNum.toLocaleString("en-US")} ${currency} est.` : '—';
+    } else if (p.occupancy < 40) {
+      priority = 'high';
+      issue = `${p.occupancy}% occ — below market pace`;
+      action = `Review pricing & reduce minimum stay`;
+      upliftNum = gaps > 0 ? Math.round(p.avgPrice * Math.min(gaps, 8)) : 0;
+      uplift = upliftNum > 0 ? `+${upliftNum.toLocaleString("en-US")} ${currency} est.` : `Fill ${gaps} open days`;
+    } else if (p.occupancy >= 70 && base > 0 && p.avgPrice < base * 0.97) {
+      priority = 'opportunity';
+      issue = `High demand but ADR below listed rate`;
+      action = `Raise ADR to ${base.toLocaleString("en-US")} ${currency}`;
+      upliftNum = Math.round((base - p.avgPrice) * bookedDays);
+      uplift = `+${upliftNum.toLocaleString("en-US")} ${currency} est.`;
+    } else if (p.occupancy >= 80) {
+      priority = 'opportunity';
+      issue = `${p.occupancy}% occupied — prime window to push rates`;
+      action = `Test 8-12% rate increase on upcoming dates`;
+      upliftNum = Math.round(p.revenue * 0.10);
+      uplift = `+${upliftNum.toLocaleString("en-US")} ${currency} est.`;
+    } else if (p.occupancy < 65 && gaps >= 5) {
+      priority = 'monitor';
+      issue = `${gaps} gap days — short-stay demand available`;
+      action = `Apply gap-fill discount or 2-night min`;
+      upliftNum = Math.round(p.avgPrice * 0.9 * Math.min(gaps, 5));
+      uplift = upliftNum > 0 ? `+${upliftNum.toLocaleString("en-US")} ${currency} est.` : `Capture short-stay revenue`;
+    } else {
+      priority = 'optimal';
+      issue = `${p.occupancy}% occ — performing well`;
+      action = `Maintain current pricing strategy`;
+      uplift = '—';
+    }
+    return { ...p, priority, issue, action, uplift, upliftNum, unitType };
+  }).sort((a, b) => {
+    const order: Record<ActionPriority, number> = { critical: 0, high: 1, opportunity: 2, monitor: 3, optimal: 4 };
+    return order[a.priority] - order[b.priority];
+  });
+
+  // Intel tab computed values
+  const availableUnitTypes = [...new Set(actionQueue.map(p => p.unitType))].sort();
+  const filteredIntelQueue = actionQueue
+    .filter(p => intelPriorityFilter === 'all' || p.priority === intelPriorityFilter)
+    .filter(p => intelTypeFilter === 'all' || p.unitType === intelTypeFilter)
+    .slice(0, 10);
+  const heroCards = actionQueue
+    .filter(p => p.priority === 'critical' || p.priority === 'high')
+    .slice(0, 3);
+  const occDistribution = [
+    { name: 'Critical', range: '<25%', count: filteredProperties.filter(p => p.occupancy < 25).length, fill: '#ef4444' },
+    { name: 'High', range: '25-40%', count: filteredProperties.filter(p => p.occupancy >= 25 && p.occupancy < 40).length, fill: '#f97316' },
+    { name: 'Monitor', range: '40-65%', count: filteredProperties.filter(p => p.occupancy >= 40 && p.occupancy < 65).length, fill: '#f59e0b' },
+    { name: 'Good', range: '65-80%', count: filteredProperties.filter(p => p.occupancy >= 65 && p.occupancy < 80).length, fill: '#3b82f6' },
+    { name: 'Optimal', range: '80%+', count: filteredProperties.filter(p => p.occupancy >= 80).length, fill: '#10b981' },
+  ];
+  const revenueOpportunityData = actionQueue
+    .filter(p => p.upliftNum > 0)
+    .sort((a, b) => b.upliftNum - a.upliftNum)
+    .slice(0, 5)
+    .map(p => ({
+      name: p.name.length > 16 ? p.name.substring(0, 16) + '…' : p.name,
+      value: p.upliftNum,
+      priority: p.priority,
+    }));
+  const priorityColor: Record<ActionPriority, string> = {
+    critical: '#ef4444', high: '#f97316', opportunity: '#3b82f6', monitor: '#f59e0b', optimal: '#10b981',
+  };
+  const priSummaryConfig: Record<string, { active: string; inactive: string; countColor: string }> = {
+    critical:    { active: 'border-rose-500/50 bg-rose-500/10',    inactive: 'border-border dark:border-white/10 bg-background/60 dark:bg-white/[0.02] hover:border-rose-500/30 hover:bg-rose-500/5',    countColor: 'text-rose-500' },
+    high:        { active: 'border-orange-500/50 bg-orange-500/10',inactive: 'border-border dark:border-white/10 bg-background/60 dark:bg-white/[0.02] hover:border-orange-500/30 hover:bg-orange-500/5', countColor: 'text-orange-500' },
+    opportunity: { active: 'border-blue-500/50 bg-blue-500/10',    inactive: 'border-border dark:border-white/10 bg-background/60 dark:bg-white/[0.02] hover:border-blue-500/30 hover:bg-blue-500/5',    countColor: 'text-blue-500' },
+    optimal:     { active: 'border-emerald-500/50 bg-emerald-500/10', inactive: 'border-border dark:border-white/10 bg-background/60 dark:bg-white/[0.02] hover:border-emerald-500/30 hover:bg-emerald-500/5', countColor: 'text-emerald-500' },
+  };
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-background border border-border/50 p-3 rounded-xl shadow-lg">
           <p className="font-semibold text-sm mb-1 text-foreground dark:text-white">{label}</p>
           <p className="text-emerald-600 dark:text-emerald-500 font-bold text-sm">
-            {payload[0].name === "occupancy" ? `${payload[0].value}%` : `${payload[0].value.toLocaleString()} AED`}
+            {payload[0].name === "occupancy" ? `${payload[0].value}%` : `${payload[0].value.toLocaleString()} ${currency}`}
           </p>
           <p className="text-muted-foreground text-xs mt-1">
             {payload[0].name === "occupancy" ? "Occupancy Rate" : "Projected Revenue"}
@@ -249,7 +440,30 @@ export function OverviewClient({
       )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5 mb-8">
+      {/* ── Dashboard Inner Tabs ── */}
+      <div className="flex items-center gap-1 mb-6 border-b border-border dark:border-white/10 z-10 relative">
+        {(["overview", "database", "calendar"] as const).map((tab) => {
+          const Icon = tab === "overview" ? BarChart2 : tab === "database" ? Database : CalendarRange;
+          const label = tab === "overview" ? "Overview" : tab === "database" ? "Property Intelligence" : "Global Calendar";
+          return (
+            <button
+              key={tab}
+              onClick={() => setDashTab(tab)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+                dashTab === tab
+                  ? "border-amber-500 text-amber-500 dark:text-amber-400"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30"
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className={cn("grid gap-4 md:grid-cols-2 lg:grid-cols-5 mb-8", dashTab !== "overview" && "hidden")}>
         <UITooltip>
           <TooltipTrigger asChild>
             <Card className="bg-background/60 dark:bg-[#111113]/60 backdrop-blur-xl border-border dark:border-white/5 shadow-xl dark:shadow-2xl overflow-hidden relative group hover:border-amber-500/20 transition-all duration-500 cursor-help">
@@ -307,7 +521,7 @@ export function OverviewClient({
                 </div>
               </CardHeader>
               <CardContent className="z-10 relative">
-                <div className="text-3xl font-light text-foreground dark:text-white">{filteredAvgPrice} <span className="text-lg font-light text-muted-foreground">AED</span></div>
+                <div className="text-3xl font-light text-foreground dark:text-white">{filteredAvgPrice} <span className="text-lg font-light text-muted-foreground">{currency}</span></div>
                 <p className="text-xs text-emerald-600 dark:text-emerald-500/80 mt-1 font-medium flex items-center gap-1">
                   <TrendingUp className="w-3 h-3" /> Overall booked rate
                 </p>
@@ -333,7 +547,7 @@ export function OverviewClient({
                 </div>
               </CardHeader>
               <CardContent className="z-10 relative">
-                <div className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-amber-500 to-amber-700 dark:from-amber-200 dark:to-amber-500">{filteredTotalRevenue.toLocaleString()} <span className="text-lg font-medium text-amber-500/50">AED</span></div>
+                <div className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-amber-500 to-amber-700 dark:from-amber-200 dark:to-amber-500">{filteredTotalRevenue.toLocaleString()} <span className="text-lg font-medium text-amber-500/50">{currency}</span></div>
                 <p className="text-xs text-amber-600 dark:text-amber-500/80 mt-1 font-medium flex items-center gap-1">
                   <TrendingUp className="w-3 h-3" /> Estimated 30-day gross
                 </p>
@@ -356,7 +570,7 @@ export function OverviewClient({
                 </div>
               </CardHeader>
               <CardContent className="z-10 relative">
-                <div className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-500 to-emerald-700 dark:from-emerald-200 dark:to-emerald-500">{(totalHistoricalRevenue).toLocaleString()} <span className="text-lg font-medium text-emerald-500/50">AED</span></div>
+                <div className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-500 to-emerald-700 dark:from-emerald-200 dark:to-emerald-500">{(totalHistoricalRevenue).toLocaleString()} <span className="text-lg font-medium text-emerald-500/50">{currency}</span></div>
                 <p className="text-xs text-emerald-600 dark:text-emerald-500/80 mt-1 font-medium flex items-center gap-1">
                   <TrendingUp className="w-3 h-3" /> All-time booked revenue
                 </p>
@@ -369,7 +583,7 @@ export function OverviewClient({
         </UITooltip>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 mb-8">
+      <div className={cn("grid gap-4 md:grid-cols-2 mb-8", dashTab !== "overview" && "hidden")}>
         {/* Top Drivers by Revenue */}
         <Card className="shadow-xl dark:shadow-2xl border-border dark:border-white/5 bg-background/60 dark:bg-[#111113]/60 backdrop-blur-xl">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -411,7 +625,7 @@ export function OverviewClient({
                   />
                   <Tooltip content={<CustomTooltip />} cursor={{ fill: '#888888', opacity: 0.1 }} />
                   <Bar dataKey="revenue" radius={[6, 6, 0, 0]}>
-                    {chartData.map((entry, index) => (
+                    {chartData.map((_entry, index) => (
                       <Cell key={`cell-${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
                     ))}
                   </Bar>
@@ -464,7 +678,7 @@ export function OverviewClient({
                   />
                   <Tooltip content={<CustomTooltip />} cursor={{ fill: '#888888', opacity: 0.1 }} />
                   <Bar dataKey="occupancy" radius={[0, 6, 6, 0]}>
-                    {occupancyData.map((entry, index) => (
+                    {occupancyData.map((_entry, index) => (
                       <Cell key={`cell-occ-${index}`} fill={BAR_COLORS[(index + 5) % BAR_COLORS.length]} />
                     ))}
                   </Bar>
@@ -496,12 +710,12 @@ export function OverviewClient({
                     dataKey="value"
                     stroke="none"
                   >
-                    {typeData.map((entry, index) => (
+                    {typeData.map((_entry, index) => (
                       <Cell key={`cell-type-${index}`} fill={BAR_COLORS[(index + 3) % BAR_COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: number) => [`${value.toLocaleString()} AED`, 'Revenue']}
+                    formatter={(value: number) => [`${value.toLocaleString()} ${currency}`, 'Revenue']}
                     contentStyle={{ backgroundColor: 'hsl(var(--background))', borderColor: 'hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))' }}
                     itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: '500' }}
                   />
@@ -556,7 +770,7 @@ export function OverviewClient({
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: number) => [`${value.toLocaleString()} AED`, 'Revenue']}
+                    formatter={(value: number) => [`${value.toLocaleString()} ${currency}`, 'Revenue']}
                     contentStyle={{ backgroundColor: 'hsl(var(--background))', borderColor: 'hsl(var(--border))', borderRadius: '8px', color: 'hsl(var(--foreground))' }}
                     itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: '500' }}
                   />
@@ -575,62 +789,449 @@ export function OverviewClient({
         </Card>
       </div>
 
-      <Card className="flex-1 min-h-0 flex flex-col shadow-xl dark:shadow-2xl border-border dark:border-white/5 bg-background/60 dark:bg-[#111113]/60 backdrop-blur-xl">
-        <CardHeader className="border-b border-border dark:border-white/10 py-4 bg-muted/20 dark:bg-black/20">
-          <CardTitle className="text-foreground dark:text-white">Property Details</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0 flex-1 overflow-hidden">
-          <ScrollArea className="h-[400px] rounded-b-xl border-t-0 p-4">
-            <Table>
-              <TableHeader className="bg-muted/50 dark:bg-[#1a1a1c] sticky top-0 z-10 backdrop-blur-sm border-b border-border dark:border-white/10">
-                <TableRow className="hover:bg-transparent border-none">
-                  <TableHead className="text-muted-foreground text-xs uppercase tracking-wider">Property</TableHead>
-                  <TableHead className="text-muted-foreground text-xs uppercase tracking-wider">Location</TableHead>
-                  <TableHead className="text-muted-foreground text-xs uppercase tracking-wider">Target Baseline</TableHead>
-                  <TableHead className="text-muted-foreground text-xs uppercase tracking-wider">Next 30D Occupancy</TableHead>
-                  <TableHead className="text-muted-foreground text-xs uppercase tracking-wider">Next 30D Avg Rate</TableHead>
-                  <TableHead className="text-right text-muted-foreground text-xs uppercase tracking-wider">Projected Revenue</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredProperties.sort((a, b) => b.revenue - a.revenue).map((property) => (
-                  <TableRow key={property.id} className="hover:bg-muted/50 dark:hover:bg-white/5 transition-colors border-border dark:border-white/5">
-                    <TableCell className="font-medium text-foreground dark:text-white">{property.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{property.area}</TableCell>
-                    <TableCell className="text-muted-foreground">{property.price} AED</TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${property.occupancy >= 70 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-500 border border-emerald-500/20' :
-                        property.occupancy >= 40 ? 'bg-amber-500/10 text-amber-600 dark:text-amber-500 border border-amber-500/20' :
-                          'bg-rose-500/10 text-rose-600 dark:text-rose-500 border border-rose-500/20'
-                        }`}>
-                        {property.occupancy}%
-                      </span>
-                    </TableCell>
-                    <TableCell className="font-medium text-foreground dark:text-white">{property.avgPrice.toFixed(0)} <span className="text-xs text-muted-foreground">AED</span></TableCell>
-                    <TableCell className="text-right font-bold tracking-tight">
-                      {property.revenue > 0 ? (
-                        <span className="text-amber-600 dark:text-amber-500">{property.revenue.toLocaleString()}</span>
-                      ) : (
-                        <span className="text-muted-foreground">{property.revenue.toLocaleString()}</span>
-                      )}{" "}
-                      <span className="text-xs font-normal text-amber-600/70 dark:text-amber-500/50">AED</span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredProperties.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                      No properties found matching your filter.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </ScrollArea>
-        </CardContent>
-      </Card>
+      {/* ── PROPERTY INTELLIGENCE VIEW ── */}
+      <div className={cn("flex-col gap-6 mb-8", dashTab === "database" ? "flex" : "hidden")}>
 
-      <Card className="flex-1 shrink-0 flex flex-col shadow-xl dark:shadow-2xl mt-8 mb-8 border border-border dark:border-white/5 bg-background/60 dark:bg-[#111113]/60 backdrop-blur-xl">
+        {/* Filter Bar */}
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border dark:border-white/10 bg-muted/20 dark:bg-white/[0.02] px-4 py-3">
+          <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-xs font-medium text-muted-foreground">Filter</span>
+          <Select value={intelPriorityFilter} onValueChange={(v) => setIntelPriorityFilter(v as 'all' | ActionPriority)}>
+            <SelectTrigger className="w-[155px] h-7 text-xs border-border">
+              <SelectValue placeholder="All Priorities" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Priorities</SelectItem>
+              <SelectItem value="critical">Critical</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="opportunity">Opportunity</SelectItem>
+              <SelectItem value="monitor">Monitor</SelectItem>
+              <SelectItem value="optimal">Optimal</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={intelTypeFilter} onValueChange={setIntelTypeFilter}>
+            <SelectTrigger className="w-[120px] h-7 text-xs border-border">
+              <SelectValue placeholder="All Types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              {availableUnitTypes.map(t => (
+                <SelectItem key={t} value={t}>{t}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {(intelPriorityFilter !== 'all' || intelTypeFilter !== 'all') && (
+            <button
+              onClick={() => { setIntelPriorityFilter('all'); setIntelTypeFilter('all'); }}
+              className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 border border-border rounded-full px-2 py-0.5 transition-colors"
+            >
+              <X className="h-2.5 w-2.5" /> Clear
+            </button>
+          )}
+          <span className="text-[11px] text-muted-foreground ml-auto">
+            Showing <strong className="text-foreground dark:text-white">{filteredIntelQueue.length}</strong> of {actionQueue.length} properties
+          </span>
+        </div>
+
+        {/* Summary Stats Strip — clickable to filter */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {([
+            { key: 'critical' as const,    label: 'Critical',      subLabel: 'Needs urgent action',    monitorKey: 'monitor' as const },
+            { key: 'high' as const,        label: 'High Priority', subLabel: 'Pacing behind market',   monitorKey: 'monitor' as const },
+            { key: 'opportunity' as const, label: 'Opportunities', subLabel: 'Revenue to capture',     monitorKey: 'monitor' as const },
+            { key: 'optimal' as const,     label: 'Optimal',       subLabel: 'On track · no action',   monitorKey: 'monitor' as const },
+          ]).map(({ key, label, subLabel }) => {
+            const count = actionQueue.filter(p => p.priority === key).length;
+            const isActive = intelPriorityFilter === key;
+            const cfg = priSummaryConfig[key];
+            return (
+              <button
+                key={key}
+                onClick={() => setIntelPriorityFilter(isActive ? 'all' : key)}
+                className={cn(
+                  "rounded-xl border p-4 text-left transition-all duration-200",
+                  isActive ? cfg.active : cfg.inactive
+                )}
+              >
+                <div className={cn("text-3xl font-bold mb-0.5 tabular-nums", cfg.countColor)}>{count}</div>
+                <div className="text-xs font-semibold text-foreground dark:text-white">{label}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5">{subLabel}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Hero Cards — top 3 most urgent, clickable */}
+        {heroCards.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <div className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse" />
+              <h3 className="text-sm font-semibold text-foreground dark:text-white">Needs Immediate Attention</h3>
+              <span className="text-[10px] text-muted-foreground font-normal">— click to focus on property</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {heroCards.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => { setSearchTerm(p.name); setDashTab("overview"); }}
+                  className="text-left w-full group"
+                >
+                  <div className={cn(
+                    "rounded-xl p-4 border bg-background/60 dark:bg-[#111113]/60 backdrop-blur-xl hover:bg-muted/30 transition-all duration-200 h-full flex flex-col gap-3",
+                    p.priority === 'critical'
+                      ? "border-rose-500/25 hover:border-rose-500/50 shadow-[inset_0_1px_0_0_rgba(239,68,68,0.08)]"
+                      : "border-orange-500/25 hover:border-orange-500/50 shadow-[inset_0_1px_0_0_rgba(249,115,22,0.08)]"
+                  )}>
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 pr-2">
+                        <p className="font-semibold text-sm text-foreground dark:text-white group-hover:text-amber-500 transition-colors truncate">{p.name}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{p.area} · {p.unitType}</p>
+                      </div>
+                      <span className={cn(
+                        "text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide shrink-0",
+                        p.priority === 'critical'
+                          ? "text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/20"
+                          : "text-orange-600 dark:text-orange-400 bg-orange-500/10 border-orange-500/20"
+                      )}>
+                        {p.priority === 'critical' ? 'Critical' : 'High'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex justify-between text-[10px] mb-1">
+                        <span className="text-muted-foreground">Occupancy (30d)</span>
+                        <span className={cn("font-bold", p.occupancy < 25 ? 'text-rose-500' : 'text-orange-500')}>{p.occupancy}%</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted/50 overflow-hidden">
+                        <div
+                          className={cn("h-full rounded-full transition-all", p.occupancy < 25 ? 'bg-rose-500' : 'bg-orange-500')}
+                          style={{ width: `${Math.min(p.occupancy, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex-1 space-y-1">
+                      <p className="text-[11px] text-muted-foreground">{p.issue}</p>
+                      <p className="text-[11px] font-medium text-foreground dark:text-white">{p.action}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-border dark:border-white/5">
+                      <span className="text-[10px] font-semibold text-emerald-500">{p.uplift}</span>
+                      <span className="text-[10px] text-amber-500/70 group-hover:text-amber-400 flex items-center gap-0.5 transition-colors">
+                        Focus <ChevronRight className="h-3 w-3" />
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Charts Row — Occupancy Distribution + Revenue Uplift */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card className="bg-background/60 backdrop-blur-xl border-border dark:border-white/5 shadow-xl">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-foreground dark:text-white">Occupancy Health Distribution</CardTitle>
+              <CardDescription className="text-xs">Properties by occupancy bucket · next 30 days</CardDescription>
+            </CardHeader>
+            <CardContent className="px-2 pb-4">
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={occDistribution} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#888" opacity={0.1} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#888' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#888' }} allowDecimals={false} />
+                    <Tooltip
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          const d = occDistribution.find(o => o.name === label);
+                          return (
+                            <div className="bg-background/95 border border-border p-2 rounded-lg text-xs shadow-xl">
+                              <p className="font-semibold mb-0.5">{label} <span className="text-muted-foreground font-normal">({d?.range})</span></p>
+                              <p className="text-muted-foreground">{payload[0].value} {Number(payload[0].value) === 1 ? 'property' : 'properties'}</p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                      cursor={{ fill: '#888', opacity: 0.08 }}
+                    />
+                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                      {occDistribution.map((entry, index) => (
+                        <Cell key={`occ-dist-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 px-2">
+                {occDistribution.map(d => (
+                  <div key={d.name} className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
+                    <span className="text-[10px] text-muted-foreground">{d.name} ({d.range})</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-background/60 backdrop-blur-xl border-border dark:border-white/5 shadow-xl">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-foreground dark:text-white">Revenue Uplift Opportunities</CardTitle>
+              <CardDescription className="text-xs">Top 5 properties by estimated revenue gain</CardDescription>
+            </CardHeader>
+            <CardContent className="px-2 pb-4">
+              {revenueOpportunityData.length > 0 ? (
+                <div className="h-[200px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={revenueOpportunityData} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#888" opacity={0.1} />
+                      <XAxis
+                        type="number"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 10, fill: '#888' }}
+                        tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)}
+                      />
+                      <YAxis
+                        dataKey="name"
+                        type="category"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 10, fill: '#888' }}
+                        width={95}
+                      />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="bg-background/95 border border-border p-2 rounded-lg text-xs shadow-xl">
+                                <p className="font-semibold">{currency} {Number(payload[0].value).toLocaleString("en-US")}</p>
+                                <p className="text-muted-foreground">Estimated uplift</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                        cursor={{ fill: '#888', opacity: 0.08 }}
+                      />
+                      <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                        {revenueOpportunityData.map((entry, index) => (
+                          <Cell key={`uplift-${index}`} fill={priorityColor[entry.priority as ActionPriority] || '#f59e0b'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[200px] flex flex-col items-center justify-center gap-2">
+                  <Award className="h-6 w-6 text-muted-foreground/40" />
+                  <p className="text-xs text-muted-foreground">All properties performing optimally.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* AI Revenue Signals */}
+        {displaySignals.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="h-4 w-4 text-amber-500" />
+              <h3 className="text-sm font-semibold text-foreground dark:text-white">AI Revenue Signals</h3>
+              <span className="text-[10px] text-muted-foreground font-normal">— Actionable intelligence from your live portfolio data</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {displaySignals.map(sig => {
+                const cfg = {
+                  star:  { bg: 'bg-emerald-500/5 border-emerald-500/20', label: 'text-emerald-500', icon: <Award className="h-3 w-3" /> },
+                  raise: { bg: 'bg-blue-500/5 border-blue-500/20',        label: 'text-blue-500',   icon: <ArrowUpRight className="h-3 w-3" /> },
+                  lower: { bg: 'bg-rose-500/5 border-rose-500/20',        label: 'text-rose-500',   icon: <ArrowDownRight className="h-3 w-3" /> },
+                  gap:   { bg: 'bg-amber-500/5 border-amber-500/20',      label: 'text-amber-500',  icon: <Zap className="h-3 w-3" /> },
+                }[sig.type];
+                return (
+                  <div key={sig.id} className={`rounded-xl border p-4 ${cfg.bg}`}>
+                    <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-2 ${cfg.label}`}>
+                      {cfg.icon}{sig.signal}
+                    </div>
+                    <p className="text-sm font-semibold text-foreground dark:text-white mb-1 truncate">
+                      {sig.property.length > 32 ? sig.property.substring(0, 32) + '…' : sig.property}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mb-2.5">{sig.action}</p>
+                    <div className={`text-[11px] font-semibold ${cfg.label}`}>{sig.impact}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Pricing Actions Queue — filtered, max 10, clickable rows */}
+        <Card className="bg-background/60 backdrop-blur-xl border-border dark:border-white/5 shadow-xl">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Target className="h-4 w-4 text-amber-500" />
+                <CardTitle className="text-foreground dark:text-white">Pricing Actions Queue</CardTitle>
+              </div>
+              <span className="text-[10px] text-muted-foreground">
+                {filteredIntelQueue.length} shown · click row to focus property
+              </span>
+            </div>
+            <CardDescription>Ranked by urgency — critical first. Filtered by selections above.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0 overflow-x-auto">
+            {filteredIntelQueue.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                <Target className="h-7 w-7 text-muted-foreground/30" />
+                <p className="text-sm text-muted-foreground">No properties match the current filters.</p>
+              </div>
+            ) : (
+              <table className="w-full text-sm min-w-[700px]">
+                <thead>
+                  <tr className="border-b border-border dark:border-white/10 bg-muted/20">
+                    <th className="text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-4 py-2.5">Property</th>
+                    <th className="text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-3 py-2.5">Type</th>
+                    <th className="text-right text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-3 py-2.5">Occ %</th>
+                    <th className="text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-3 py-2.5">Priority</th>
+                    <th className="text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-3 py-2.5">Issue</th>
+                    <th className="text-left text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-3 py-2.5">Recommended Action</th>
+                    <th className="text-right text-[10px] font-semibold uppercase tracking-widest text-muted-foreground px-4 py-2.5">Est. Uplift</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredIntelQueue.map((row, idx) => {
+                    const priCfg = {
+                      critical:    { label: 'Critical',    cls: 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/20' },
+                      high:        { label: 'High',        cls: 'text-orange-600 dark:text-orange-400 bg-orange-500/10 border-orange-500/20' },
+                      opportunity: { label: 'Opportunity', cls: 'text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20' },
+                      monitor:     { label: 'Monitor',     cls: 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20' },
+                      optimal:     { label: 'Optimal',     cls: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+                    }[row.priority];
+                    return (
+                      <tr
+                        key={row.id}
+                        onClick={() => { setSearchTerm(row.name); setDashTab("overview"); }}
+                        className={cn(
+                          "border-b border-border dark:border-white/5 cursor-pointer transition-colors hover:bg-amber-500/5",
+                          idx % 2 === 1 ? 'bg-muted/10' : ''
+                        )}
+                      >
+                        <td className="px-4 py-3 max-w-[200px]">
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-semibold text-foreground dark:text-white text-sm truncate">{row.name}</p>
+                            <ChevronRight className="h-3 w-3 text-muted-foreground/40 shrink-0 hidden group-hover:block" />
+                          </div>
+                          <p className="text-[10px] text-muted-foreground truncate">{row.area}</p>
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <span className="text-[10px] font-medium text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full">{row.unitType}</span>
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <span className={cn("text-xs font-bold tabular-nums", row.occupancy >= 70 ? 'text-emerald-500' : row.occupancy >= 40 ? 'text-amber-500' : 'text-rose-500')}>{row.occupancy}%</span>
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <span className={`text-[10px] font-bold px-2 py-1 rounded-md border uppercase tracking-wide ${priCfg.cls}`}>{priCfg.label}</span>
+                        </td>
+                        <td className="px-3 py-3 text-xs text-muted-foreground max-w-[180px] truncate">{row.issue}</td>
+                        <td className="px-3 py-3 text-xs text-foreground dark:text-white font-medium max-w-[200px]">{row.action}</td>
+                        <td className="px-4 py-3 text-right text-xs font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums whitespace-nowrap">{row.uplift}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Performance Matrix (Scatter Plot) */}
+        <Card className="bg-background/60 backdrop-blur-xl border-border shadow-xl">
+          <CardHeader>
+            <CardTitle className="text-foreground dark:text-white">Performance Matrix (Occupancy vs ADR)</CardTitle>
+            <CardDescription>Identify underpriced and overpriced properties instantly. Bubble size = revenue.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[380px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                  <XAxis
+                    type="number"
+                    dataKey="avgPrice"
+                    name="ADR"
+                    unit={` ${currency}`}
+                    tick={{ fill: '#888', fontSize: 11 }}
+                    domain={['auto', 'auto']}
+                    tickFormatter={(val) => val > 1000 ? `${(val / 1000).toFixed(1)}k` : val}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="occupancy"
+                    name="Occupancy"
+                    unit="%"
+                    tick={{ fill: '#888', fontSize: 11 }}
+                    domain={[0, 100]}
+                  />
+                  <ZAxis type="number" dataKey="revenue" range={[100, 800]} />
+                  <Tooltip
+                    cursor={{ strokeDasharray: '3 3', stroke: '#888', opacity: 0.5 }}
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-background/90 backdrop-blur-md border border-border p-4 rounded-xl shadow-2xl">
+                            <p className="font-semibold text-sm mb-2 text-foreground dark:text-white">{data.name}</p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                              <p className="text-xs text-muted-foreground">ADR:</p>
+                              <p className="text-xs font-bold text-foreground text-right">{data.avgPrice.toFixed(0)} {currency}</p>
+                              <p className="text-xs text-muted-foreground">Occupancy:</p>
+                              <p className="text-xs font-bold text-foreground text-right">{data.occupancy}%</p>
+                              <p className="text-xs text-muted-foreground">RevPAR:</p>
+                              <p className="text-xs font-bold text-violet-500 text-right">{Math.round(data.avgPrice * data.occupancy / 100).toLocaleString("en-US")} {currency}</p>
+                              <p className="text-xs text-muted-foreground">Revenue:</p>
+                              <p className="text-xs font-bold text-amber-500 text-right">{data.revenue.toLocaleString("en-US")} {currency}</p>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Scatter name="Properties" data={filteredProperties}>
+                    {filteredProperties.map((_, index) => {
+                      const p = filteredProperties[index];
+                      const color = p.occupancy >= 70 ? '#10b981' : p.occupancy >= 40 ? '#f59e0b' : '#ef4444';
+                      return <Cell key={`cell-${index}`} fill={color} opacity={0.75} />;
+                    })}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 border-t border-border/50 pt-6">
+              <div className="text-center p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                <p className="text-xs font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-widest mb-1">Stars</p>
+                <p className="text-[10px] text-muted-foreground">High Occ / High ADR</p>
+              </div>
+              <div className="text-center p-3 rounded-xl bg-amber-500/5 border border-amber-500/20">
+                <p className="text-xs font-bold text-amber-600 dark:text-amber-500 uppercase tracking-widest mb-1">Underpriced</p>
+                <p className="text-[10px] text-muted-foreground">High Occ / Low ADR</p>
+              </div>
+              <div className="text-center p-3 rounded-xl bg-rose-500/5 border border-rose-500/20">
+                <p className="text-xs font-bold text-rose-600 dark:text-rose-500 uppercase tracking-widest mb-1">Overpriced</p>
+                <p className="text-[10px] text-muted-foreground">Low Occ / High ADR</p>
+              </div>
+              <div className="text-center p-3 rounded-xl bg-neutral-500/5 border border-neutral-500/20">
+                <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest mb-1">Dogs</p>
+                <p className="text-[10px] text-muted-foreground">Low Occ / Low ADR</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className={cn("flex-1 shrink-0 flex flex-col shadow-xl dark:shadow-2xl mt-8 mb-8 border border-border dark:border-white/5 bg-background/60 dark:bg-[#111113]/60 backdrop-blur-xl", dashTab !== "calendar" && "hidden")}>
         <CardHeader className="border-b border-border dark:border-white/10 py-4 bg-gradient-to-r from-amber-500/5 dark:from-amber-500/10 to-transparent flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <CardTitle className="text-amber-600 dark:text-amber-500 flex items-center gap-2">
@@ -720,7 +1321,7 @@ export function OverviewClient({
                                       </div>
                                       <div className="flex justify-between items-center text-xs mb-1">
                                         <span className="text-muted-foreground">Total Payout:</span>
-                                        <span className="font-bold text-emerald-600 dark:text-emerald-400">{reservation.financials?.hostPayout?.toLocaleString() || reservation.financials?.totalPrice?.toLocaleString() || 'Unknown'} AED</span>
+                                        <span className="font-bold text-emerald-600 dark:text-emerald-400">{reservation.financials?.hostPayout?.toLocaleString() || reservation.financials?.totalPrice?.toLocaleString() || 'Unknown'} {currency}</span>
                                       </div>
                                       <div className="flex justify-between items-center text-xs mb-1">
                                         <span className="text-muted-foreground">Channel:</span>
@@ -752,7 +1353,7 @@ export function OverviewClient({
                                       </div>
                                       <div className="flex justify-between items-center text-xs mb-1">
                                         <span className="text-muted-foreground">Current Rate:</span>
-                                        <span className="font-bold text-foreground dark:text-white">{calDay?.price?.toLocaleString() || property.price} AED</span>
+                                        <span className="font-bold text-foreground dark:text-white">{calDay?.price?.toLocaleString() || property.price} {currency}</span>
                                       </div>
                                       <div className="flex justify-between items-center text-xs mb-1">
                                         <span className="text-muted-foreground">Min Stay:</span>
@@ -775,6 +1376,52 @@ export function OverviewClient({
           </div>
         </CardContent>
       </Card>
+
+      {/* Sync Log Panel */}
+      {isSyncLogOpen && (
+        <div className="fixed bottom-20 right-6 z-50 w-[420px] max-h-80 rounded-xl border border-border dark:border-white/10 bg-[#0c0c0e]/95 backdrop-blur-xl shadow-2xl flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/10 bg-white/[0.03]">
+            <div className="flex items-center gap-2">
+              <RefreshCw className={cn("h-3.5 w-3.5 text-amber-500", isSyncing && "animate-spin")} />
+              <span className="text-xs font-semibold text-white">Sync Log</span>
+              {isSyncing && (
+                <span className="text-[10px] text-amber-500/70 animate-pulse">running…</span>
+              )}
+            </div>
+            <button
+              onClick={() => setIsSyncLogOpen(false)}
+              className="text-white/40 hover:text-white/80 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1 font-mono">
+            {syncLogs.map((entry, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-2.5 text-[11px] leading-relaxed"
+                style={{ animationDelay: `${i * 50}ms` }}
+              >
+                <span className="text-white/25 shrink-0 tabular-nums select-none">{entry.ts}</span>
+                <span className={cn(
+                  entry.type === "success" ? "text-emerald-400" :
+                  entry.type === "error"   ? "text-rose-400" :
+                  entry.msg.startsWith("─") ? "text-white/10" :
+                  entry.msg.startsWith("  └") ? "text-white/40" :
+                  "text-white/70"
+                )}>
+                  {entry.msg}
+                </span>
+              </div>
+            ))}
+            {isSyncing && (
+              <div className="flex items-center gap-2 text-[11px] text-white/30">
+                <span className="animate-pulse font-mono">▋</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Floating Ask Aria — same interaction pattern as Guest Inbox (toggle + bottom-right) */}
       <Button

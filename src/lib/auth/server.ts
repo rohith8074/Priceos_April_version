@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { verifyAccessToken } from "./jwt";
+import { verifyToken } from "./jwt";
 
 export const COOKIE_NAME = "priceos-session";
 
@@ -21,7 +21,7 @@ export async function getSession(): Promise<SessionPayload | null> {
     const cookieStore = await cookies();
     const token = cookieStore.get(COOKIE_NAME)?.value;
     if (!token) return null;
-    const payload = verifyAccessToken(token) as unknown as SessionPayload;
+    const payload = verifyToken(token) as unknown as SessionPayload;
     return payload;
   } catch {
     return null;

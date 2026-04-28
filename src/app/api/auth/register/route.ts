@@ -1,102 +1,92 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { connectDB, Organization, MarketTemplate, User } from "@/lib/db";
-import { signAccessToken } from "@/lib/auth/jwt";
-import { COOKIE_NAME } from "@/lib/auth/server";
+import { connectToDatabase } from "@/lib/db/mongodb";
+import { Organization } from "@/lib/db/models/Organization";
+import { User } from "@/lib/db/models/User";
+import { signToken } from "@/lib/auth/jwt";
 
 export async function POST(req: NextRequest) {
   try {
-    const { name, email, password, orgName, marketCode } = await req.json();
+    await connectToDatabase();
+    const body = await req.json();
+    const { email, password, orgName, name } = body;
 
-    if (!name || !email || !password) {
-      return NextResponse.json({ error: "name, email and password are required" }, { status: 400 });
+    if (!email || !password || !orgName || !name) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    await connectDB();
-
-    const existing = await Organization.findOne({ email: email.toLowerCase() });
-    if (existing) {
-      return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 });
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return NextResponse.json({ error: "Email already registered" }, { status: 400 });
     }
 
-    // Resolve market template for defaults
-    const mktCode = marketCode || "UAE_DXB";
-    const template = await MarketTemplate.findOne({ marketCode: mktCode });
+    const passwordHash = await bcrypt.hash(password, 10);
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    const organization = await Organization.create({
+      name: orgName,
+      email,
+      passwordHash,
+      role: "owner",
+      isApproved: true,
+      fullName: name,
+    });
 
-    // Duplicate user record to 'users' collection to maintain auth synchronization
     const user = await User.create({
-      name: name,
-      email: email.toLowerCase(),
+      name,
+      email,
       passwordHash,
-      fullName: name,
+      orgId: organization._id,
       role: "owner",
-      isApproved: false,
-      plan: "starter"
+      isApproved: true,
+      fullName: name,
     });
 
-    const org = await Organization.create({
-      name: orgName || name,
-      email: email.toLowerCase(),
-      passwordHash,
-      fullName: name,
-      role: "owner",
-      isApproved: false,
-      marketCode: mktCode,
-      currency: template?.currency || "AED",
-      timezone: template?.timezone || "Asia/Dubai",
-      plan: "starter",
-      onboarding: {
-        step: "connect",
-        selectedListingIds: [],
-        activatedListingIds: [],
-      },
-      settings: {
-        guardrails: {
-          maxSingleDayChangePct: template?.guardrailDefaults?.maxSingleDayChangePct ?? 15,
-          autoApproveThreshold: template?.guardrailDefaults?.autoApproveThreshold ?? 5,
-          absoluteFloorMultiplier: template?.guardrailDefaults?.absoluteFloorMultiplier ?? 0.5,
-          absoluteCeilingMultiplier: template?.guardrailDefaults?.absoluteCeilingMultiplier ?? 3.0,
-        },
-        automation: { autoPushApproved: false, dailyPipelineRun: true },
-        overrides: {},
-      },
-    });
+    const tokenPayload = {
+      sub: user._id.toString(),
+      email: user.email,
+      orgId: organization._id.toString(),
+      role: user.role
+    };
 
-    const accessToken = signAccessToken({
-      userId: org._id.toString(),
-      orgId: org._id.toString(),
-      email: org.email,
-      role: org.role,
-      isApproved: false,
-      onboardingStep: "connect",
-    });
+    const accessToken = signToken(tokenPayload, "7d");
+    const refreshToken = signToken(tokenPayload, "30d");
+
+    user.refreshToken = refreshToken;
+    await user.save();
+    
+    organization.refreshToken = refreshToken;
+    await organization.save();
 
     const response = NextResponse.json({
-      success: true,
-      pending: true,
       user: {
-        id: org._id.toString(),
-        email: org.email,
-        name: org.fullName || org.name,
-        role: org.role,
-        orgId: org._id.toString(),
-        isApproved: false,
+        id: user._id.toString(),
+        email: user.email,
+        name: user.name,
+        orgId: organization._id.toString()
       },
-    }, { status: 201 });
+      accessToken,
+      refreshToken
+    }, { status: 200 });
 
-    response.cookies.set(COOKIE_NAME, accessToken, {
+    response.cookies.set("priceos-session", accessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: 7 * 24 * 60 * 60,
+      path: "/",
+    });
+    
+    response.cookies.set("priceos-refresh", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60,
       path: "/",
     });
 
     return response;
-  } catch (e: unknown) {
-    console.error("[Auth/Register]", e);
-    return NextResponse.json({ error: "Registration failed" }, { status: 500 });
+  } catch (err) {
+    console.error("[auth/register]", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
