@@ -1450,6 +1450,8 @@ const actionQueue = [...filteredProperties].map(p => {
       <DashboardChatPopup 
         isOpen={isChatOpen} 
         onOpenChange={setIsChatOpen} 
+        orgId={orgId}
+        listingId={properties[0]?.id || "portfolio_wide"}
       />
     </div>
     </TooltipProvider>

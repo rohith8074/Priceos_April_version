@@ -35,9 +35,11 @@ interface Message {
 interface DashboardChatPopupProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  orgId?: string;
+  listingId?: string;
 }
 
-export function DashboardChatPopup({ isOpen, onOpenChange }: DashboardChatPopupProps) {
+export function DashboardChatPopup({ isOpen, onOpenChange, orgId, listingId }: DashboardChatPopupProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -128,6 +130,8 @@ export function DashboardChatPopup({ isOpen, onOpenChange }: DashboardChatPopupP
           message: outgoing,
           sessionId: sessionId,
           graphSessionId: newGraphId,
+          orgId: orgId,
+          listingId: listingId,
         }),
       });
 
