@@ -40,8 +40,19 @@ export class HostawayClient {
   }
 
   async listListings(): Promise<any[]> {
-    const data = await this.request<any>("/listings?limit=100&includeResources=0");
-    return Array.isArray(data) ? data : [];
+    let allListings: any[] = [];
+    let offset = 0;
+    const limit = 100;
+    
+    while (true) {
+      const data = await this.request<any>(`/listings?limit=${limit}&offset=${offset}&includeResources=0`);
+      if (!Array.isArray(data) || data.length === 0) break;
+      allListings = [...allListings, ...data];
+      if (data.length < limit) break;
+      offset += limit;
+    }
+    
+    return allListings;
   }
 
   async getCalendar(

@@ -7,10 +7,6 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const orgId = searchParams.get("orgId");
-    // Other optional params
-    // const listingId = searchParams.get("listingId");
-    // const dateFrom = searchParams.get("dateFrom");
-    // const dateTo = searchParams.get("dateTo");
 
     if (!orgId) {
       return NextResponse.json({ events: [] }, { status: 200 });
@@ -19,12 +15,18 @@ export async function GET(req: NextRequest) {
     await connectToDatabase();
 
     const todayStr = new Date().toISOString().split("T")[0];
+    const dateFrom = searchParams.get("dateFrom") || todayStr;
+    const dateTo = searchParams.get("dateTo") || "";
 
-    const events = await MarketEvent.find({
+    // Events active during the requested range: startDate <= dateTo AND endDate >= dateFrom
+    const query: Record<string, any> = {
       orgId: new Types.ObjectId(orgId),
       isActive: true,
-      endDate: { $gte: todayStr }
-    }).sort({ startDate: 1 }).limit(100).lean();
+      startDate: dateTo ? { $lte: dateTo } : { $lte: dateFrom },
+      endDate: { $gte: dateFrom },
+    };
+
+    const events = await MarketEvent.find(query).sort({ startDate: 1 }).limit(100).lean();
 
     if (!events || events.length === 0) {
       // Provide fallback events for UI polish as done in Python backend
@@ -68,7 +70,9 @@ export async function GET(req: NextRequest) {
       description: e.description || "",
       source: e.source || "",
       area: e.area || null,
-      isActive: e.isActive
+      isActive: e.isActive,
+      updatedAt: e.updatedAt ? new Date(e.updatedAt).toISOString() : null,
+      createdAt: e.createdAt ? new Date(e.createdAt).toISOString() : null,
     }));
 
     return NextResponse.json({ events: formattedEvents }, { status: 200 });

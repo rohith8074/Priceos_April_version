@@ -226,7 +226,7 @@ function StepConnect({ onNext }: { onNext: (listings: Listing[]) => void }) {
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleValidate()}
-              placeholder="145065"
+              placeholder="Your Hostaway Account ID"
               className="w-full h-12 bg-zinc-900 border border-zinc-700 rounded-xl px-4 pr-12 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 font-mono"
             />
             {accountId && (
@@ -995,43 +995,181 @@ function StepStrategy({
   );
 }
 
+type SyncStep = { id: string; label: string; description: string; status: "pending" | "running" | "complete" | "error"; detail?: string; count?: number };
+type SyncState = { status: string; message: string; steps: SyncStep[]; errorMessage?: string };
+
 function StepComplete({ onGoToDashboard }: { onGoToDashboard: () => void }) {
+  const [sync, setSync] = useState<SyncState | null>(null);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 180; // 6 min max (180 × 2s)
+
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/sync/progress");
+        if (!res.ok || disposed) return;
+        const data: SyncState = await res.json();
+        if (!disposed) setSync(data);
+
+        if (data.status === "complete" || data.status === "error") {
+          setDone(true);
+          return; // stop polling
+        }
+      } catch {
+        // network hiccup — keep polling
+      }
+
+      attempts++;
+      if (attempts < MAX_ATTEMPTS && !disposed) {
+        setTimeout(poll, 2000);
+      } else if (!disposed) {
+        // Timed out — let user proceed anyway
+        setDone(true);
+      }
+    };
+
+    // Small initial delay so sync has started before first poll
+    const t = setTimeout(poll, 800);
+    return () => { disposed = true; clearTimeout(t); };
+  }, []);
+
+  const steps = sync?.steps ?? [];
+  const isSyncing = !done && sync?.status === "syncing";
+  const isComplete = sync?.status === "complete";
+  const isError = sync?.status === "error";
+
+  const completedCount = steps.filter(s => s.status === "complete").length;
+  const totalSteps = steps.length || 4;
+  const progressPct = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
+
   return (
-    <div className="text-center space-y-8 py-4">
-      <div className="relative mx-auto w-24 h-24">
-        <div className="absolute inset-0 rounded-full bg-amber-500/20 animate-ping" />
-        <div className="relative h-24 w-24 rounded-full bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center">
-          <CheckCircle2 className="h-10 w-10 text-amber-400" />
+    <div className="text-center space-y-6 py-4">
+      {/* Icon */}
+      <div className="relative mx-auto w-20 h-20">
+        {isSyncing && (
+          <div className="absolute inset-0 rounded-full border-2 border-amber-500/20 border-t-amber-500 animate-spin" />
+        )}
+        {(isComplete || done) && !isSyncing && (
+          <div className="absolute inset-0 rounded-full bg-amber-500/20 animate-ping" style={{ animationDuration: "2s" }} />
+        )}
+        <div className={cn(
+          "relative h-20 w-20 rounded-full border-2 flex items-center justify-center transition-colors",
+          isSyncing ? "bg-zinc-900 border-zinc-700" : "bg-amber-500/10 border-amber-500/30"
+        )}>
+          {isSyncing
+            ? <RefreshCw className="h-8 w-8 text-amber-400 animate-spin" />
+            : <CheckCircle2 className="h-8 w-8 text-amber-400" />
+          }
         </div>
       </div>
 
+      {/* Title */}
       <div>
-        <h3 className="text-2xl font-bold text-white mb-2">You&apos;re live on PriceOS 🚀</h3>
-        <p className="text-zinc-400 text-sm max-w-xs mx-auto">
-          Your properties are connected, your market is configured, and Aria is already analyzing pricing opportunities.
+        <h3 className="text-xl font-bold text-white mb-1">
+          {isSyncing ? "Syncing your data…" : isError ? "Sync encountered an issue" : "You're live on PriceOS 🚀"}
+        </h3>
+        <p className="text-zinc-500 text-sm max-w-xs mx-auto">
+          {isSyncing
+            ? "Importing your Hostaway properties, calendars, reservations, and guest conversations."
+            : isError
+            ? sync?.errorMessage || "Some data may not have synced. You can re-sync from Settings."
+            : "Your properties are connected, your market is configured, and Aria is ready."}
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 text-left max-w-xs mx-auto">
-        {[
-          { icon: "✅", text: "Hostaway connected" },
-          { icon: "✅", text: "Market template loaded" },
-          { icon: "✅", text: "Guardrails active" },
-          { icon: "✅", text: "First proposals generating…" },
-        ].map(item => (
-          <div key={item.text} className="flex items-center gap-2 text-xs text-zinc-400">
-            <span>{item.icon}</span>
-            <span>{item.text}</span>
-          </div>
-        ))}
-      </div>
+      {/* Step list */}
+      {steps.length > 0 && (
+        <div className="space-y-2 max-w-xs mx-auto text-left">
+          {/* Overall progress bar */}
+          {isSyncing && (
+            <div className="mb-3">
+              <div className="flex items-center justify-between text-[11px] text-zinc-500 mb-1">
+                <span>Overall progress</span>
+                <span>{progressPct}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-amber-500 rounded-full transition-all duration-700"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+          )}
 
+          {steps.map((step, idx) => (
+            <div key={step.id} className={cn(
+              "flex items-start gap-3 p-3 rounded-xl border transition-all",
+              step.status === "complete" ? "border-green-500/20 bg-green-500/5"
+                : step.status === "running"  ? "border-amber-500/30 bg-amber-500/5"
+                : step.status === "error"    ? "border-red-500/20 bg-red-500/5"
+                : "border-zinc-800 bg-zinc-900/50"
+            )}>
+              <div className="shrink-0 mt-0.5">
+                {step.status === "complete" && <CheckCircle2 className="h-4 w-4 text-green-400" />}
+                {step.status === "running"  && <RefreshCw   className="h-4 w-4 text-amber-400 animate-spin" />}
+                {step.status === "error"    && <span className="text-red-400 text-sm">✕</span>}
+                {step.status === "pending"  && (
+                  <div className="h-4 w-4 rounded-full border-2 border-zinc-700 flex items-center justify-center">
+                    <span className="text-[9px] text-zinc-600 font-bold">{idx + 1}</span>
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={cn(
+                  "text-xs font-semibold",
+                  step.status === "complete" ? "text-green-400"
+                    : step.status === "running"  ? "text-amber-300"
+                    : step.status === "error"    ? "text-red-400"
+                    : "text-zinc-500"
+                )}>
+                  {step.label}
+                  {step.count !== undefined && step.status === "complete" && (
+                    <span className="ml-1.5 font-normal text-zinc-500">({step.count.toLocaleString("en-US")})</span>
+                  )}
+                </p>
+                <p className="text-[11px] text-zinc-600 truncate mt-0.5">
+                  {step.status === "running" && step.detail ? step.detail : step.description}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* No status yet — show skeleton */}
+      {steps.length === 0 && (
+        <div className="space-y-2 max-w-xs mx-auto">
+          {["Properties", "Calendar & Pricing", "Reservations", "Guest Conversations"].map(label => (
+            <div key={label} className="flex items-center gap-3 p-3 rounded-xl border border-zinc-800 bg-zinc-900/50">
+              <div className="h-4 w-4 rounded-full border-2 border-zinc-700 animate-pulse shrink-0" />
+              <p className="text-xs text-zinc-600 animate-pulse">{label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* CTA */}
       <button
         onClick={onGoToDashboard}
-        className="w-full max-w-xs mx-auto h-12 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl flex items-center justify-center gap-2 transition-all text-sm"
+        className={cn(
+          "w-full max-w-xs mx-auto h-11 font-bold rounded-xl flex items-center justify-center gap-2 transition-all text-sm",
+          isSyncing
+            ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
+            : "bg-amber-500 hover:bg-amber-400 text-black"
+        )}
       >
-        Go to Dashboard <ArrowRight className="h-4 w-4" />
+        {isSyncing ? (
+          <>Proceed to Dashboard <ArrowRight className="h-4 w-4" /></>
+        ) : (
+          <>Go to Dashboard <ArrowRight className="h-4 w-4" /></>
+        )}
       </button>
+      {isSyncing && (
+        <p className="text-[11px] text-zinc-600">Data will continue syncing in the background.</p>
+      )}
     </div>
   );
 }

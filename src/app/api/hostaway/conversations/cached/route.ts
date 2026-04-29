@@ -23,15 +23,34 @@ export async function GET(req: NextRequest) {
       query.orgId = new Types.ObjectId(orgId);
     }
 
-    const docs = await HostawayConversation.find(query).sort({ updatedAt: -1 }).limit(50).lean() as any[];
+    const docs = await HostawayConversation.find(query).sort({ updatedAt: -1 }).limit(200).lean() as any[];
 
-    const conversations = docs.map((doc) => ({
-      ...doc,
-      id: doc.hostawayConversationId || doc._id.toString(),
-      // Explicitly surface needsReply so the frontend can map active/resolved correctly
-      needsReply: doc.needsReply ?? false,
-      status: doc.needsReply ? "needs_reply" : "resolved",
-    }));
+    const today = new Date().toISOString().split("T")[0];
+
+    const conversations = docs.map((doc) => {
+      const dateFrom = doc.dateFrom || "";
+      const dateTo = doc.dateTo || "";
+
+      // A conversation is "active" if:
+      // 1. Hostaway flagged it as needing reply (isUnread)
+      // 2. OR the guest's stay overlaps with today (currently staying or upcoming)
+      const isActiveByDate =
+        (dateFrom && dateTo)
+          ? dateTo >= today  // check-out is today or in the future
+          : false;
+      const needsReply = Boolean(doc.needsReply) || isActiveByDate;
+
+      return {
+        ...doc,
+        id: doc.hostawayConversationId || doc._id.toString(),
+        listingId: doc.listingId?.toString() || "",
+        channelName: doc.channelName || "Direct",
+        dateFrom,
+        dateTo,
+        needsReply,
+        status: needsReply ? "needs_reply" : "resolved",
+      };
+    });
 
     return NextResponse.json({ conversations });
   } catch (err: any) {

@@ -15,11 +15,13 @@ const PUBLIC_PATHS = [
   "/api/onboarding",
   "/api/hostaway/metadata",
   "/api/sync/run",          // needed by Go Live step
+  "/api/sync/progress",     // background sync polling (onboarding completion)
   "/api/v1/auth",
   "/api/debug",             // dev-only reset tools
   "/api/agent-tools/v1",   // Bearer-token auth handled inside each route
   "/api/admin",            // Admin tools proxy
   "/api/markets",          // Settings markets getter
+  "/api/test-db",
 ];
 
 // Extra paths allowed DURING onboarding (user is authenticated but not complete)
@@ -28,6 +30,7 @@ const ONBOARDING_ALLOWED_PATHS = [
   "/api/onboarding",
   "/api/hostaway/metadata",
   "/api/sync/run",
+  "/api/sync/progress",
   "/api/auth/logout",
   "/api/auth/me",
 ];

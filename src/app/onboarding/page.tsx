@@ -30,6 +30,13 @@ export default async function OnboardingPage() {
     redirect("/pending-approval");
   }
 
-  // Onboarding state is fetched client-side by the wizard via /api/onboarding
-  return <OnboardingWizard initialStep="connect" />;
+  if (payload.onboardingStep === "complete") {
+    redirect("/dashboard");
+  }
+
+  // Read the current step from the JWT so the wizard resumes from where the user left off.
+  // The step is refreshed in the JWT every time PATCH /api/onboarding is called.
+  const currentStep = payload.onboardingStep || "connect";
+
+  return <OnboardingWizard initialStep={currentStep as any} />;
 }

@@ -12,6 +12,8 @@ export interface IOrganization extends Document {
   fullName?: string;
   hostawayApiKey?: string;
   hostawayAccountId?: string;
+  hostawayToken?: string;
+  hostawayTokenExpiresAt?: Date;
   marketCode: string;
   currency: string;
   timezone: string;
@@ -61,6 +63,8 @@ const OrganizationSchema = new Schema<IOrganization>({
   fullName: { type: String },
   hostawayApiKey: { type: String },
   hostawayAccountId: { type: String },
+  hostawayToken: { type: String },
+  hostawayTokenExpiresAt: { type: Date },
   marketCode: { type: String, default: "UAE_DXB" },
   currency: { type: String, default: "AED" },
   timezone: { type: String, default: "Asia/Dubai" },

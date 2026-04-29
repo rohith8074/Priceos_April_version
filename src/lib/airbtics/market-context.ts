@@ -47,7 +47,7 @@ async function getCached<T>(
   await AirbticsCache.findOneAndUpdate(
     { cacheKey: key },
     { cacheKey: key, data, expiresAt },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: "after" }
   );
 
   MEMORY_CACHE.set(key, { expiresAt: expiresAt.getTime(), data });

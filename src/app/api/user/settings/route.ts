@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const org = await Organization.findByIdAndUpdate(
       payload.orgId,
       { $set: { settings: body.settings } },
-      { new: true }
+      { returnDocument: "after" }
     );
     
     return NextResponse.json({ success: true, settings: org?.settings || {} });

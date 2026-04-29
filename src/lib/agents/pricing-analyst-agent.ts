@@ -167,7 +167,7 @@ export class PricingAnalystAgent {
             reasoning: proposal.reasoning,
           },
         },
-        { new: true }
+        { returnDocument: "after" }
       );
 
       if (updated) {

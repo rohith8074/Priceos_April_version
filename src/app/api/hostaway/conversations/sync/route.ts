@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { HostawayConversation } from "@/lib/db/models/HostawayConversation";
 import { Listing } from "@/lib/db/models/Listing";
+import { getOrgHostawayToken } from "@/lib/hostaway/token";
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,7 +20,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, count: 0 });
     }
 
-    const hostawayToken = process.env.Hostaway_Authorization_token;
+    let hostawayToken: string;
+    try {
+      hostawayToken = await getOrgHostawayToken(orgId);
+    } catch {
+      hostawayToken = process.env.Hostaway_Authorization_token || "";
+    }
     if (!hostawayToken) {
       return NextResponse.json({ error: "Missing Hostaway authorization token" }, { status: 500 });
     }

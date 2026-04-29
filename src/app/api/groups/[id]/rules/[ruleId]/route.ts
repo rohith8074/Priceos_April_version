@@ -18,7 +18,7 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
     const updated = await PricingRule.findOneAndUpdate(
       { _id: new Types.ObjectId(ruleId) },
       { $set: body },
-      { new: true }
+      { returnDocument: "after" }
     ).lean();
 
     if (!updated) {

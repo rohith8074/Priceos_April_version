@@ -13,6 +13,8 @@ export interface IHostawayConversation extends Document {
   guestName: string;
   guestEmail?: string;
   reservationId?: string;
+  channelName?: string;
+  listingMapId?: number;
   messages: IHostawayMessage[];
   dateFrom: string;
   dateTo: string;
@@ -24,12 +26,14 @@ export interface IHostawayConversation extends Document {
 
 const HostawayConversationSchema = new Schema<IHostawayConversation>(
   {
-    orgId: { type: Schema.Types.ObjectId, ref: "Organization", required: true, index: true },
-    listingId: { type: Schema.Types.ObjectId, ref: "Listing", required: true },
+    orgId: { type: Schema.Types.ObjectId, ref: "Organization", index: true },
+    listingId: { type: Schema.Types.ObjectId, ref: "Listing" },
     hostawayConversationId: { type: String, required: true },
     guestName: { type: String, default: "Unknown Guest" },
     guestEmail: { type: String },
     reservationId: { type: String },
+    channelName: { type: String },
+    listingMapId: { type: Number },
     messages: [
       {
         sender: { type: String },
@@ -46,7 +50,7 @@ const HostawayConversationSchema = new Schema<IHostawayConversation>(
 );
 
 HostawayConversationSchema.index({ listingId: 1, dateFrom: 1, dateTo: 1 });
-HostawayConversationSchema.index({ hostawayConversationId: 1 });
+HostawayConversationSchema.index({ hostawayConversationId: 1 }, { unique: true });
 
 export const HostawayConversation: Model<IHostawayConversation> =
   mongoose.models.HostawayConversation ??

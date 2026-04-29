@@ -46,7 +46,7 @@ export async function PUT(req: NextRequest) {
     await Organization.findByIdAndUpdate(
       new Types.ObjectId(orgId),
       { $set: { "settings.comms.liveMode": !!liveMode, "settings.comms.autoReply": !!autoReply } },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     return NextResponse.json({ ok: true });

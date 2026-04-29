@@ -70,6 +70,7 @@ interface BackendConversation {
   needsReply?: boolean;
   messages?: Array<{ id?: string; sender: "guest" | "admin"; text: string; time?: string; timestamp?: string }>;
   listingId?: string;
+  listingMapId?: number;
   unreadCount?: number;
   dateFrom?: string;
   dateTo?: string;
@@ -351,12 +352,15 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
       properties.forEach((p) => {
         propertyMap[p.id] = p;
         if (p._id) propertyMap[p._id] = p;
+        if (p.hostawayId) propertyMap[String(p.hostawayId)] = p;
       });
 
       const merged: InboxConversation[] = [];
       backendConvs.forEach((c, i) => {
         const pId = c.listingId || "";
-        const property = propertyMap[pId];
+        const pMapId = c.listingMapId ? String(c.listingMapId) : "";
+        
+        const property = propertyMap[pId] || (pMapId ? propertyMap[pMapId] : undefined);
         if (property) {
           merged.push(mapConversation(c, property, i));
         } else {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db/mongodb";
-import { Listing, InventoryMaster, Reservation } from "@/lib/db/models";
+import { Listing, Reservation } from "@/lib/db/models";
 import { Types } from "mongoose";
 
 export async function GET(req: NextRequest) {
@@ -24,23 +24,16 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const fromDate = now.toISOString().split("T")[0];
     const toDate = new Date(now.getTime() + 29 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const WINDOW_DAYS = 30;
 
     const listingOids = listings.map((l: any) => l._id);
 
-    const [invDocs, resDocs] = await Promise.all([
-      InventoryMaster.find({
-        listingId: { $in: listingOids },
-        date: { $gte: fromDate, $lte: toDate }
-      }).lean(),
-      Reservation.find({ listingId: { $in: listingOids } }).lean()
-    ]);
-
-    const invByListing: Record<string, any[]> = {};
-    invDocs.forEach((d: any) => {
-      const lid = d.listingId?.toString() || "";
-      if (!invByListing[lid]) invByListing[lid] = [];
-      invByListing[lid].push(d);
-    });
+    const resDocs = await Reservation.find({
+      listingId: { $in: listingOids },
+      status: { $ne: "cancelled" },
+      checkOut: { $gte: fromDate },
+      checkIn: { $lte: toDate },
+    }).lean();
 
     const resByListing: Record<string, any[]> = {};
     resDocs.forEach((r: any) => {
@@ -53,16 +46,31 @@ export async function GET(req: NextRequest) {
 
     for (const l of listings) {
       const lid = l._id.toString();
-      const listingInv = invByListing[lid] || [];
       const listingRes = resByListing[lid] || [];
 
-      const bookedDays = listingInv.filter((x: any) => x.status === "booked").length;
-      const occupancy = listingInv.length > 0 ? Math.round((bookedDays / listingInv.length) * 100) : 0;
-      
-      const sumPrices = listingInv.reduce((sum: number, x: any) => sum + Number(x.currentPrice || 0), 0);
-      const avgPrice = listingInv.length > 0 ? Math.round(sumPrices / listingInv.length) : Math.round(Number(l.price || 0));
+      // Calculate occupancy from reservation date overlaps with the 30-day window
+      let bookedDays = 0;
+      for (const r of listingRes) {
+        const checkIn = r.checkIn > fromDate ? r.checkIn : fromDate;
+        const checkOut = r.checkOut < toDate ? r.checkOut : toDate;
+        if (checkOut > checkIn) {
+          bookedDays += Math.ceil(
+            (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000
+          );
+        }
+      }
+      const occupancy = Math.min(100, Math.round((bookedDays / WINDOW_DAYS) * 100));
 
-      const pending = listingInv.filter((x: any) => x.proposalStatus === "pending").length;
+      // Average nightly rate from reservations; fall back to listing base price
+      const activeRes = listingRes.filter((r: any) => r.status !== "cancelled");
+      const avgPrice = activeRes.length > 0
+        ? Math.round(
+            activeRes.reduce((sum: number, r: any) => sum + Number(r.totalPrice || 0) / Math.max(1, r.nights || 1), 0)
+            / activeRes.length
+          )
+        : Math.round(Number(l.price || 0));
+
+      const pending = 0;
       const channelMap: Record<string, { channel: string; revenue: number; count: number }> = {};
       listingRes
         .filter((r: any) => r.status !== "cancelled")

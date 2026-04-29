@@ -58,7 +58,7 @@ export async function PUT(
         orgId: new Types.ObjectId(orgId)
       },
       { $set: body },
-      { new: true }
+      { returnDocument: "after" }
     ).lean();
 
     if (!listing) {

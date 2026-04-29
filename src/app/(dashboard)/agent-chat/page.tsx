@@ -7,7 +7,7 @@ import { SidebarTabbedView } from "@/components/layout/sidebar-tabbed-view";
 import type { PropertyWithMetrics } from "@/types";
 
 import { connectToDatabase } from "@/lib/db/mongodb";
-import { Listing, InventoryMaster } from "@/lib/db/models";
+import { Listing, InventoryMaster, Reservation } from "@/lib/db/models";
 import { Types } from "mongoose";
 
 export const metadata = {
@@ -38,13 +38,22 @@ export default async function AgentChatPage() {
     const listingIds = listingDocs.map((l: any) => l._id.toString());
     const combinedListingIds = [...listingOids, ...listingIds];
 
-    const invDocs = await InventoryMaster.find({
-      listingId: { $in: combinedListingIds },
-      date: { $gte: todayStr, $lte: plus29Str }
-    }).lean();
+    const [invDocs, resDocs] = await Promise.all([
+      InventoryMaster.find({
+        listingId: { $in: combinedListingIds },
+        date: { $gte: todayStr, $lte: plus29Str }
+      }).lean(),
+      Reservation.find({
+        listingId: { $in: combinedListingIds },
+        status: { $ne: "cancelled" },
+        checkOut: { $gte: todayStr },
+        checkIn: { $lte: plus29Str },
+      }).lean(),
+    ]);
     
     const cleanListings = JSON.parse(JSON.stringify(listingDocs));
     const invByListing: Record<string, any[]> = {};
+    const resByListing: Record<string, any[]> = {};
     
     for (const inv of invDocs) {
       if (!inv.listingId) continue;
@@ -52,13 +61,40 @@ export default async function AgentChatPage() {
       if (!invByListing[lId]) invByListing[lId] = [];
       invByListing[lId].push(inv);
     }
+
+    for (const res of resDocs) {
+      const lId = (res.listingId || "").toString();
+      if (!lId) continue;
+      if (!resByListing[lId]) resByListing[lId] = [];
+      resByListing[lId].push(res);
+    }
     
     propertiesWithMetrics = cleanListings.map((p: any) => {
       const pId = p._id.toString();
       const pInvs = invByListing[pId] || [];
-      const bookedDays = pInvs.filter((d: any) => d.status === "booked" || d.status === "reserved").length;
-      const totalDays = pInvs.length;
-      const calculatedOccupancy = totalDays > 0 ? Math.round((bookedDays / totalDays) * 100) : 0;
+      const pRes = resByListing[pId] || [];
+
+      // Method 1: Occupancy from Inventory
+      const invBooked = pInvs.filter((d: any) => d.status === "booked" || d.status === "reserved").length;
+      const invTotal = pInvs.length;
+      const invOcc = invTotal > 0 ? Math.round((invBooked / invTotal) * 100) : 0;
+
+      // Method 2: Occupancy from Reservations
+      let resBookedDays = 0;
+      const WINDOW_DAYS = 30;
+      for (const r of pRes) {
+        const checkIn = r.checkIn > todayStr ? r.checkIn : todayStr;
+        const checkOut = r.checkOut < plus29Str ? r.checkOut : plus29Str;
+        if (checkOut > checkIn) {
+          resBookedDays += Math.ceil(
+            (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000
+          );
+        }
+      }
+      const resOcc = Math.min(100, Math.round((resBookedDays / WINDOW_DAYS) * 100));
+
+      // Choose maximum calculated occupancy for safety
+      const calculatedOccupancy = Math.max(invOcc, resOcc);
       
       return {
         ...p,
