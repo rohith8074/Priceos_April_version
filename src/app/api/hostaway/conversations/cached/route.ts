@@ -31,14 +31,16 @@ export async function GET(req: NextRequest) {
       const dateFrom = doc.dateFrom || "";
       const dateTo = doc.dateTo || "";
 
-      // A conversation is "active" if:
-      // 1. Hostaway flagged it as needing reply (isUnread)
-      // 2. OR the guest's stay overlaps with today (currently staying or upcoming)
-      const isActiveByDate =
-        (dateFrom && dateTo)
-          ? dateTo >= today  // check-out is today or in the future
-          : false;
-      const needsReply = Boolean(doc.needsReply) || isActiveByDate;
+      // A conversation needs reply if Hostaway flagged it (isUnread/needsReply)
+      // or if the last message in the thread is from the guest.
+      let needsReply = Boolean(doc.needsReply);
+      
+      if (!doc.needsReply && doc.messages && doc.messages.length > 0) {
+        const lastMsg = doc.messages[doc.messages.length - 1];
+        if (lastMsg.sender === "guest") {
+          needsReply = true;
+        }
+      }
 
       return {
         ...doc,
