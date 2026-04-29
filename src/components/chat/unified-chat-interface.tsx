@@ -677,7 +677,7 @@ export function UnifiedChatInterface({ properties: _properties, orgId }: Props) 
         { event_type: "output_generated", message: "Analysis Complete", status: "done", timestamp: new Date().toISOString(), iteration: 1 },
       ]);
 
-      const assistantMsg: Message = {
+      const rawAssistantMsg: Message = {
         id: Date.now().toString(),
         role: "assistant",
         content: data.message,
@@ -685,6 +685,7 @@ export function UnifiedChatInterface({ properties: _properties, orgId }: Props) 
         proposals: data.proposals && data.proposals.length > 0 ? data.proposals : undefined,
         proposalStatus: data.proposals && data.proposals.length > 0 ? "pending" : undefined,
       };
+      const assistantMsg = hydrateAssistantMessage(rawAssistantMsg);
       setMessages(prev => [...prev, assistantMsg]);
 
       if (data.proposals && data.proposals.length > 0) {
