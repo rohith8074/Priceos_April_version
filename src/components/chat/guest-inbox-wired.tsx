@@ -10,9 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
   Search, Send, Sparkles, Bot, Home, Calendar, Star, Clock,
-  CheckCheck, ThumbsUp, ThumbsDown, X, Loader2, RefreshCw, Activity,
+  CheckCheck, CheckCircle2, ThumbsUp, ThumbsDown, X, Loader2, RefreshCw, Activity,
   FlaskConical, Zap, FileText, ChevronDown, ChevronUp, Pencil, Plus, Info, Building2,
-  Wrench, ExternalLink, ChevronLeft, ChevronRight, PanelRightClose, PanelRightOpen
+  Wrench, ExternalLink, ChevronLeft, ChevronRight, PanelRightClose, PanelRightOpen,
+  Webhook, WifiOff,
 } from "lucide-react";
 import {
   Tooltip,
@@ -256,8 +257,10 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
   const [aiDraft, setAiDraft] = useState("");
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [testMode, setTestMode] = useState(false);
+  const [liveMode, setLiveMode] = useState(false);
   const [autoReply, setAutoReply] = useState(false);
+  const [savedLiveMode, setSavedLiveMode] = useState(false);
+  const [savedAutoReply, setSavedAutoReply] = useState(false);
   const [isSavingComms, setIsSavingComms] = useState(false);
   const [summary, setSummary] = useState<{
     sentiment: string;
@@ -283,6 +286,8 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
   const [tickets, setTickets] = useState<any[]>([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  type WebhookState = "live" | "not-registered" | "invalid" | "no-credentials" | "loading";
+  const [webhookState, setWebhookState] = useState<WebhookState>("loading");
   const router = useRouter();
   const [sidebarWidth, setSidebarWidth] = useState(256);
   const [activePropertyIds, setActivePropertyIds] = useState<string[]>(properties.map(p => p.id));
@@ -295,22 +300,43 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d) return;
-        setTestMode(d.liveMode);
+        setLiveMode(d.liveMode);
+        setSavedLiveMode(d.liveMode);
         setAutoReply(d.autoReply);
+        setSavedAutoReply(d.autoReply);
       })
       .catch(() => {});
   }, [orgId]);
 
-  const persistCommsMode = async (liveMode: boolean, autoReplyVal: boolean) => {
+  // Check webhook connection status
+  useEffect(() => {
+    fetch("/api/hostaway/webhook-status")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) { setWebhookState("no-credentials"); return; }
+        if (d.webhookRegistered) setWebhookState("live");
+        else if (d.connected) setWebhookState("not-registered");
+        else if (d.hasCredentials) setWebhookState("invalid");
+        else setWebhookState("no-credentials");
+      })
+      .catch(() => setWebhookState("no-credentials"));
+  }, []);
+
+  const hasUnsavedComms = liveMode !== savedLiveMode || autoReply !== savedAutoReply;
+
+  const saveCommsSettings = async () => {
     setIsSavingComms(true);
     try {
       await fetch(`/api/comms-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, liveMode, autoReply: autoReplyVal }),
+        body: JSON.stringify({ orgId, liveMode, autoReply }),
       });
+      setSavedLiveMode(liveMode);
+      setSavedAutoReply(autoReply);
+      toast.success("Settings saved");
     } catch {
-      toast.error("Could not save comms setting");
+      toast.error("Could not save settings");
     } finally {
       setIsSavingComms(false);
     }
@@ -674,6 +700,34 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-text-primary">Guest Inbox</span>
+              {/* Webhook connection badge — clickable, navigates to Settings → Connections */}
+              {webhookState === "live" && (
+                <button
+                  onClick={() => router.push("/settings")}
+                  title="Webhooks live — click to manage in Settings"
+                  className="flex items-center gap-1 text-[9px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full hover:bg-emerald-500/20 transition-colors"
+                >
+                  <Webhook className="h-2.5 w-2.5" /> Live
+                </button>
+              )}
+              {webhookState === "not-registered" && (
+                <button
+                  onClick={() => router.push("/settings")}
+                  title="Credentials saved but webhook not registered — click to set up in Settings"
+                  className="flex items-center gap-1 text-[9px] font-semibold text-amber bg-amber/10 border border-amber/20 px-1.5 py-0.5 rounded-full hover:bg-amber/20 transition-colors"
+                >
+                  <Webhook className="h-2.5 w-2.5" /> Setup needed
+                </button>
+              )}
+              {(webhookState === "invalid" || webhookState === "no-credentials") && (
+                <button
+                  onClick={() => router.push("/settings")}
+                  title="Webhook not connected — click to connect in Settings"
+                  className="flex items-center gap-1 text-[9px] font-semibold text-text-disabled bg-surface-2 border border-border-subtle px-1.5 py-0.5 rounded-full hover:border-amber/40 hover:text-amber transition-colors"
+                >
+                  <WifiOff className="h-2.5 w-2.5" /> Not connected
+                </button>
+              )}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="h-3 w-3 text-text-muted hover:text-text-primary cursor-help" />
@@ -700,49 +754,69 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
             </div>
           </div>
           {/* Mode toggles */}
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <div className="flex items-center gap-2 bg-surface-2/60 border border-border-default rounded-full px-3 py-1 text-[10px] font-medium">
-              <span className={cn("text-[10px] font-bold", !testMode ? "text-amber" : "text-text-muted")}>Live</span>
-              <Switch
-                checked={testMode}
-                onCheckedChange={(v) => { setTestMode(v); persistCommsMode(v, autoReply); }}
-                className="h-4 w-8 data-[state=checked]:bg-purple-500"
-              />
-              <span className={cn("text-[10px] font-bold", testMode ? "text-purple-400" : "text-text-muted")}>Manual</span>
+          <div className="flex flex-col gap-1.5 mb-2">
+            {/* Row 1: Manual ↔ Live */}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 bg-surface-2/60 border border-border-default rounded-full px-3 py-1">
+                <span className={cn("text-[10px] font-bold", !liveMode ? "text-text-primary" : "text-text-muted")}>Manual</span>
+                <Switch
+                  checked={liveMode}
+                  onCheckedChange={setLiveMode}
+                  className="h-4 w-8 data-[state=checked]:bg-emerald-500"
+                />
+                <span className={cn("text-[10px] font-bold", liveMode ? "text-emerald-400" : "text-text-muted")}>Live</span>
+              </div>
+
+              {/* Auto / Approval — only meaningful when Live */}
+              <div className={cn(
+                "flex items-center gap-1 bg-surface-2/60 border border-border-default rounded-full p-0.5 transition-opacity",
+                !liveMode && "opacity-40 pointer-events-none"
+              )}>
+                <button
+                  type="button"
+                  onClick={() => setAutoReply(true)}
+                  className={cn(
+                    "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
+                    autoReply ? "bg-amber text-black shadow-sm" : "text-text-muted hover:text-text-secondary"
+                  )}
+                >
+                  Auto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAutoReply(false)}
+                  className={cn(
+                    "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
+                    !autoReply ? "bg-surface-3 text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"
+                  )}
+                >
+                  Approval
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-center gap-1 bg-surface-2/60 border border-border-default rounded-full p-0.5 text-[10px] font-medium">
-              <button
-                type="button"
-                onClick={() => { setAutoReply(true); persistCommsMode(testMode, true); }}
-                className={cn(
-                  "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
-                  autoReply ? "bg-amber text-black shadow-sm" : "text-text-muted hover:text-text-secondary"
-                )}
-              >
-                Auto
-              </button>
-              <button
-                type="button"
-                onClick={() => { setAutoReply(false); persistCommsMode(testMode, false); }}
-                className={cn(
-                  "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
-                  !autoReply ? "bg-surface-3 text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"
-                )}
-              >
-                Manual
-              </button>
+            {/* Row 2: Save button + New Chat */}
+            <div className="flex items-center gap-2">
+              {hasUnsavedComms && (
+                <button
+                  onClick={saveCommsSettings}
+                  disabled={isSavingComms}
+                  className="flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
+                >
+                  {isSavingComms ? <RefreshCw className="h-2.5 w-2.5 animate-spin" /> : <CheckCircle2 className="h-2.5 w-2.5" />}
+                  Save
+                </button>
+              )}
+              {liveMode && (
+                <button
+                  onClick={handleNewChat}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber/10 text-amber border border-amber/20 hover:bg-amber/20 transition-colors"
+                >
+                  <Plus className="h-2.5 w-2.5" />
+                  Test Chat
+                </button>
+              )}
             </div>
-
-            {testMode && (
-              <button
-                onClick={handleNewChat}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber text-black hover:bg-amber/90 transition-colors ml-auto"
-              >
-                <Plus className="h-2.5 w-2.5" />
-                New Chat
-              </button>
-            )}
           </div>
 
           <Button
@@ -890,12 +964,12 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
       <div className="flex-1 flex flex-col min-w-0 border-r border-border-default">
         <div className={cn(
           "flex items-center gap-4 px-4 py-1.5 border-b shrink-0",
-          testMode ? "bg-purple-500/10 border-purple-500/20" : "bg-emerald-500/5 border-emerald-500/10"
+          liveMode ? "bg-emerald-500/5 border-emerald-500/10" : "bg-surface-2/60 border-border-default"
         )}>
           <div className="flex items-center gap-2">
-            {testMode ? <FlaskConical className="h-3 w-3 text-purple-400" /> : <Activity className="h-3 w-3 text-emerald-400" />}
-            <span className={cn("text-[9px] font-bold tracking-wider", testMode ? "text-purple-300" : "text-emerald-400")}>
-              {testMode ? "TEST MODE" : "LIVE MODE"}
+            {liveMode ? <Activity className="h-3 w-3 text-emerald-400" /> : <FlaskConical className="h-3 w-3 text-text-muted" />}
+            <span className={cn("text-[9px] font-bold tracking-wider", liveMode ? "text-emerald-400" : "text-text-muted")}>
+              {liveMode ? (autoReply ? "LIVE · AUTO-REPLY" : "LIVE · APPROVAL MODE") : "MANUAL MODE"}
             </span>
           </div>
           <div className="flex items-center gap-2">

@@ -3,13 +3,19 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Building2,
+  Bot,
   Link2,
   Eye,
   EyeOff,
-  Globe2,
   Loader2,
   Save,
   Check,
+  Webhook,
+  Copy,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Trash2,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -101,7 +107,127 @@ export default function SettingsPage() {
   const [selectedMarket, setSelectedMarket] = useState("");
   const [useCurrencyOverride, setUseCurrencyOverride] = useState(false);
   const [currencyOverride, setCurrencyOverride] = useState("");
-  // Fetch org settings + markets in parallel
+
+  // ── Webhook state ────────────────────────────────────────────────────────────
+  type WebhookStatus = {
+    hasCredentials: boolean;
+    connected: boolean;
+    webhookRegistered: boolean;
+    webhookUrl: string;
+    webhookId?: string | null;
+  };
+  const [webhookStatus, setWebhookStatus] = useState<WebhookStatus | null>(null);
+  const [webhookLoading, setWebhookLoading] = useState(false);
+  const [webhookAction, setWebhookAction] = useState<"register" | "remove" | "test" | null>(null);
+  const [urlCopied, setUrlCopied] = useState(false);
+
+  const fetchWebhookStatus = useCallback(async () => {
+    setWebhookLoading(true);
+    try {
+      const res = await fetch("/api/hostaway/webhook-status");
+      if (res.ok) setWebhookStatus(await res.json());
+    } catch { /* silent */ }
+    finally { setWebhookLoading(false); }
+  }, []);
+
+  const handleTestConnection = useCallback(async () => {
+    setWebhookAction("test");
+    try {
+      const res = await fetch("/api/hostaway/webhook-status");
+      const data = res.ok ? await res.json() : null;
+      if (data?.connected) {
+        toast.success("Hostaway connection verified");
+      } else if (data?.connectionError) {
+        toast.error(data.connectionError);
+      } else if (data?.hasCredentials) {
+        toast.error("Credentials saved but connection failed — check your API key");
+      } else {
+        toast.error("No credentials saved — add Account ID and API Key first");
+      }
+      if (data) setWebhookStatus(data);
+    } catch {
+      toast.error("Connection test failed");
+    } finally {
+      setWebhookAction(null);
+    }
+  }, []);
+
+  const handleRegisterWebhook = useCallback(async () => {
+    setWebhookAction("register");
+    try {
+      const res = await fetch("/api/hostaway/webhook-manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Registration failed");
+      toast.success("Webhook registered with Hostaway");
+      await fetchWebhookStatus();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to register webhook");
+    } finally {
+      setWebhookAction(null);
+    }
+  }, [fetchWebhookStatus]);
+
+  const handleRemoveWebhook = useCallback(async () => {
+    setWebhookAction("remove");
+    try {
+      const res = await fetch("/api/hostaway/webhook-manage", { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Removal failed");
+      toast.success(data.removed ? "Webhook removed from Hostaway" : "No active webhook to remove");
+      await fetchWebhookStatus();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to remove webhook");
+    } finally {
+      setWebhookAction(null);
+    }
+  }, [fetchWebhookStatus]);
+
+  const handleCopyUrl = useCallback(() => {
+    if (!webhookStatus?.webhookUrl) return;
+    navigator.clipboard.writeText(webhookStatus.webhookUrl).then(() => {
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 2000);
+    });
+  }, [webhookStatus]);
+
+  // ── Guest Communications state ───────────────────────────────────────────────
+  const [commsLiveMode, setCommsLiveMode] = useState(false);
+  const [commsAutoReply, setCommsAutoReply] = useState(false);
+  const [commsSavedLive, setCommsSavedLive] = useState(false);
+  const [commsSavedAuto, setCommsSavedAuto] = useState(false);
+  const [isSavingComms, setIsSavingComms] = useState(false);
+  const hasUnsavedComms = commsLiveMode !== commsSavedLive || commsAutoReply !== commsSavedAuto;
+
+  const saveCommsSettings = async () => {
+    setIsSavingComms(true);
+    try {
+      const orgRes = await fetch("/api/user/settings");
+      const orgData = orgRes.ok ? await orgRes.json() : null;
+      const orgId = orgData?._id ?? orgData?.id;
+      if (!orgId) throw new Error("Could not resolve org ID");
+      await fetch("/api/comms-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId, liveMode: commsLiveMode, autoReply: commsAutoReply }),
+      });
+      setCommsSavedLive(commsLiveMode);
+      setCommsSavedAuto(commsAutoReply);
+      toast.success("Communications settings saved");
+    } catch {
+      toast.error("Could not save communications settings");
+    } finally {
+      setIsSavingComms(false);
+    }
+  };
+
+  // Fetch webhook status once credentials are loaded
+  useEffect(() => { fetchWebhookStatus(); }, [fetchWebhookStatus]);
+
+  // Fetch org settings + markets + comms in parallel
   useEffect(() => {
     Promise.all([
       fetch("/api/user/settings").then((r) => r.json()),
@@ -120,6 +246,21 @@ export default function SettingsPage() {
         const hasCurrOverride = !!orgData.settings?.overrides?.currency;
         setUseCurrencyOverride(hasCurrOverride);
         setCurrencyOverride(orgData.settings?.overrides?.currency || "");
+
+        // Load comms settings
+        const orgId = orgData._id ?? orgData.id;
+        if (orgId) {
+          fetch(`/api/comms-settings?orgId=${orgId}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(d => {
+              if (!d) return;
+              setCommsLiveMode(d.liveMode);
+              setCommsAutoReply(d.autoReply);
+              setCommsSavedLive(d.liveMode);
+              setCommsSavedAuto(d.autoReply);
+            })
+            .catch(() => {});
+        }
       })
       .catch((err) => {
         console.error("Failed to load settings:", err);
@@ -281,6 +422,195 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </div>
+            </div>
+
+            {/* ── Webhook Integration ──────────────────────────────────── */}
+            <div className="bg-surface-1 border border-border-subtle rounded-xl p-6 flex flex-col gap-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-title font-semibold text-text-primary flex items-center gap-2">
+                    <Webhook className="h-4 w-4 text-amber" />
+                    Webhook Integration
+                  </h3>
+                  <p className="text-body-xs text-text-tertiary">
+                    Register this URL in Hostaway so guest messages appear in your Inbox automatically.
+                  </p>
+                </div>
+                {/* Status pill */}
+                {webhookLoading ? (
+                  <span className="flex items-center gap-1.5 text-[10px] text-text-tertiary shrink-0">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Checking…
+                  </span>
+                ) : webhookStatus?.webhookRegistered ? (
+                  <span className="flex items-center gap-1.5 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-full shrink-0">
+                    <CheckCircle2 className="h-3 w-3" /> Live
+                  </span>
+                ) : webhookStatus?.connected ? (
+                  <span className="flex items-center gap-1.5 text-[10px] font-semibold text-amber bg-amber/10 border border-amber/20 px-2.5 py-1 rounded-full shrink-0">
+                    <AlertCircle className="h-3 w-3" /> Not registered
+                  </span>
+                ) : webhookStatus?.hasCredentials ? (
+                  <span className="flex items-center gap-1.5 text-[10px] font-semibold text-red-400 bg-red-500/10 border border-red-500/20 px-2.5 py-1 rounded-full shrink-0">
+                    <XCircle className="h-3 w-3" /> Credentials invalid
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-[10px] font-semibold text-text-disabled bg-surface-2 border border-border-subtle px-2.5 py-1 rounded-full shrink-0">
+                    <AlertCircle className="h-3 w-3" /> No credentials
+                  </span>
+                )}
+              </div>
+
+              {/* Webhook URL row */}
+              <div className="flex flex-col gap-2 max-w-xl">
+                <Label className="text-body-xs text-text-secondary">Webhook URL</Label>
+
+                {/* Auto-derived URL (read-only, shown for reference) */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-surface-2 border border-border-default rounded-md px-3 h-10 flex items-center overflow-hidden">
+                    <span className="text-[11px] font-mono text-text-tertiary truncate select-all">
+                      {webhookStatus?.webhookUrl ?? "Loading…"}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleCopyUrl}
+                    disabled={!webhookStatus?.webhookUrl}
+                    title="Copy webhook URL"
+                    className="h-10 w-10 flex items-center justify-center rounded-md bg-surface-2 border border-border-default hover:border-amber/40 hover:text-amber transition-colors disabled:opacity-40 shrink-0"
+                  >
+                    {urlCopied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                </div>
+
+                <p className="text-[10px] text-text-tertiary leading-relaxed">
+                  PriceOS registers this URL with Hostaway automatically. When developing locally, the production URL (<span className="font-mono">priceos-april-version.vercel.app</span>) is used so Hostaway can reach it.
+                </p>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={handleTestConnection}
+                  disabled={webhookAction !== null || !webhookStatus?.hasCredentials}
+                  className="h-10 px-5 rounded-md border border-border-default bg-surface-2 hover:border-amber/40 hover:text-amber text-body-xs font-medium transition-colors flex items-center gap-2 disabled:opacity-40"
+                >
+                  {webhookAction === "test" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Webhook className="h-3.5 w-3.5" />}
+                  Test Connection
+                </button>
+
+                {!webhookStatus?.webhookRegistered ? (
+                  <button
+                    onClick={handleRegisterWebhook}
+                    disabled={webhookAction !== null || !webhookStatus?.connected}
+                    className="h-10 px-5 rounded-md bg-amber hover:bg-amber/90 text-black font-bold text-body-xs transition-colors flex items-center gap-2 disabled:opacity-40"
+                  >
+                    {webhookAction === "register" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                    Register Webhook
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleRemoveWebhook}
+                    disabled={webhookAction !== null}
+                    className="h-10 px-5 rounded-md bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 text-red-400 font-semibold text-body-xs transition-colors flex items-center gap-2 disabled:opacity-40"
+                  >
+                    {webhookAction === "remove" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    Remove Webhook
+                  </button>
+                )}
+              </div>
+
+              {/* Info box */}
+              <div className="rounded-lg border border-border-subtle bg-surface-2/30 p-3">
+                <p className="text-[10px] font-semibold text-text-primary mb-1">How it works</p>
+                <ul className="text-[10px] text-text-tertiary leading-relaxed space-y-1 list-disc list-inside">
+                  <li>Save your Account ID and API Key above first.</li>
+                  <li>Click <span className="font-medium text-text-primary">Register Webhook</span> — PriceOS calls Hostaway's API on your behalf.</li>
+                  <li>Hostaway will POST new guest messages to this URL automatically.</li>
+                  <li>Tokens are refreshed silently in the background — you never need to re-authenticate.</li>
+                  <li>Your API key is never shown in the browser or logs — stored only in your database.</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* ── Guest Communications ─────────────────────────────────── */}
+            <div className="bg-surface-1 border border-border-subtle rounded-xl p-6 flex flex-col gap-6">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-title font-semibold text-text-primary flex items-center gap-2">
+                  <Bot className="h-4 w-4 text-amber" />
+                  Guest Communications
+                </h3>
+                <p className="text-body-xs text-text-tertiary">
+                  Control how the AI assistant handles incoming guest messages.
+                </p>
+              </div>
+
+              {/* AI Mode toggle */}
+              <div className="flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-4 p-4 rounded-xl border border-border-subtle bg-surface-2/40">
+                  <div>
+                    <p className="text-body-xs font-semibold text-text-primary">AI Mode</p>
+                    <p className="text-[10px] text-text-tertiary mt-0.5">
+                      {commsLiveMode
+                        ? "AI is active — it reads each new guest message and prepares a reply."
+                        : "AI is off — new messages are stored for you to reply to manually."}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={cn("text-[10px] font-bold", !commsLiveMode ? "text-text-primary" : "text-text-muted")}>Manual</span>
+                    <Switch
+                      checked={commsLiveMode}
+                      onCheckedChange={setCommsLiveMode}
+                      className="data-[state=checked]:bg-emerald-500"
+                    />
+                    <span className={cn("text-[10px] font-bold", commsLiveMode ? "text-emerald-400" : "text-text-muted")}>Live</span>
+                  </div>
+                </div>
+
+                {/* Reply Mode — only relevant when AI is Live */}
+                <div className={cn(
+                  "flex items-start justify-between gap-4 p-4 rounded-xl border border-border-subtle bg-surface-2/40 transition-opacity",
+                  !commsLiveMode && "opacity-40 pointer-events-none"
+                )}>
+                  <div>
+                    <p className="text-body-xs font-semibold text-text-primary">Reply Mode</p>
+                    <p className="text-[10px] text-text-tertiary mt-0.5">
+                      {commsAutoReply
+                        ? "Auto — AI reply is sent directly to the guest. No approval needed."
+                        : "Approval — AI reply appears in your Inbox for review before sending."}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 bg-surface-2 border border-border-default rounded-full p-0.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setCommsAutoReply(true)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-[10px] font-bold transition-all",
+                        commsAutoReply ? "bg-amber text-black shadow-sm" : "text-text-muted hover:text-text-secondary"
+                      )}
+                    >
+                      Auto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCommsAutoReply(false)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-[10px] font-bold transition-all",
+                        !commsAutoReply ? "bg-surface-3 text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"
+                      )}
+                    >
+                      Approval
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={saveCommsSettings}
+                disabled={!hasUnsavedComms || isSavingComms}
+                className="bg-amber hover:bg-amber/90 text-black font-bold h-10 px-6 rounded-md text-body-xs w-fit transition-all flex items-center gap-2 disabled:opacity-40"
+              >
+                {isSavingComms ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                {isSavingComms ? "Saving…" : hasUnsavedComms ? "Save Changes" : "Saved"}
+              </button>
             </div>
 
             {/* Market Configuration */}

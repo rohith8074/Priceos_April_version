@@ -14,6 +14,8 @@ export interface IOrganization extends Document {
   hostawayAccountId?: string;
   hostawayToken?: string;
   hostawayTokenExpiresAt?: Date;
+  hostawayWebhookId?: string;
+  hostawayWebhookUrl?: string;
   marketCode: string;
   currency: string;
   timezone: string;
@@ -65,6 +67,8 @@ const OrganizationSchema = new Schema<IOrganization>({
   hostawayAccountId: { type: String },
   hostawayToken: { type: String },
   hostawayTokenExpiresAt: { type: Date },
+  hostawayWebhookId: { type: String },
+  hostawayWebhookUrl: { type: String },
   marketCode: { type: String, default: "UAE_DXB" },
   currency: { type: String, default: "AED" },
   timezone: { type: String, default: "Asia/Dubai" },

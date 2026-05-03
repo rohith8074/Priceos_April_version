@@ -190,16 +190,7 @@ export function DashboardChatPopup({ isOpen, onOpenChange, orgId, listingId }: D
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {graphQueryId && (
-            <button
-              type="button"
-              onClick={() => setShowGraph(v => !v)}
-              title={showGraph ? "Hide execution graph" : "Show execution graph"}
-              className={cn("p-1.5 rounded-md transition-colors", showGraph ? "text-amber" : "text-text-tertiary hover:text-amber")}
-            >
-              <Activity className="h-3.5 w-3.5" />
-            </button>
-          )}
+
           <button
             type="button"
             onClick={startNewSession}
@@ -225,23 +216,7 @@ export function DashboardChatPopup({ isOpen, onOpenChange, orgId, listingId }: D
         </p>
       </div>
 
-      {/* Live Execution Graph — collapses when hidden */}
-      {showGraph && graphQueryId && (
-        <div className="shrink-0 border-b border-border-subtle/50 bg-muted/10" style={{ height: 220 }}>
-          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border-subtle/30">
-            <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground">
-              <span className={cn("h-1.5 w-1.5 rounded-full", isGraphConnected ? "bg-emerald-500 animate-pulse" : "bg-amber-500")} />
-              Execution Graph
-            </span>
-            <button type="button" onClick={() => setShowGraph(false)} className="text-text-tertiary hover:text-foreground p-0.5">
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-          <div className="relative" style={{ height: 180 }}>
-            {/* Live graph removed */}
-          </div>
-        </div>
-      )}
+
 
       <ScrollArea className="flex-1 min-h-0 px-4 py-3">
         <div className="flex flex-col gap-3">

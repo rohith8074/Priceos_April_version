@@ -419,8 +419,20 @@ export async function GET(
       });
     }
 
+    // ── GET /get-agent-system-status ──────────────────────────────────────────
+    if (parts === "get-agent-system-status") {
+      return NextResponse.json({
+        status: "operational",
+        agents: [
+          { name: "Portfolio Analyst", status: "active", version: "1.0.0" },
+          { name: "CRO Router", status: "active", version: "1.0.0" }
+        ],
+        last_sync: new Date().toISOString()
+      });
+    }
+
     // ── GET /portfolio-overview ───────────────────────────────────────────────
-    if (parts === "portfolio-overview") {
+    if (parts === "portfolio-overview" || parts === "get-portfolio-overview") {
       const orgId = sp.get("orgId") || "";
       const dateFrom = sp.get("dateFrom") || "";
       const dateTo = sp.get("dateTo") || "";

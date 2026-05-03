@@ -18,6 +18,36 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // ── Step 0: Reject duplicate Hostaway accounts ────────────────────────────
+  try {
+    const cookie = req.cookies.get("priceos-session")?.value;
+    if (cookie) {
+      const payload = verifyToken(cookie) as any;
+      const callerOrgId = payload?.orgId || payload?.sub;
+      if (callerOrgId) {
+        await connectToDatabase();
+        const conflict = await Organization.findOne({
+          hostawayAccountId: accountId,
+          _id: { $ne: callerOrgId },
+        }).select("email name").lean() as any;
+
+        if (conflict) {
+          console.warn(`[hostaway/metadata] Duplicate account attempt: accountId=${accountId} already used by org ${conflict.email}`);
+          return NextResponse.json(
+            {
+              error: `This Hostaway Account ID (${accountId}) is already connected to another PriceOS workspace. Each Hostaway account can only be linked to one workspace.`,
+              code: "DUPLICATE_ACCOUNT",
+            },
+            { status: 409 }
+          );
+        }
+      }
+    }
+  } catch (dupErr: any) {
+    // Non-fatal — log and continue so a DB hiccup doesn't block onboarding
+    console.error("[hostaway/metadata] Duplicate check error:", dupErr?.message);
+  }
+
   try {
     // Step 1: Fetch OAuth token using provided credentials
     const tokenData = await fetchHostawayToken(accountId, apiSecret);

@@ -37,7 +37,12 @@ export async function fetchHostawayToken(
 
 /**
  * Get a valid Hostaway bearer token for an org.
- * Returns cached token if still valid; otherwise fetches a new one and saves it.
+ *
+ * Handles two cases automatically:
+ *  A) hostawayApiKey is a short hex key (OAuth client_secret) → exchange for token via /v1/accessTokens
+ *  B) hostawayApiKey is a pre-issued JWT (starts with "eyJ") → use it directly as bearer token
+ *
+ * In both cases the active token is cached in hostawayToken to avoid repeat calls.
  */
 export async function getOrgHostawayToken(orgId: string): Promise<string> {
   await connectToDatabase();
@@ -50,15 +55,39 @@ export async function getOrgHostawayToken(orgId: string): Promise<string> {
     throw new Error("Hostaway credentials not configured for this organization.");
   }
 
-  // Return cached token if still valid
-  if (org.hostawayToken && org.hostawayTokenExpiresAt) {
-    const expiresAt = new Date(org.hostawayTokenExpiresAt).getTime();
-    if (expiresAt - TOKEN_BUFFER_MS > Date.now()) {
-      return org.hostawayToken;
+  // Case B: stored value is already a JWT bearer token (pre-issued from Hostaway dashboard)
+  const isJwtToken = (org.hostawayApiKey as string).startsWith("eyJ");
+  if (isJwtToken) {
+    // Parse exp from JWT payload to check validity (no library needed — just base64 decode)
+    try {
+      const parts = (org.hostawayApiKey as string).split(".");
+      const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf-8"));
+      const expMs = (payload.exp as number) * 1000;
+      if (expMs - TOKEN_BUFFER_MS > Date.now()) {
+        // JWT is still valid — cache and return it
+        await Organization.findByIdAndUpdate(orgId, {
+          hostawayToken: org.hostawayApiKey,
+          hostawayTokenExpiresAt: new Date(expMs),
+        });
+        return org.hostawayApiKey as string;
+      }
+      // JWT is expired — nothing we can do without a new one
+      throw new Error("The saved Hostaway token has expired. Please update your API credentials in Settings.");
+    } catch (parseErr: any) {
+      if (parseErr.message.includes("expired")) throw parseErr;
+      // Malformed JWT — fall through to OAuth attempt
     }
   }
 
-  // Fetch new token
+  // Case A: short hex key — use cached token if still valid
+  if (!isJwtToken && org.hostawayToken && org.hostawayTokenExpiresAt) {
+    const expiresAt = new Date(org.hostawayTokenExpiresAt).getTime();
+    if (expiresAt - TOKEN_BUFFER_MS > Date.now()) {
+      return org.hostawayToken as string;
+    }
+  }
+
+  // Case A continued: fetch a new token via OAuth client_credentials
   const tokenData = await fetchHostawayToken(org.hostawayAccountId, org.hostawayApiKey);
   const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
 

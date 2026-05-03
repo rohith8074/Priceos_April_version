@@ -285,11 +285,110 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
   );
 }
 
+// ── Delete Confirm Modal ────────────────────────────────────────────────────────
+
+function DeleteConfirmModal({
+  user,
+  onClose,
+  onDeleted,
+}: {
+  user: User;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const canConfirm = confirmEmail.trim().toLowerCase() === user.email.toLowerCase();
+
+  const handleDelete = async () => {
+    if (!canConfirm) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete user");
+
+      const counts = data.deleted?.collections ?? {};
+      const total = Object.values(counts).reduce((s: number, n) => s + (Number(n) > 0 ? Number(n) : 0), 0);
+      toast.success(`${data.deleted?.name ?? user.name} deleted — ${total} records removed`);
+      onDeleted();
+      onClose();
+    } catch (e: unknown) {
+      toast.error((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-card text-card-foreground border border-red-500/30 rounded-2xl w-full max-w-md p-7 shadow-2xl">
+        <button onClick={onClose} className="absolute top-5 right-5 text-muted-foreground hover:text-foreground">
+          <X className="h-4 w-4" />
+        </button>
+
+        <div className="flex items-center gap-3 mb-6">
+          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center">
+            <Trash2 className="h-5 w-5 text-red-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-foreground">Delete User</h2>
+            <p className="text-xs text-muted-foreground">This action is permanent and cannot be undone.</p>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-xl border border-red-500/20 bg-red-500/5 mb-5 space-y-1">
+          <p className="text-sm font-semibold text-foreground">{user.name}</p>
+          <p className="text-xs text-muted-foreground">{user.email}</p>
+          <p className="text-xs text-red-400 mt-2">
+            All listings, reservations, pricing data, chat history, and Hostaway credentials will be permanently deleted.
+          </p>
+        </div>
+
+        <div className="space-y-1.5 mb-5">
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Type the user&apos;s email to confirm
+          </label>
+          <Input
+            placeholder={user.email}
+            value={confirmEmail}
+            onChange={e => setConfirmEmail(e.target.value)}
+            className="bg-background border-border text-foreground h-10 font-mono text-sm"
+            onKeyDown={e => e.key === "Enter" && canConfirm && handleDelete()}
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 h-10 bg-secondary text-secondary-foreground hover:bg-secondary/80 font-semibold rounded-xl text-sm transition-all"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={!canConfirm || loading}
+            className="flex-1 h-10 bg-red-500 hover:bg-red-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl flex items-center justify-center gap-2 text-sm transition-all"
+          >
+            {loading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {loading ? "Deleting…" : "Delete User"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── User Row ───────────────────────────────────────────────────────────────────
 
 function UserRow({ user, onRefresh }: { user: User; onRefresh: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
 
   const patch = async (updates: object) => {
     setLoading(true);
@@ -378,7 +477,7 @@ function UserRow({ user, onRefresh }: { user: User; onRefresh: () => void }) {
         <div className="border-t border-border px-5 py-4 space-y-4 bg-muted/40 rounded-b-xl">
           <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Admin Controls</p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             {/* Role control */}
             <div className="space-y-1.5">
               <label className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Role</label>
@@ -443,8 +542,28 @@ function UserRow({ user, onRefresh }: { user: User; onRefresh: () => void }) {
                 )}
               </div>
             </div>
+
+            {/* Danger zone */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-red-400 uppercase tracking-wider font-semibold">Danger Zone</label>
+              <Button
+                size="sm"
+                onClick={() => setShowDelete(true)}
+                className="w-full h-9 text-xs bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20"
+              >
+                <Trash2 className="h-3 w-3 mr-1" /> Delete User
+              </Button>
+            </div>
           </div>
         </div>
+      )}
+
+      {showDelete && (
+        <DeleteConfirmModal
+          user={user}
+          onClose={() => setShowDelete(false)}
+          onDeleted={onRefresh}
+        />
       )}
     </div>
   );
