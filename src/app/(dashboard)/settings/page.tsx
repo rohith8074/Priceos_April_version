@@ -118,8 +118,9 @@ export default function SettingsPage() {
   };
   const [webhookStatus, setWebhookStatus] = useState<WebhookStatus | null>(null);
   const [webhookLoading, setWebhookLoading] = useState(false);
-  const [webhookAction, setWebhookAction] = useState<"register" | "remove" | "test" | null>(null);
+  const [webhookAction, setWebhookAction] = useState<"register" | "remove" | "test" | "mark" | null>(null);
   const [urlCopied, setUrlCopied] = useState(false);
+  const [manualRequired, setManualRequired] = useState(false);
 
   const fetchWebhookStatus = useCallback(async () => {
     setWebhookLoading(true);
@@ -162,10 +163,35 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Registration failed");
+      if (data.error === "manual_required") {
+        setManualRequired(true);
+        toast.info("Manual setup required", {
+          description: "Hostaway has disabled programmatic webhook creation for this account. Follow the steps below.",
+          duration: 6000,
+        });
+        return;
+      }
       toast.success("Webhook registered with Hostaway");
+      setManualRequired(false);
       await fetchWebhookStatus();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to register webhook");
+    } finally {
+      setWebhookAction(null);
+    }
+  }, [fetchWebhookStatus]);
+
+  const handleMarkManual = useCallback(async () => {
+    setWebhookAction("mark");
+    try {
+      const res = await fetch("/api/hostaway/webhook-manage/mark-manual", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to mark webhook");
+      toast.success("Webhook marked as registered");
+      setManualRequired(false);
+      await fetchWebhookStatus();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to mark webhook");
     } finally {
       setWebhookAction(null);
     }
@@ -195,25 +221,25 @@ export default function SettingsPage() {
   }, [webhookStatus]);
 
   // ── Guest Communications state ───────────────────────────────────────────────
-  const [commsLiveMode, setCommsLiveMode] = useState(false);
+  // Defaults: Live + Approval (applied for new orgs before DB value loads)
+  const [commsLiveMode, setCommsLiveMode] = useState(true);
   const [commsAutoReply, setCommsAutoReply] = useState(false);
-  const [commsSavedLive, setCommsSavedLive] = useState(false);
+  const [commsSavedLive, setCommsSavedLive] = useState(true);
   const [commsSavedAuto, setCommsSavedAuto] = useState(false);
   const [isSavingComms, setIsSavingComms] = useState(false);
   const hasUnsavedComms = commsLiveMode !== commsSavedLive || commsAutoReply !== commsSavedAuto;
 
   const saveCommsSettings = async () => {
+    const orgId = org?.id;
+    if (!orgId) { toast.error("Could not resolve org — please reload"); return; }
     setIsSavingComms(true);
     try {
-      const orgRes = await fetch("/api/user/settings");
-      const orgData = orgRes.ok ? await orgRes.json() : null;
-      const orgId = orgData?._id ?? orgData?.id;
-      if (!orgId) throw new Error("Could not resolve org ID");
-      await fetch("/api/comms-settings", {
+      const res = await fetch("/api/comms-settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orgId, liveMode: commsLiveMode, autoReply: commsAutoReply }),
       });
+      if (!res.ok) throw new Error("Save failed");
       setCommsSavedLive(commsLiveMode);
       setCommsSavedAuto(commsAutoReply);
       toast.success("Communications settings saved");
@@ -518,6 +544,49 @@ export default function SettingsPage() {
                 )}
               </div>
 
+              {/* Manual Instructions — always visible, highlighted when manual_required */}
+              <div className={cn(
+                "rounded-lg border p-4 space-y-4 transition-colors",
+                manualRequired
+                  ? "border-amber/40 bg-amber/5"
+                  : "border-border-subtle bg-surface-2/30"
+              )}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-1">
+                    <p className={cn("text-[11px] font-semibold", manualRequired ? "text-amber" : "text-text-primary")}>
+                      {manualRequired ? "⚠ Manual Setup Required" : "Manual Setup"}
+                    </p>
+                    <p className="text-[10px] text-text-tertiary leading-relaxed">
+                      {manualRequired
+                        ? "Hostaway has disabled programmatic webhook creation for this account. Add the URL below in your Hostaway dashboard, then click \"Done — Mark as Registered\"."
+                        : "If the Register button fails (Hostaway 404), set up the webhook manually in your Hostaway dashboard:"}
+                    </p>
+                  </div>
+                </div>
+
+                <ol className="text-[10px] text-text-tertiary leading-relaxed space-y-2 list-decimal list-inside px-1">
+                  <li>Log in to your <a href="https://dashboard.hostaway.com" target="_blank" rel="noopener noreferrer" className="text-amber hover:underline">Hostaway Dashboard</a>.</li>
+                  <li>Go to <span className="font-medium text-text-primary">Settings</span> → <span className="font-medium text-text-primary">Integrations</span> → <span className="font-medium text-text-primary">Webhooks</span>.</li>
+                  <li>Click <span className="font-medium text-text-primary">+ Add Webhook</span>.</li>
+                  <li>Paste the <span className="font-medium text-text-primary">Webhook URL</span> shown above.</li>
+                  <li>Select <span className="font-medium text-text-primary">newMessage</span> as the action/event.</li>
+                  <li>Save the webhook in Hostaway.</li>
+                </ol>
+
+                {manualRequired && (
+                  <div className="pt-2 border-t border-amber/20">
+                    <button
+                      onClick={handleMarkManual}
+                      disabled={webhookAction !== null}
+                      className="h-9 px-5 rounded-md bg-amber hover:bg-amber/90 text-black font-bold text-body-xs transition-colors flex items-center gap-2 disabled:opacity-40"
+                    >
+                      {webhookAction === "mark" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                      Done — Mark as Registered
+                    </button>
+                  </div>
+                )}
+              </div>
+              
               {/* Info box */}
               <div className="rounded-lg border border-border-subtle bg-surface-2/30 p-3">
                 <p className="text-[10px] font-semibold text-text-primary mb-1">How it works</p>

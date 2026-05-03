@@ -7,12 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import {
   Search, Send, Sparkles, Bot, Home, Calendar, Star, Clock,
-  CheckCheck, CheckCircle2, ThumbsUp, ThumbsDown, X, Loader2, RefreshCw, Activity,
-  FlaskConical, Zap, FileText, ChevronDown, ChevronUp, Pencil, Plus, Info, Building2,
-  Wrench, ExternalLink, ChevronLeft, ChevronRight, PanelRightClose, PanelRightOpen,
+  CheckCheck, ThumbsUp, ThumbsDown, X, Loader2, RefreshCw, Activity,
+  FlaskConical, FileText, ChevronDown, ChevronUp, Pencil, Plus, Info, Building2,
+  Wrench, ExternalLink, PanelRightClose, PanelRightOpen,
   Webhook, WifiOff,
 } from "lucide-react";
 import {
@@ -257,11 +256,8 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
   const [aiDraft, setAiDraft] = useState("");
   const [isGeneratingDraft, setIsGeneratingDraft] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [liveMode, setLiveMode] = useState(false);
+  const [liveMode, setLiveMode] = useState(true);
   const [autoReply, setAutoReply] = useState(false);
-  const [savedLiveMode, setSavedLiveMode] = useState(false);
-  const [savedAutoReply, setSavedAutoReply] = useState(false);
-  const [isSavingComms, setIsSavingComms] = useState(false);
   const [summary, setSummary] = useState<{
     sentiment: string;
     sentimentScore: number;
@@ -294,16 +290,14 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
   const isResizing = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load persisted comms settings on mount
+  // Load persisted comms settings on mount (read-only — change in Settings)
   useEffect(() => {
     fetch(`/api/comms-settings?orgId=${orgId}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d) return;
         setLiveMode(d.liveMode);
-        setSavedLiveMode(d.liveMode);
         setAutoReply(d.autoReply);
-        setSavedAutoReply(d.autoReply);
       })
       .catch(() => {});
   }, [orgId]);
@@ -321,26 +315,6 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
       })
       .catch(() => setWebhookState("no-credentials"));
   }, []);
-
-  const hasUnsavedComms = liveMode !== savedLiveMode || autoReply !== savedAutoReply;
-
-  const saveCommsSettings = async () => {
-    setIsSavingComms(true);
-    try {
-      await fetch(`/api/comms-settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, liveMode, autoReply }),
-      });
-      setSavedLiveMode(liveMode);
-      setSavedAutoReply(autoReply);
-      toast.success("Settings saved");
-    } catch {
-      toast.error("Could not save settings");
-    } finally {
-      setIsSavingComms(false);
-    }
-  };
 
   const startResizing = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -469,6 +443,16 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
   useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [selected]);
 
   const conv = conversations.find((c) => c.id === selected) ?? null;
+  const isTestConv = conv?.id.startsWith("test-") ?? false;
+
+  const exitTestChat = () => {
+    if (!conv) return;
+    // Remove all test conversations and select the first real one
+    setConversations(prev => prev.filter(c => !c.id.startsWith("test-")));
+    const firstReal = conversations.find(c => !c.id.startsWith("test-")) ?? null;
+    setSelected(firstReal?.id ?? null);
+    setDraftText(""); setAiDraft(""); setShowDraft(false);
+  };
   const counts = {
     all: conversations.length,
     active: conversations.filter(c => c.status === "active").length,
@@ -685,7 +669,6 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
     }
   };
 
-  const unreadTotal = conversations.filter((c) => c.unread > 0).length;
 
   return (
     <>
@@ -745,78 +728,38 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
               </Tooltip>
             </div>
             <div className="flex items-center gap-1.5">
-              {unreadTotal > 0 && (
-                <Badge variant="outline" className="text-[10px] border-amber/30 text-amber bg-amber/5">{unreadTotal} new</Badge>
-              )}
               <button onClick={fetchAll} disabled={isLoading} className="p-1 rounded text-text-muted hover:text-text-primary transition-colors" title="Refresh">
                 <RefreshCw className={cn("h-3 w-3", isLoading && "animate-spin")} />
               </button>
             </div>
           </div>
-          {/* Mode toggles */}
-          <div className="flex flex-col gap-1.5 mb-2">
-            {/* Row 1: Manual ↔ Live */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 bg-surface-2/60 border border-border-default rounded-full px-3 py-1">
-                <span className={cn("text-[10px] font-bold", !liveMode ? "text-text-primary" : "text-text-muted")}>Manual</span>
-                <Switch
-                  checked={liveMode}
-                  onCheckedChange={setLiveMode}
-                  className="h-4 w-8 data-[state=checked]:bg-emerald-500"
-                />
-                <span className={cn("text-[10px] font-bold", liveMode ? "text-emerald-400" : "text-text-muted")}>Live</span>
-              </div>
-
-              {/* Auto / Approval — only meaningful when Live */}
-              <div className={cn(
-                "flex items-center gap-1 bg-surface-2/60 border border-border-default rounded-full p-0.5 transition-opacity",
-                !liveMode && "opacity-40 pointer-events-none"
-              )}>
-                <button
-                  type="button"
-                  onClick={() => setAutoReply(true)}
-                  className={cn(
-                    "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
-                    autoReply ? "bg-amber text-black shadow-sm" : "text-text-muted hover:text-text-secondary"
-                  )}
-                >
-                  Auto
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAutoReply(false)}
-                  className={cn(
-                    "px-3 py-1 rounded-full transition-all text-[10px] font-bold",
-                    !autoReply ? "bg-surface-3 text-text-primary shadow-sm" : "text-text-muted hover:text-text-secondary"
-                  )}
-                >
-                  Approval
-                </button>
-              </div>
+          {/* AI mode status — read-only, configured in Settings */}
+          <div className="flex items-center gap-2 mb-2">
+            <div className={cn(
+              "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold",
+              liveMode
+                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                : "bg-surface-2 border-border-default text-text-muted"
+            )}>
+              {liveMode ? <Activity className="h-2.5 w-2.5" /> : <Bot className="h-2.5 w-2.5" />}
+              {liveMode ? (autoReply ? "Live · Auto" : "Live · Approval") : "Manual"}
             </div>
-
-            {/* Row 2: Save button + New Chat */}
-            <div className="flex items-center gap-2">
-              {hasUnsavedComms && (
-                <button
-                  onClick={saveCommsSettings}
-                  disabled={isSavingComms}
-                  className="flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-colors disabled:opacity-50"
-                >
-                  {isSavingComms ? <RefreshCw className="h-2.5 w-2.5 animate-spin" /> : <CheckCircle2 className="h-2.5 w-2.5" />}
-                  Save
-                </button>
-              )}
-              {liveMode && (
-                <button
-                  onClick={handleNewChat}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber/10 text-amber border border-amber/20 hover:bg-amber/20 transition-colors"
-                >
-                  <Plus className="h-2.5 w-2.5" />
-                  Test Chat
-                </button>
-              )}
-            </div>
+            <button
+              onClick={() => router.push("/settings")}
+              className="text-[9px] text-text-muted hover:text-amber transition-colors flex items-center gap-0.5"
+              title="Change AI mode in Settings"
+            >
+              <ExternalLink className="h-2.5 w-2.5" /> Change
+            </button>
+            {liveMode && (
+              <button
+                onClick={handleNewChat}
+                className="ml-auto flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber/10 text-amber border border-amber/20 hover:bg-amber/20 transition-colors"
+              >
+                <Plus className="h-2.5 w-2.5" />
+                Test Chat
+              </button>
+            )}
           </div>
 
           <Button
@@ -962,6 +905,23 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
 
       {/* Panel 2: Message Thread */}
       <div className="flex-1 flex flex-col min-w-0 border-r border-border-default">
+        {/* Test chat banner */}
+        {isTestConv && (
+          <div className="flex items-center justify-between px-4 py-1.5 bg-amber/10 border-b border-amber/20 shrink-0">
+            <div className="flex items-center gap-2">
+              <FlaskConical className="h-3 w-3 text-amber" />
+              <span className="text-[10px] font-bold text-amber tracking-wide">TEST CHAT — not a real guest</span>
+            </div>
+            <button
+              onClick={exitTestChat}
+              className="flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber/20 text-amber border border-amber/30 hover:bg-amber/30 transition-colors"
+            >
+              <X className="h-2.5 w-2.5" /> Exit Test Chat
+            </button>
+          </div>
+        )}
+
+        {/* Mode status bar */}
         <div className={cn(
           "flex items-center gap-4 px-4 py-1.5 border-b shrink-0",
           liveMode ? "bg-emerald-500/5 border-emerald-500/10" : "bg-surface-2/60 border-border-default"
@@ -977,9 +937,9 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
             <span className="text-[10px] text-text-secondary">
               <span className="font-semibold text-text-primary">{autoReply ? "Auto-Reply Enabled:" : "Manual Mode:"}</span>
               {" "}
-              {autoReply 
-                ? "AI agent will directly send the replies to the guest." 
-                : "Generate AI Draft first, then review and send manually."}
+              {autoReply
+                ? "AI reply is sent directly to the guest."
+                : "Generate AI Draft first, then review and send."}
             </span>
           </div>
         </div>
@@ -1272,9 +1232,7 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
             </div>
           </>
         ) : isLoading ? (
-          /* Skeleton thread while conversations load */
           <div className="flex-1 px-4 py-4 flex flex-col gap-5 overflow-hidden animate-pulse">
-            {/* Skeleton header strip */}
             <div className="flex items-center gap-3 pb-3 border-b border-white/5">
               <div className="h-9 w-9 rounded-full bg-white/8 shrink-0" />
               <div className="space-y-1.5 flex-1">
@@ -1282,7 +1240,6 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
                 <div className="h-2 rounded-full bg-white/8 w-24" />
               </div>
             </div>
-            {/* Skeleton messages — alternating guest/host */}
             {[
               { side: "left",  w: "w-52", h: "h-16" },
               { side: "right", w: "w-44", h: "h-10" },
@@ -1329,7 +1286,7 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
         </div>
       ) : isLoading && !conv ? (
         <div className="w-64 shrink-0 flex flex-col bg-surface-1 overflow-y-auto animate-pulse relative border-l border-border-default">
-          <button 
+          <button
             onClick={() => setIsSidebarCollapsed(true)}
             className="absolute top-3 right-3 p-1.5 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:bg-white/10 z-10"
           >
@@ -1458,29 +1415,29 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[9px] text-text-muted uppercase tracking-wider">Sentiment Score</span>
                           <span className={cn("text-[10px] font-bold", 
-                            summary.sentimentScore > 66 ? "text-emerald-400" : summary.sentimentScore > 33 ? "text-amber" : "text-rose-400"
+                            summary.sentimentScore > 0.66 ? "text-emerald-400" : summary.sentimentScore > 0.33 ? "text-amber" : "text-rose-400"
                           )}>
-                            {summary.sentimentScore}%
+                            {Math.round(summary.sentimentScore * 100)}%
                           </span>
                         </div>
                         <div className="h-1 w-full bg-surface-1 rounded-full overflow-hidden">
                           <div 
                             className={cn("h-full transition-all duration-1000", 
-                              summary.sentimentScore > 66 ? "bg-emerald-400" : summary.sentimentScore > 33 ? "bg-amber" : "bg-rose-400"
+                              summary.sentimentScore > 0.66 ? "bg-emerald-400" : summary.sentimentScore > 0.33 ? "bg-amber" : "bg-rose-400"
                             )}
-                            style={{ width: `${summary.sentimentScore}%` }}
+                            style={{ width: `${summary.sentimentScore * 100}%` }}
                           />
                         </div>
                       </div>
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-[9px] text-text-muted uppercase tracking-wider">AI Confidence</span>
-                          <span className="text-[10px] font-bold text-text-secondary">{summary.confidence}%</span>
+                          <span className="text-[10px] font-bold text-text-secondary">{Math.round(summary.confidence * 100)}%</span>
                         </div>
                         <div className="h-1 w-full bg-surface-1 rounded-full overflow-hidden">
                           <div 
                             className="h-full bg-blue-500/80 transition-all duration-1000"
-                            style={{ width: `${summary.confidence}%` }}
+                            style={{ width: `${summary.confidence * 100}%` }}
                           />
                         </div>
                       </div>

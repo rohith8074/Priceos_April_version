@@ -76,17 +76,27 @@ export async function GET(req: NextRequest) {
 
   const webhookRegistered = !!(org.hostawayWebhookId && connected);
 
-  // Verify the stored webhook ID still exists in Hostaway (quick check)
-  let webhookStillActive = false;
-  if (webhookRegistered && org.hostawayToken) {
+  // Manually registered webhooks are always considered active (no Hostaway ID to verify).
+  let webhookStillActive = org.hostawayWebhookId === "manual";
+  if (webhookRegistered && !webhookStillActive && org.hostawayToken) {
     try {
-      const res = await fetch(`https://api.hostaway.com/v1/webhooks/${org.hostawayWebhookId}`, {
-        headers: {
-          Authorization: `Bearer ${org.hostawayToken}`,
-          "Cache-control": "no-cache",
-        },
-      });
-      webhookStillActive = res.ok;
+      // Use the Unified Webhook endpoint for the live-check
+      const res = await fetch(
+        `https://api.hostaway.com/v1/webhooks/unifiedWebhooks/${org.hostawayWebhookId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${org.hostawayToken}`,
+            "Cache-control": "no-cache",
+          },
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        // Active = exists AND isEnabled is 1 (not 0)
+        webhookStillActive = (data?.result?.isEnabled ?? data?.isEnabled ?? 1) === 1;
+      } else {
+        webhookStillActive = false;
+      }
     } catch {
       webhookStillActive = false;
     }

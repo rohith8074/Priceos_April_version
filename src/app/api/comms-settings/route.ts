@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
     const orgId = searchParams.get("orgId");
 
     if (!orgId || !Types.ObjectId.isValid(orgId)) {
-      return NextResponse.json({ liveMode: false, autoReply: false }, { status: 200 });
+      return NextResponse.json({ liveMode: true, autoReply: false }, { status: 200 });
     }
 
     await connectToDatabase();
@@ -19,11 +19,11 @@ export async function GET(req: NextRequest) {
       .lean() as any;
 
     if (!org) {
-      return NextResponse.json({ liveMode: false, autoReply: false }, { status: 200 });
+      return NextResponse.json({ liveMode: true, autoReply: false }, { status: 200 });
     }
 
     return NextResponse.json({
-      liveMode: org.settings?.comms?.liveMode ?? false,
+      liveMode: org.settings?.comms?.liveMode ?? true,
       autoReply: org.settings?.comms?.autoReply ?? false,
     });
   } catch (err: any) {

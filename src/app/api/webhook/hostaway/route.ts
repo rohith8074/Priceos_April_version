@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { Listing } from "@/lib/db/models/Listing";
 import { Organization } from "@/lib/db/models/Organization";
+import { HostawayConversation } from "@/lib/db/models/HostawayConversation";
 import { GuestThread, IGuestMessage } from "@/lib/db/models/guest_thread";
+import { getOrgHostawayToken } from "@/lib/hostaway/token";
 import { callLyzrAgent } from "@/lib/services/lyzr";
 import { Types } from "mongoose";
 import { v4 as uuidv4 } from "uuid";
@@ -18,9 +20,7 @@ function _dedupKey(payload: any): string {
 function _isDuplicate(key: string): boolean {
   const now = Date.now();
   for (const k in _processed) {
-    if (now - _processed[k] > DEDUP_TTL_MS) {
-      delete _processed[k];
-    }
+    if (now - _processed[k] > DEDUP_TTL_MS) delete _processed[k];
   }
   return !!_processed[key];
 }
@@ -35,11 +35,10 @@ export async function POST(req: NextRequest) {
       console.log(`[WEBHOOK] Duplicate suppressed: ${key}`);
       return NextResponse.json({ received: true, duplicate: true });
     }
-
     _processed[key] = Date.now();
 
-    // Fire and forget background process
-    processWebhookEvent(payload, false).catch(err => {
+    // Fire and forget
+    processWebhookEvent(payload).catch(err => {
       console.error("[WEBHOOK BACKGROUND ERROR]", err);
     });
 
@@ -50,7 +49,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function processWebhookEvent(payload: any, testMode: boolean = false) {
+async function processWebhookEvent(payload: any) {
   await connectToDatabase();
 
   const action = payload.action || "";
@@ -62,55 +61,18 @@ async function processWebhookEvent(payload: any, testMode: boolean = false) {
   const conversationId = payload.id || `sim-${uuidv4().substring(0, 8)}`;
   const listingMapId = payload.listingMapId || payload.listing_id;
   let guestName = payload.guestName || "Guest";
-
-  console.log(`\n[WEBHOOK] ── Processing ──────────────────────────────────────`);
-  console.log(`[WEBHOOK]   action=${action}  convId=${conversationId}  test=${testMode}`);
-  
   let guestText: string = payload.body || payload.message || "";
 
-  if (!testMode && !guestText && conversationId) {
-    const hostawayToken = process.env.Hostaway_Authorization_token || "";
-    if (hostawayToken) {
-      try {
-        const res = await fetch(`https://api.hostaway.com/v1/conversations/${conversationId}/messages`, {
-          headers: {
-            "Authorization": `Bearer ${hostawayToken}`,
-            "Cache-control": "no-cache"
-          }
-        });
-        if (res.ok) {
-          const jsonData = await res.json();
-          const msgs = jsonData.result || [];
-          const inbound = msgs.filter((m: any) => m.isIncoming === 1);
-          if (inbound.length > 0) {
-            const latest = inbound[inbound.length - 1];
-            guestText = latest.body || "";
-            guestName = latest.userAvatarName || guestName;
-            console.log(`[WEBHOOK] Found latest inbound message from ${guestName}: '${guestText}'`);
-          }
-        }
-      } catch (err) {
-        console.error(`[WEBHOOK] Hostaway message fetch exception:`, err);
-      }
-    }
-  }
-
-  if (!guestText.trim()) {
-    console.log("[WEBHOOK] No message text — skipping");
-    return;
-  }
-
-  let orgId = payload.orgId;
+  // ── 1. Resolve orgId and listing ──────────────────────────────────────────
+  let orgId: string = payload.orgId || "";
   let listingDoc: any = null;
 
   if (listingMapId) {
     listingDoc = await Listing.findOne({ hostawayId: String(listingMapId) });
   }
-  
-  if (!listingDoc && payload.listingId && payload.listingId.length === 24) {
+  if (!listingDoc && payload.listingId && String(payload.listingId).length === 24) {
     listingDoc = await Listing.findById(payload.listingId);
   }
-
   if (listingDoc && !orgId) {
     orgId = listingDoc.orgId.toString();
   }
@@ -120,28 +82,70 @@ async function processWebhookEvent(payload: any, testMode: boolean = false) {
     return;
   }
 
+  // ── 2. Load org + settings ────────────────────────────────────────────────
   const org = await Organization.findById(orgId);
   if (!org) {
     console.log(`[WEBHOOK] Org not found: ${orgId}`);
     return;
   }
 
-  const liveMode = org.settings?.comms?.liveMode ?? false;
+  const liveMode = org.settings?.comms?.liveMode ?? true;
   const autoReply = org.settings?.comms?.autoReply ?? false;
+  console.log(`\n[WEBHOOK] ── Processing ──────────────────────────────────────`);
+  console.log(`[WEBHOOK]   action=${action}  convId=${conversationId}`);
+  console.log(`[WEBHOOK]   org=${orgId}  liveMode=${liveMode}  autoReply=${autoReply}`);
 
-  console.log(`[WEBHOOK] Org comms — liveMode=${liveMode}  autoReply=${autoReply}`);
+  // ── 3. Get org-scoped Hostaway bearer token ───────────────────────────────
+  let hostawayToken = "";
+  try {
+    hostawayToken = await getOrgHostawayToken(orgId);
+  } catch {
+    // Fall back to global env token for backwards-compat
+    hostawayToken = process.env.Hostaway_Authorization_token || "";
+  }
 
-  const thread = await injectInbound(orgId, conversationId, guestText, guestName, listingDoc);
-  if (!thread) {
-    console.log("[WEBHOOK] Failed to create/update GuestThread — aborting");
+  // ── 4. If no message text in payload, fetch from Hostaway ─────────────────
+  if (!guestText && conversationId && hostawayToken) {
+    try {
+      const res = await fetch(`https://api.hostaway.com/v1/conversations/${conversationId}/messages`, {
+        headers: { "Authorization": `Bearer ${hostawayToken}`, "Cache-control": "no-cache" },
+      });
+      if (res.ok) {
+        const jsonData = await res.json();
+        const msgs: any[] = jsonData.result || [];
+        const inbound = msgs.filter((m: any) => m.isIncoming === 1);
+        if (inbound.length > 0) {
+          const latest = inbound[inbound.length - 1];
+          guestText = latest.body || "";
+          guestName = latest.userAvatarName || guestName;
+          console.log(`[WEBHOOK] Fetched latest inbound from ${guestName}: '${guestText.slice(0, 80)}'`);
+        }
+      }
+    } catch (err) {
+      console.error(`[WEBHOOK] Hostaway message fetch failed:`, err);
+    }
+  }
+
+  if (!guestText.trim()) {
+    console.log("[WEBHOOK] No message text — skipping");
     return;
   }
 
+  // ── 5. Inject into GuestThread (for AI processing) ───────────────────────
+  const thread = await injectIntoGuestThread(orgId, conversationId, guestText, listingDoc);
+  if (!thread) {
+    console.log("[WEBHOOK] Failed to upsert GuestThread — aborting");
+    return;
+  }
   const threadId = thread._id.toString();
-  console.log(`[WEBHOOK] Message injected → threadId=${threadId}`);
+  console.log(`[WEBHOOK] GuestThread updated → threadId=${threadId}`);
 
-  if (!liveMode && !testMode) {
-    console.log("[WEBHOOK] Live mode OFF — message stored for manual review, no AI call");
+  // ── 6. Inject into HostawayConversation (for Guest Inbox display) ─────────
+  await injectIntoInbox(orgId, conversationId, guestText, guestName, listingDoc, listingMapId);
+
+  // ── 7. Skip AI if manual mode ─────────────────────────────────────────────
+  if (!liveMode) {
+    console.log("[WEBHOOK] liveMode OFF — stored for manual review");
     return;
   }
 
@@ -151,14 +155,11 @@ async function processWebhookEvent(payload: any, testMode: boolean = false) {
     return;
   }
 
+  // ── 8. Call Maya AI agent ─────────────────────────────────────────────────
   const approvalRequired = !autoReply;
-  const prompt = `New inbound message from guest '${guestName}':\n\n"${guestText}"\n\nThreadId: ${threadId}\nOrgId: ${orgId}\napprovalRequired: ${String(approvalRequired).toLowerCase()}\n\nRead the thread context using read_thread, draft a professional reply matching the property's tone, then call send_reply to save it. ${approvalRequired ? "The reply will be queued for PM approval before sending." : "Auto-send mode is ON — the reply will be delivered directly to the guest."}`;
+  const prompt = `New inbound message from guest '${guestName}':\n\n"${guestText}"\n\nThreadId: ${threadId}\nOrgId: ${orgId}\napprovalRequired: ${String(approvalRequired)}\n\nRead the thread context using read_thread, draft a professional reply matching the property's tone, then call send_reply to save it. ${approvalRequired ? "The reply will be queued for PM approval before sending." : "Auto-send mode is ON — the reply will be delivered directly to the guest."}`;
 
   console.log(`[WEBHOOK] Calling Maya agent — session=webhook-${conversationId.substring(0, 12)}`);
-  
-  // Notice: Node is single threaded, so we don't strictly need a semaphore for concurrency per org
-  // as the events are processed synchronously until the `await callLyzrAgent`. 
-  // For true parallelism limitation we could implement a queue, but native fetch handles it nicely.
   const result = await callLyzrAgent(
     agentId,
     prompt,
@@ -173,15 +174,22 @@ async function processWebhookEvent(payload: any, testMode: boolean = false) {
 
   console.log(`[WEBHOOK] Maya replied:\n${result.response}`);
 
-  if (autoReply && !testMode && result.response.trim()) {
-    await postToHostaway(conversationId, result.response);
+  // ── 9. Auto-post if autoReply ─────────────────────────────────────────────
+  if (autoReply && result.response.trim()) {
+    await postToHostaway(conversationId, result.response, hostawayToken);
+    // Also push the AI reply into the Inbox so it's visible immediately
+    await injectOutboundIntoInbox(conversationId, result.response);
   }
 }
 
-async function injectInbound(orgId: string, conversationId: string, text: string, guestName: string, listingDoc: any) {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function injectIntoGuestThread(
+  orgId: string, conversationId: string, text: string, listingDoc: any
+) {
   let thread = await GuestThread.findOne({
     orgId: new Types.ObjectId(orgId),
-    reservationId: conversationId
+    reservationId: conversationId,
   });
 
   if (!thread) {
@@ -195,10 +203,10 @@ async function injectInbound(orgId: string, conversationId: string, text: string
       openedAt: new Date(),
       lastActivityAt: new Date(),
     });
-    console.log(`[WEBHOOK] Created GuestThread: ${thread._id} for conv=${conversationId}`);
+    console.log(`[WEBHOOK] Created GuestThread: ${thread._id}`);
   }
 
-  const newMsg = {
+  thread.messages.push({
     messageId: uuidv4(),
     direction: "inbound",
     content: text,
@@ -206,18 +214,63 @@ async function injectInbound(orgId: string, conversationId: string, text: string
     discloseAi: true,
     status: "sent",
     createdAt: new Date(),
-  };
-
-  thread.messages.push(newMsg as any);
+  } as any);
   thread.lastActivityAt = new Date();
   thread.status = "open";
   await thread.save();
-
   return thread;
 }
 
-async function postToHostaway(conversationId: string, replyText: string) {
-  const token = process.env.Hostaway_Authorization_token || "";
+async function injectIntoInbox(
+  orgId: string, conversationId: string, text: string, guestName: string,
+  listingDoc: any, listingMapId?: any
+) {
+  try {
+    const newMsg = { sender: "guest", text, timestamp: new Date().toISOString() };
+
+    const existing = await HostawayConversation.findOne({ hostawayConversationId: conversationId });
+
+    if (existing) {
+      existing.messages.push(newMsg);
+      existing.needsReply = true;
+      existing.guestName = guestName || existing.guestName;
+      if (listingDoc && !existing.listingId) existing.listingId = listingDoc._id;
+      existing.syncedAt = new Date();
+      await existing.save();
+      console.log(`[WEBHOOK] HostawayConversation updated for conv=${conversationId}`);
+    } else {
+      await HostawayConversation.create({
+        orgId: new Types.ObjectId(orgId),
+        listingId: listingDoc?._id ?? undefined,
+        listingMapId: listingMapId ? Number(listingMapId) : undefined,
+        hostawayConversationId: conversationId,
+        guestName: guestName || "Guest",
+        messages: [newMsg],
+        dateFrom: "",
+        dateTo: "",
+        needsReply: true,
+        syncedAt: new Date(),
+      });
+      console.log(`[WEBHOOK] HostawayConversation created for conv=${conversationId}`);
+    }
+  } catch (err: any) {
+    console.warn(`[WEBHOOK] HostawayConversation inject failed (non-fatal): ${err?.message}`);
+  }
+}
+
+async function injectOutboundIntoInbox(conversationId: string, text: string) {
+  try {
+    const newMsg = { sender: "admin", text, timestamp: new Date().toISOString() };
+    await HostawayConversation.findOneAndUpdate(
+      { hostawayConversationId: conversationId },
+      { $push: { messages: newMsg }, $set: { needsReply: false, syncedAt: new Date() } }
+    );
+  } catch (err: any) {
+    console.warn(`[WEBHOOK] Outbound inject to HostawayConversation failed (non-fatal): ${err?.message}`);
+  }
+}
+
+async function postToHostaway(conversationId: string, replyText: string, token: string) {
   if (!token) return;
   try {
     const res = await fetch(`https://api.hostaway.com/v1/conversations/${conversationId}/messages`, {
@@ -227,14 +280,14 @@ async function postToHostaway(conversationId: string, replyText: string) {
         "Content-Type": "application/json",
         "Cache-control": "no-cache",
       },
-      body: JSON.stringify({ body: replyText, isOutgoing: 1 })
+      body: JSON.stringify({ body: replyText, isOutgoing: 1 }),
     });
     if (res.ok) {
-      console.log(`[WEBHOOK] Reply posted to Hostaway conv=${conversationId} successfully.`);
+      console.log(`[WEBHOOK] Reply posted to Hostaway conv=${conversationId}`);
     } else {
-      console.log(`[WEBHOOK] Hostaway post failed. Status: ${res.status}`);
+      console.log(`[WEBHOOK] Hostaway post failed: ${res.status}`);
     }
   } catch (e) {
-    console.error(`[WEBHOOK] Exception while posting reply to Hostaway:`, e);
+    console.error(`[WEBHOOK] Exception posting reply to Hostaway:`, e);
   }
 }
