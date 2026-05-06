@@ -1,0 +1,2537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PriceOS UI Replica and Client Operating Guide</title>
+  <style>
+    :root {
+      --bg: #090b0f;
+      --bg-soft: #0f1318;
+      --panel: #12171d;
+      --panel-2: #171d25;
+      --panel-3: #1d2530;
+      --line: rgba(255, 255, 255, 0.08);
+      --line-strong: rgba(255, 255, 255, 0.16);
+      --text: #eef2f6;
+      --muted: #9da8b5;
+      --subtle: #6f7b89;
+      --amber: #ffb22c;
+      --amber-soft: rgba(255, 178, 44, 0.14);
+      --blue: #58a6ff;
+      --blue-soft: rgba(88, 166, 255, 0.14);
+      --green: #2fd08a;
+      --green-soft: rgba(47, 208, 138, 0.14);
+      --red: #ff6a6a;
+      --red-soft: rgba(255, 106, 106, 0.14);
+      --violet: #a78bfa;
+      --violet-soft: rgba(167, 139, 250, 0.14);
+      --shadow: 0 30px 60px rgba(0, 0, 0, 0.28);
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --sans: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      --mono: "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(255, 178, 44, 0.13), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(88, 166, 255, 0.08), transparent 26%),
+        linear-gradient(180deg, #090b0f 0%, #0c1116 100%);
+      line-height: 1.55;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 90%);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.9em;
+      color: #ffe2a1;
+    }
+
+    .layout {
+      width: min(1480px, calc(100% - 36px));
+      margin: 20px auto 60px;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .toc {
+      position: sticky;
+      top: 20px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(18, 23, 29, 0.88);
+      backdrop-filter: blur(12px);
+      box-shadow: var(--shadow);
+    }
+
+    .toc h2,
+    h1,
+    h3,
+    h4 {
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    .toc h2 {
+      font-size: 1rem;
+      margin-bottom: 14px;
+    }
+
+    .toc p,
+    .toc li,
+    .toc a,
+    .section p,
+    .section li,
+    td,
+    th {
+      color: var(--muted);
+    }
+
+    .toc ul {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 18px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .toc a.link {
+      display: block;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid transparent;
+      transition: 180ms ease;
+      font-size: 0.93rem;
+    }
+
+    .toc a.link:hover {
+      border-color: rgba(255, 178, 44, 0.22);
+      color: var(--text);
+      background: rgba(255, 178, 44, 0.06);
+    }
+
+    .toc .mini-note {
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--line);
+      font-size: 0.84rem;
+    }
+
+    .content {
+      display: grid;
+      gap: 22px;
+    }
+
+    .hero,
+    .section {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      background: linear-gradient(180deg, rgba(18, 23, 29, 0.96), rgba(14, 18, 24, 0.94));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .hero {
+      position: relative;
+      padding: 34px;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -50px;
+      top: -50px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 178, 44, 0.2), transparent 70%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      color: var(--amber);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-size: 0.76rem;
+      font-weight: 800;
+    }
+
+    h1 {
+      font-size: clamp(2.2rem, 4vw, 4rem);
+      line-height: 1.04;
+      max-width: 980px;
+      margin-bottom: 14px;
+    }
+
+    .hero p.lede {
+      max-width: 980px;
+      font-size: 1.03rem;
+    }
+
+    .badge-row,
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .badge,
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line-strong);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .live {
+      background: var(--green-soft);
+      color: var(--green);
+      border-color: rgba(47, 208, 138, 0.25);
+    }
+
+    .partial {
+      background: var(--amber-soft);
+      color: var(--amber);
+      border-color: rgba(255, 178, 44, 0.25);
+    }
+
+    .planned {
+      background: var(--violet-soft);
+      color: #c6b8ff;
+      border-color: rgba(167, 139, 250, 0.25);
+    }
+
+    .section {
+      padding: 28px;
+    }
+
+    .section-head {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 20px;
+      align-items: end;
+    }
+
+    .section-head h2 {
+      font-size: clamp(1.55rem, 2.4vw, 2.4rem);
+      margin-bottom: 8px;
+    }
+
+    .section-head .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .grid-2,
+    .grid-3,
+    .grid-4,
+    .stats-grid,
+    .detail-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .grid-4,
+    .stats-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .detail-grid {
+      grid-template-columns: 1.2fr 1fr;
+      align-items: start;
+    }
+
+    .card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.028), rgba(255, 255, 255, 0.02));
+    }
+
+    .card h3 {
+      font-size: 1.04rem;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+
+    .card h4 {
+      font-size: 0.92rem;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .card ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .stat {
+      padding: 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.02));
+    }
+
+    .stat .label {
+      display: block;
+      color: var(--subtle);
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 1.6rem;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    .page-shot {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      overflow: hidden;
+      background: #0f1419;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .shot-frame {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      min-height: 420px;
+    }
+
+    .shot-sidebar {
+      background: #0c1116;
+      border-right: 1px solid var(--line);
+      padding: 18px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+    }
+
+    .brand {
+      padding: 10px 12px 14px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 4px;
+    }
+
+    .brand strong {
+      display: block;
+      color: var(--amber);
+      font-size: 1.15rem;
+      margin-bottom: 2px;
+    }
+
+    .brand span {
+      color: var(--subtle);
+      font-size: 0.8rem;
+    }
+
+    .nav-item {
+      padding: 10px 12px;
+      border-radius: 12px;
+      color: var(--muted);
+      border: 1px solid transparent;
+      font-size: 0.88rem;
+    }
+
+    .nav-item.active {
+      color: var(--amber);
+      background: rgba(255, 178, 44, 0.08);
+      border-color: rgba(255, 178, 44, 0.16);
+    }
+
+    .shot-main {
+      padding: 18px;
+      display: grid;
+      gap: 16px;
+      background:
+        radial-gradient(circle at top right, rgba(255, 178, 44, 0.08), transparent 28%),
+        linear-gradient(180deg, #121821 0%, #10151d 100%);
+    }
+
+    .shot-topbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: start;
+      padding: 6px 4px 2px;
+    }
+
+    .shot-topbar h3 {
+      margin-bottom: 4px;
+      font-size: 1.25rem;
+    }
+
+    .shot-topbar p {
+      margin: 0;
+      font-size: 0.86rem;
+    }
+
+    .tab-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tab {
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.02);
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .tab.active {
+      background: rgba(255, 178, 44, 0.12);
+      color: var(--amber);
+      border-color: rgba(255, 178, 44, 0.2);
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .kpi {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.025));
+    }
+
+    .kpi .k-label {
+      display: block;
+      color: var(--subtle);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 8px;
+    }
+
+    .kpi strong {
+      display: block;
+      font-size: 1.15rem;
+      color: var(--text);
+      margin-bottom: 5px;
+    }
+
+    .kpi small {
+      color: var(--muted);
+    }
+
+    .viz-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .viz,
+    .rail {
+      min-height: 122px;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .viz h4,
+    .rail h4 {
+      margin-bottom: 8px;
+      font-size: 0.92rem;
+    }
+
+    .bars,
+    .spark,
+    .legend-list,
+    .thread-stack,
+    .table-lines {
+      display: grid;
+      gap: 8px;
+    }
+
+    .bar {
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .bar > span {
+      position: absolute;
+      inset: 0 auto 0 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(255, 178, 44, 0.95), rgba(88, 166, 255, 0.92));
+    }
+
+    .spark-line {
+      height: 18px;
+      border-radius: 999px;
+      background:
+        linear-gradient(90deg, rgba(88, 166, 255, 0.14), rgba(47, 208, 138, 0.16));
+      position: relative;
+      overflow: hidden;
+    }
+
+    .spark-line::after {
+      content: "";
+      position: absolute;
+      left: 8%;
+      right: 8%;
+      top: 50%;
+      height: 2px;
+      background: linear-gradient(90deg, #58a6ff, #2fd08a, #ffb22c);
+      transform: translateY(-50%);
+      border-radius: 999px;
+    }
+
+    .legend-list div,
+    .table-lines div,
+    .thread-stack div {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .thread-stack .host {
+      border-left: 3px solid var(--amber);
+    }
+
+    .thread-stack .guest {
+      border-left: 3px solid var(--blue);
+    }
+
+    .note-box {
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .note-box strong {
+      color: var(--text);
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .data-table th,
+    .data-table td {
+      padding: 12px 14px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 0.88rem;
+    }
+
+    .data-table th {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .data-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .flow {
+      display: grid;
+      gap: 12px;
+    }
+
+    .flow-step {
+      display: grid;
+      grid-template-columns: 58px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .flow-step .num {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 178, 44, 0.12);
+      color: var(--amber);
+      font-weight: 800;
+      font-size: 1rem;
+      border: 1px solid rgba(255, 178, 44, 0.18);
+    }
+
+    details {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 0 14px;
+    }
+
+    summary {
+      cursor: pointer;
+      padding: 14px 0;
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    details > div {
+      padding-bottom: 14px;
+    }
+
+    .footer {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.025);
+      font-size: 0.86rem;
+    }
+
+    @media (max-width: 1180px) {
+      .layout,
+      .detail-grid,
+      .grid-2,
+      .grid-3,
+      .grid-4,
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .shot-frame,
+      .kpi-grid,
+      .viz-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        position: static;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="toc">
+      <h2>PriceOS Client Guide</h2>
+      <ul>
+        <li><a class="link" href="#scope">Scope and Assumptions</a></li>
+        <li><a class="link" href="#map">UI Map</a></li>
+        <li><a class="link" href="#dashboard">Dashboard</a></li>
+        <li><a class="link" href="#pricing">Pricing</a></li>
+        <li><a class="link" href="#market">Market</a></li>
+        <li><a class="link" href="#inbox">Guest Inbox</a></li>
+        <li><a class="link" href="#properties">Properties</a></li>
+        <li><a class="link" href="#groups">Groups</a></li>
+        <li><a class="link" href="#analytics">Analytics</a></li>
+        <li><a class="link" href="#onboarding">Onboarding</a></li>
+        <li><a class="link" href="#settings">Settings</a></li>
+        <li><a class="link" href="#users">User Management</a></li>
+        <li><a class="link" href="#webhooks">Webhook Flow</a></li>
+        <li><a class="link" href="#agents">Agents and Tool Calls</a></li>
+        <li><a class="link" href="#appendix">Appendix</a></li>
+      </ul>
+      <div class="mini-note">
+        This file is based on the current repo state in <code>Original_priceos/priceos</code>.
+        It intentionally separates verified current behavior from partially wired or intended flows.
+      </div>
+    </aside>
+
+    <main class="content">
+      <section class="hero" id="top">
+        <div class="eyebrow">PriceOS / UI Replica / Client Narrative</div>
+        <h1>PriceOS UI Replica and Detailed Client Operating Guide</h1>
+        <p class="lede">
+          This HTML file is designed to help a client understand what the current PriceOS product looks like, what each page does, where every KPI, graph, table, and subpage gets its values from, and which AI agents or backend flows sit behind the experience.
+        </p>
+        <div class="badge-row">
+          <span class="badge live">Verified current route</span>
+          <span class="badge partial">Partially wired UI or legacy helper route</span>
+          <span class="badge planned">Documented intended workflow</span>
+        </div>
+        <div class="pill-row">
+          <span class="pill">Primary 7-page scope: Dashboard, Pricing, Market, Guest Inbox, Properties, Groups, Analytics</span>
+          <span class="pill">Separate sections: Onboarding, Settings, User Management, Webhooks, Agents</span>
+          <span class="pill">Additional implemented pages noted in appendix: Agent Chat, Operations</span>
+        </div>
+      </section>
+
+      <section class="section" id="scope">
+        <div class="section-head">
+          <div>
+            <h2>Scope and Assumptions</h2>
+            <p>This guide uses the current frontend and API files as the source of truth, not older product notes.</p>
+          </div>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <h3>Scope Used For This Version</h3>
+            <ul>
+              <li>The 7 primary pages are assumed to be <code>/dashboard</code>, <code>/pricing</code>, <code>/market</code>, <code>/guest-chat</code>, <code>/properties</code>, <code>/groups</code>, and <code>/analytics</code>.</li>
+              <li>Separate operational sections are included for <code>/onboarding</code>, <code>/settings</code>, and <code>/users</code>.</li>
+              <li>The guide also includes webhook behavior and the agent/tool-call matrix because those are critical in client demos.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Important Repo Truths</h3>
+            <ul>
+              <li>Current settings are implemented as two tabs: <strong>Connections</strong> and <strong>Organization</strong>. Older docs describing four settings subpages are not the active UI in this repo.</li>
+              <li>Some Pricing and Market buttons point to routes that are not present in the current frontend tree. Those are flagged below as <span class="partial">partially wired</span>.</li>
+              <li>Most page math is MongoDB-backed and calculated in Next.js route handlers or page loaders.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Collections and Data Domains Reused Across Pages</h3>
+            <ul>
+              <li><code>listings</code> for property metadata, base price, floor, ceiling, activation state.</li>
+              <li><code>inventory_master</code> for day-level calendar status, current price, proposed price, proposal status.</li>
+              <li><code>reservations</code> for booking count, LOS, revenue, ADR.</li>
+              <li><code>hostaway_conversations</code> and <code>guest_threads</code> for Inbox and guest support workflows.</li>
+              <li><code>ops_tickets</code>, <code>benchmarkdatas</code>, <code>marketevents</code>, <code>airbticscaches</code>, <code>jobs</code>, and <code>organizations</code> for operations, market, caching, and admin state.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="map">
+        <div class="section-head">
+          <div>
+            <h2>Current UI Map</h2>
+            <p>The active sidebar in this repo exposes more than seven pages, but the primary walkthrough below stays inside the agreed 7-page core plus separate onboarding and admin flows.</p>
+          </div>
+        </div>
+        <div class="stats-grid">
+          <div class="stat">
+            <span class="label">Current Sidebar Pages</span>
+            <strong>9 + 2</strong>
+            <span>9 business pages in the main column, plus User Management and Settings in the footer area.</span>
+          </div>
+          <div class="stat">
+            <span class="label">Core Client Walkthrough</span>
+            <strong>7</strong>
+            <span>Dashboard, Pricing, Market, Guest Inbox, Properties, Groups, Analytics.</span>
+          </div>
+          <div class="stat">
+            <span class="label">Separate Operational Flows</span>
+            <strong>3</strong>
+            <span>Onboarding, Settings, User Management.</span>
+          </div>
+          <div class="stat">
+            <span class="label">Additional Implemented Pages</span>
+            <strong>2</strong>
+            <span>Agent Chat and Operations are present and summarized in the appendix.</span>
+          </div>
+        </div>
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <h3>Primary 7 Pages in This Guide</h3>
+            <table class="data-table">
+              <thead>
+                <tr><th>Page</th><th>Route</th><th>Main reason it exists</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Dashboard</td><td><code>/dashboard</code></td><td>Portfolio-level revenue, occupancy, channel mix, and AI action queue.</td></tr>
+                <tr><td>Pricing</td><td><code>/pricing</code></td><td>365-day heatmap, proposal review, and rules studio.</td></tr>
+                <tr><td>Market</td><td><code>/market</code></td><td>Events and competitor positioning.</td></tr>
+                <tr><td>Guest Inbox</td><td><code>/guest-chat</code></td><td>Guest messages, AI draft replies, summary, and escalation tickets.</td></tr>
+                <tr><td>Properties</td><td><code>/properties</code></td><td>Property activation, property cards, and property-level analytics/detail views.</td></tr>
+                <tr><td>Groups</td><td><code>/groups</code></td><td>Portfolio grouping and group rule management.</td></tr>
+                <tr><td>Analytics</td><td><code>/analytics</code></td><td>Property-level and group-level KPI and chart analysis.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h3>Separate Operational Pages and Flows</h3>
+            <table class="data-table">
+              <thead>
+                <tr><th>Page or flow</th><th>Route</th><th>What it controls</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Onboarding</td><td><code>/onboarding</code></td><td>Connect Hostaway, choose listings, pick market, set strategy, and seed the working portfolio.</td></tr>
+                <tr><td>Settings</td><td><code>/settings</code></td><td>Credentials, webhooks, guest communications mode, market config, and organization details.</td></tr>
+                <tr><td>User Management</td><td><code>/users</code></td><td>Invite users, approve access, manage onboarding step, role, and deletion.</td></tr>
+                <tr><td>Agent Chat</td><td><code>/agent-chat</code></td><td>Dedicated Aria/CRO workspace. Covered in appendix because it sits outside the requested 7-page core.</td></tr>
+                <tr><td>Operations</td><td><code>/operations</code></td><td>Ticket resolution tower sourced from guest issues. Covered in appendix because it sits outside the requested 7-page core.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="dashboard">
+        <div class="section-head">
+          <div>
+            <h2>1. Dashboard</h2>
+            <p>Route: <code>/dashboard</code>. This is the portfolio-wide revenue intelligence surface and the fastest way for a client to understand overall business health.</p>
+          </div>
+          <div class="meta">
+            <span class="badge live">Verified current route</span>
+            <span class="badge live">MongoDB-backed</span>
+            <span class="badge partial">Aria overlay is optional, not mandatory for page render</span>
+          </div>
+        </div>
+
+        <div class="page-shot">
+          <div class="shot-frame">
+            <div class="shot-sidebar">
+              <div class="brand">
+                <strong>PriceOS</strong>
+                <span>Revenue Intelligence</span>
+              </div>
+              <div class="nav-item active">Dashboard</div>
+              <div class="nav-item">Pricing</div>
+              <div class="nav-item">Market</div>
+              <div class="nav-item">Guest Inbox</div>
+              <div class="nav-item">Properties</div>
+              <div class="nav-item">Groups</div>
+              <div class="nav-item">Analytics</div>
+            </div>
+            <div class="shot-main">
+              <div class="shot-topbar">
+                <div>
+                  <h3>Portfolio Analytics</h3>
+                  <p>Search-driven portfolio KPIs, chart panels, pricing queue, and an Ask Aria overlay.</p>
+                </div>
+                <div class="tab-row">
+                  <span class="tab active">Overview</span>
+                  <span class="tab">Database</span>
+                  <span class="tab">Calendar</span>
+                </div>
+              </div>
+              <div class="kpi-grid">
+                <div class="kpi"><span class="k-label">Total Properties</span><strong>28</strong><small>Filtered by search and activation state</small></div>
+                <div class="kpi"><span class="k-label">Avg Occupancy (30D)</span><strong>73%</strong><small>Average of active property occupancy</small></div>
+                <div class="kpi"><span class="k-label">Avg Daily Rate</span><strong>AED 914</strong><small>Reservation ADR with listing fallback</small></div>
+                <div class="kpi"><span class="k-label">Projected Revenue</span><strong>AED 1.28M</strong><small>Sum of non-cancelled reservation value</small></div>
+              </div>
+              <div class="viz-grid">
+                <div class="viz">
+                  <h4>Top Drivers by Revenue</h4>
+                  <div class="bars">
+                    <div class="bar"><span style="width:92%;"></span></div>
+                    <div class="bar"><span style="width:76%;"></span></div>
+                    <div class="bar"><span style="width:61%;"></span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Revenue By Channel</h4>
+                  <div class="legend-list">
+                    <div><span>Airbnb</span><span>44%</span></div>
+                    <div><span>Booking.com</span><span>38%</span></div>
+                    <div><span>Direct</span><span>18%</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Occupancy Health Distribution</h4>
+                  <div class="spark">
+                    <div class="spark-line"></div>
+                    <div class="spark-line"></div>
+                    <div class="spark-line"></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Pricing Actions Queue</h4>
+                  <div class="table-lines">
+                    <div><span>Raise ADR on Marina Suite</span><span>+AED 18k est.</span></div>
+                    <div><span>Lower underperforming shoulder dates</span><span>Revenue at risk</span></div>
+                    <div><span>Event-driven premium check</span><span>Pending review</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <h3>Subpages and Interactive Regions</h3>
+            <ul>
+              <li><strong>Overview tab:</strong> core KPI cards, bar and pie charts, occupancy health, action queue, AI signals, performance matrix.</li>
+              <li><strong>Database tab:</strong> sync visibility, record counts, and data freshness cues from <code>/api/sync/status</code>.</li>
+              <li><strong>Calendar tab:</strong> 30-day portfolio view assembled from each property's <code>calendarDays</code> and reservation overlays.</li>
+              <li><strong>Ask Aria popup:</strong> floating dashboard chat panel for CRO-style portfolio questions.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Primary Render Path</h3>
+            <ul>
+              <li>Server page loader reads <code>Listing</code>, <code>InventoryMaster</code>, and <code>Reservation</code>.</li>
+              <li>It converts those into <code>propertiesWithMetrics</code> before hydrating <code>OverviewClient</code>.</li>
+              <li>The client then derives filtered KPIs and chart series from the already-hydrated property array.</li>
+              <li>The Sync button is not a Hostaway fetch in this page. It logs a background sync run and reads MongoDB freshness back through <code>/api/sync/status</code>.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>KPI, Graph, and Table Logic</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Widget</th><th>What client sees</th><th>How it is calculated now</th><th>Primary source</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Total Properties</td>
+                <td>Active property count after search filter.</td>
+                <td><code>filteredProperties.length</code> inside <code>overview-client.tsx</code>.</td>
+                <td><code>Listing.find({ orgId })</code> in <code>dashboard/page.tsx</code>.</td>
+              </tr>
+              <tr>
+                <td>Avg Occupancy (30D)</td>
+                <td>Portfolio occupancy headline.</td>
+                <td>Each property occupancy is computed server-side as booked or reserved inventory days divided by total inventory days in the 30-day window. The card then averages active properties with occupancy &gt; 0.</td>
+                <td><code>InventoryMaster</code> with date window <code>today -> today + 29</code>.</td>
+              </tr>
+              <tr>
+                <td>Avg Daily Rate</td>
+                <td>Portfolio ADR headline.</td>
+                <td>Per-property ADR is average <code>reservation.totalPrice / reservation.nights</code> across non-cancelled bookings. Fallback is listing base price if no valid reservations exist.</td>
+                <td><code>Reservation</code> plus <code>Listing.price</code>.</td>
+              </tr>
+              <tr>
+                <td>Projected Revenue</td>
+                <td>Forward-looking revenue for filtered properties.</td>
+                <td>Sum of <code>revenue</code> across filtered properties, where property revenue equals total non-cancelled reservation value.</td>
+                <td><code>Reservation.totalPrice</code>.</td>
+              </tr>
+              <tr>
+                <td>Lifetime Earnings</td>
+                <td>Historical-looking large revenue card.</td>
+                <td>Current page passes <code>totalHistoricalRevenue</code> equal to <code>totalPortfolioRevenue</code>, so the visual is currently backed by the same number as projected revenue.</td>
+                <td>Same data as projected revenue in current implementation.</td>
+              </tr>
+              <tr>
+                <td>Top Drivers by Revenue</td>
+                <td>Top earning assets.</td>
+                <td>Sort filtered properties by <code>revenue</code> descending and slice the chosen top-N count.</td>
+                <td>Hydrated property metrics.</td>
+              </tr>
+              <tr>
+                <td>Revenue By Channel</td>
+                <td>Airbnb / Booking.com / Direct mix.</td>
+                <td>Iterates reservation financials, normalizes channel names, and sums host payout or total price into a channel map.</td>
+                <td><code>Reservation.financials</code> attached inside dashboard loader.</td>
+              </tr>
+              <tr>
+                <td>Performance Matrix</td>
+                <td>Occupancy vs ADR scatter.</td>
+                <td>Each bubble represents a property using its occupancy, ADR, revenue, and revpar-style interpretation for tooltip context.</td>
+                <td>Hydrated property metrics.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Agents, Tool Calls, and Responsibility</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Agent or engine</th><th>Responsibility on this page</th><th>Main calls</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Aria / CRO Router</td>
+                <td>Answers portfolio questions from the popup and can explain why performance looks strong or weak.</td>
+                <td><code>POST /api/agent/chat</code> or <code>/api/agent/route</code>, plus tool-layer references such as <code>get_portfolio_overview</code>, <code>get_portfolio_revenue_snapshot</code>, and <code>get_agent_system_status</code>.</td>
+                <td><span class="badge live">Verified prompt and tool API reference</span></td>
+              </tr>
+              <tr>
+                <td>Dashboard sync workflow</td>
+                <td>Creates a sync run record and reports freshness back into the dashboard.</td>
+                <td><code>POST /api/sync/run</code>, <code>GET /api/sync/status</code>.</td>
+                <td><span class="badge live">Verified current route</span></td>
+              </tr>
+              <tr>
+                <td>Local action queue logic</td>
+                <td>Builds "Star Performer", "Raise ADR", and "Underperforming" style signals directly in the client using occupancy and ADR heuristics.</td>
+                <td>No external agent call required for the queue cards themselves.</td>
+                <td><span class="badge live">Verified client-side logic</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="pricing">
+        <div class="section-head">
+          <div>
+            <h2>2. Pricing</h2>
+            <p>Route: <code>/pricing</code>. This is the pricing command center with three operating surfaces: 365-day calendar, proposal review, and rules studio.</p>
+          </div>
+          <div class="meta">
+            <span class="badge live">Calendar and proposal loader verified</span>
+            <span class="badge partial">Approve/reject/modify helpers are partly legacy wired</span>
+          </div>
+        </div>
+
+        <div class="page-shot">
+          <div class="shot-frame">
+            <div class="shot-sidebar">
+              <div class="brand">
+                <strong>PriceOS</strong>
+                <span>Revenue Intelligence</span>
+              </div>
+              <div class="nav-item">Dashboard</div>
+              <div class="nav-item active">Pricing</div>
+              <div class="nav-item">Market</div>
+              <div class="nav-item">Guest Inbox</div>
+              <div class="nav-item">Properties</div>
+              <div class="nav-item">Groups</div>
+              <div class="nav-item">Analytics</div>
+            </div>
+            <div class="shot-main">
+              <div class="shot-topbar">
+                <div>
+                  <h3>Pricing Command Center</h3>
+                  <p>365-day price calendar, AI proposals, and the rule stack driving every price decision.</p>
+                </div>
+                <div class="tab-row">
+                  <span class="tab active">Calendar</span>
+                  <span class="tab">Proposals</span>
+                  <span class="tab">Pricing Rules</span>
+                </div>
+              </div>
+              <div class="kpi-grid">
+                <div class="kpi"><span class="k-label">Avg Proposed</span><strong>AED 982</strong><small>Visible month only</small></div>
+                <div class="kpi"><span class="k-label">Avg Change</span><strong>+7%</strong><small>Pending days only</small></div>
+                <div class="kpi"><span class="k-label">Occupancy</span><strong>68%</strong><small>Visible month booked days</small></div>
+                <div class="kpi"><span class="k-label">Pending</span><strong>14</strong><small>Days with proposalStatus = pending</small></div>
+              </div>
+              <div class="viz-grid">
+                <div class="viz">
+                  <h4>Calendar Heatmap</h4>
+                  <div class="bars">
+                    <div class="bar"><span style="width:80%;"></span></div>
+                    <div class="bar"><span style="width:60%;"></span></div>
+                    <div class="bar"><span style="width:35%;"></span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Proposal Status Tabs</h4>
+                  <div class="legend-list">
+                    <div><span>Pending</span><span>36</span></div>
+                    <div><span>Approved</span><span>18</span></div>
+                    <div><span>Rejected</span><span>4</span></div>
+                    <div><span>Pushed</span><span>11</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Proposal Table</h4>
+                  <div class="table-lines">
+                    <div><span>Apr 18 - Marina Suite</span><span>+12%</span></div>
+                    <div><span>Apr 21 - Downtown Studio</span><span>-6%</span></div>
+                    <div><span>Apr 22 - Palm Villa</span><span>+18%</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Rules Studio Tabs</h4>
+                  <div class="legend-list">
+                    <div><span>Guardrails</span><span>Floor / ceiling</span></div>
+                    <div><span>Lead Time</span><span>Last-minute and far-out</span></div>
+                    <div><span>Occupancy</span><span>Rolling occupancy-based moves</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-3" style="margin-top:16px;">
+          <div class="card">
+            <h3>Pricing Calendar Subpage</h3>
+            <ul>
+              <li>Listing selector and month switcher.</li>
+              <li>365-day fetch through <code>/api/inventory/calendar?listingId=...&amp;days=365</code>.</li>
+              <li>Heat colors reflect day state: booked, blocked, approved, rejected, pushed, or positive/negative proposal movement.</li>
+              <li>Month tooltip shows base price, current price, proposed price, change %, min stay, and day-level reasoning.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Proposals Subpage</h3>
+            <ul>
+              <li>Status tabs: Pending, Approved, Rejected, Pushed.</li>
+              <li>Filters: property, increase/decrease direction, sort by date / change % / property.</li>
+              <li>Proposal columns: date, property, price, risk, reasoning, action buttons.</li>
+              <li>Generate button starts the pricing engine event stream.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Pricing Rules Subpage</h3>
+            <ul>
+              <li>Tabs verified in <code>pricing-rules-studio.tsx</code>: Guardrails, Seasons, Lead Time, Gap Logic, LOS Discounts, Date Overrides, Occupancy.</li>
+              <li>These rules define the human-configured pricing envelope that AI and the engine must obey.</li>
+              <li>Occupancy logic includes target occupancy, high occupancy price-up, and low occupancy price-down settings.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>KPI and Table Logic</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Widget</th><th>How the value is calculated</th><th>Source</th><th>Client explanation</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Calendar Avg Proposed</td>
+                <td>Average of <code>proposedPrice ?? currentPrice</code> across visible month days where day status is <code>available</code>.</td>
+                <td><code>/api/inventory/calendar</code> -> <code>InventoryMaster</code>.</td>
+                <td>Shows the planned average sell price for the currently viewed month.</td>
+              </tr>
+              <tr>
+                <td>Calendar Avg Change</td>
+                <td>Average <code>changePct</code> across days with <code>proposalStatus = pending</code> in the visible month.</td>
+                <td>Day-level proposal fields in <code>InventoryMaster</code>.</td>
+                <td>Shows whether the month is generally trending up or down.</td>
+              </tr>
+              <tr>
+                <td>Calendar Occupancy</td>
+                <td><code>bookedDays / visibleDays</code> for the month currently on screen.</td>
+                <td><code>InventoryMaster.status</code>.</td>
+                <td>Useful for explaining whether higher prices are supported by demand.</td>
+              </tr>
+              <tr>
+                <td>Pending / Increases / Decreases</td>
+                <td>Proposal tab filters the pending set and counts positive or negative <code>changePct</code>.</td>
+                <td><code>initialProposals</code> or <code>/api/v1/revenue/proposals</code>.</td>
+                <td>Explains the review workload and direction of AI/engine changes.</td>
+              </tr>
+              <tr>
+                <td>Avg Change in Proposal Tab</td>
+                <td>Average pending <code>changePct</code>, rounded to integer.</td>
+                <td>Same as above.</td>
+                <td>Single number summarizing whether the engine is mostly bullish or discounting.</td>
+              </tr>
+              <tr>
+                <td>Proposal risk and reasoning</td>
+                <td>Displayed from record attributes such as <code>changePct</code>, constraint badges, and stored reasoning text.</td>
+                <td><code>InventoryMaster.reasoning</code> and proposal metadata.</td>
+                <td>Gives the human approver the "why" behind each price move.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Buttons, Actions, and Engine Calls</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>User action</th><th>Call path</th><th>What happens</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Open price calendar</td>
+                <td><code>GET /api/inventory/calendar</code></td>
+                <td>Loads 365 days of inventory, proposal state, min stay, and reasoning for one listing.</td>
+                <td><span class="badge live">Verified current route</span></td>
+              </tr>
+              <tr>
+                <td>Generate Proposals</td>
+                <td><code>POST /api/engine/run-all?orgId=...</code></td>
+                <td>Streams SSE status steps such as routing, analyzing, validating, generating. Current <code>runPipeline</code> is a simulated engine placeholder that returns random <code>daysChanged</code> counts.</td>
+                <td><span class="badge partial">UI verified, engine still placeholder</span></td>
+              </tr>
+              <tr>
+                <td>Push All Approved</td>
+                <td><code>POST /api/v1/revenue/proposals</code> with <code>action: push</code></td>
+                <td>Sets proposal status to <code>pushed</code> and copies <code>proposedPrice</code> into <code>currentPrice</code>.</td>
+                <td><span class="badge live">Verified current route</span></td>
+              </tr>
+              <tr>
+                <td>Approve / Reject / Modify individual proposals</td>
+                <td>UI points to <code>/api/proposals/bulk-approve</code>, <code>/api/proposals/bulk-reject</code>, and <code>/api/proposals/bulk-modify</code></td>
+                <td>These helper routes are referenced by the UI but not present in the current frontend tree inspected here.</td>
+                <td><span class="badge partial">Legacy helper wiring</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Agents, Tools, and Responsibility</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Agent or engine</th><th>Responsibility</th><th>Main tools or feeds</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Pricing Engine</td>
+                <td>Computes day-level proposals. In the agent reference this is described as a no-LLM engine that reads precomputed data.</td>
+                <td><code>runPipeline</code>, inventory, rules, benchmark context, market context.</td>
+                <td><span class="badge partial">Current route is placeholder simulation</span></td>
+              </tr>
+              <tr>
+                <td>Guardrail / Price Guard</td>
+                <td>Ensures prices stay inside floor, ceiling, and change controls. Also controls auto-approval rules conceptually.</td>
+                <td>Rule configuration, <code>changePct</code>, listing floor and ceiling, guardrail prompt docs.</td>
+                <td><span class="badge planned">Documented and partially represented in UI</span></td>
+              </tr>
+              <tr>
+                <td>Benchmark and market inputs</td>
+                <td>Provide competitor context for pricing confidence.</td>
+                <td><code>get_property_benchmark</code>, Airbtics cache, events, benchmark docs.</td>
+                <td><span class="badge planned">Tool API and docs verified</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="market">
+        <div class="section-head">
+          <div>
+            <h2>3. Market</h2>
+            <p>Route: <code>/market</code>. This page combines live or cached event context with an area-based competitor benchmark view.</p>
+          </div>
+          <div class="meta">
+            <span class="badge live">Page render verified</span>
+            <span class="badge partial">Sync button points to route not found in current frontend tree</span>
+          </div>
+        </div>
+
+        <div class="page-shot">
+          <div class="shot-frame">
+            <div class="shot-sidebar">
+              <div class="brand">
+                <strong>PriceOS</strong>
+                <span>Revenue Intelligence</span>
+              </div>
+              <div class="nav-item">Dashboard</div>
+              <div class="nav-item">Pricing</div>
+              <div class="nav-item active">Market</div>
+              <div class="nav-item">Guest Inbox</div>
+              <div class="nav-item">Properties</div>
+              <div class="nav-item">Groups</div>
+              <div class="nav-item">Analytics</div>
+            </div>
+            <div class="shot-main">
+              <div class="shot-topbar">
+                <div>
+                  <h3>Market Intelligence</h3>
+                  <p>Your market: live events, demand signals, and comp positioning.</p>
+                </div>
+                <div class="tab-row">
+                  <span class="tab active">Events</span>
+                  <span class="tab">Benchmark</span>
+                </div>
+              </div>
+              <div class="kpi-grid">
+                <div class="kpi"><span class="k-label">Portfolio Occupancy</span><strong>71%</strong><small>Average listing occupancy</small></div>
+                <div class="kpi"><span class="k-label">Avg Nightly Rate</span><strong>AED 887</strong><small>Portfolio average</small></div>
+                <div class="kpi"><span class="k-label">High-Impact Events</span><strong>9</strong><small>Next 90 days</small></div>
+                <div class="kpi"><span class="k-label">Total Events</span><strong>42</strong><small>Next 90 days</small></div>
+              </div>
+              <div class="viz-grid">
+                <div class="viz">
+                  <h4>Event Calendar</h4>
+                  <div class="table-lines">
+                    <div><span>Apr 18-20 / Marina Expo</span><span>High / +18%</span></div>
+                    <div><span>Apr 26 / City Music Weekend</span><span>Medium / +8%</span></div>
+                    <div><span>May 05-07 / Trade Summit</span><span>High / +22%</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Filters</h4>
+                  <div class="legend-list">
+                    <div><span>Impact</span><span>All / High / Medium / Low</span></div>
+                    <div><span>Area</span><span>Dubai Marina / JVC / Downtown</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Competitor Benchmark</h4>
+                  <div class="bars">
+                    <div class="bar"><span style="width:25%;"></span></div>
+                    <div class="bar"><span style="width:50%;"></span></div>
+                    <div class="bar"><span style="width:75%;"></span></div>
+                    <div class="bar"><span style="width:90%;"></span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Benchmark Verdict</h4>
+                  <div class="legend-list">
+                    <div><span>Your price</span><span>AED 950</span></div>
+                    <div><span>Market median</span><span>AED 910</span></div>
+                    <div><span>Recommended weekend</span><span>AED 1,047</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <h3>What the Client Sees</h3>
+            <ul>
+              <li>Four market KPI cards.</li>
+              <li>An event calendar table with impact and area filtering.</li>
+              <li>A benchmark panel per selected listing with percentile-style context and recommended weekday/weekend prices.</li>
+              <li>A Sync Events button in the header.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Current Data Shape</h3>
+            <ul>
+              <li>Server page loads <code>MarketEvent</code> records and all listings for the current org.</li>
+              <li>Occupancy and average nightly rate are portfolio averages derived from listing fields.</li>
+              <li>The benchmark panel calls a local benchmark API that builds a comp set from listings in the same area.</li>
+              <li>If benchmark cache is absent, the UI still returns useful fallback values.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Market KPI and Benchmark Logic</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Widget</th><th>Calculation</th><th>Source</th><th>Implementation note</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Portfolio Occupancy</td>
+                <td>Average of listing <code>occupancyPct</code> across listings loaded into the page.</td>
+                <td><code>Listing.occupancyPct</code> or <code>0</code> fallback.</td>
+                <td>Simple portfolio average, not a weighted booked-night metric.</td>
+              </tr>
+              <tr>
+                <td>Avg Nightly Rate</td>
+                <td>Average of <code>listing.avgPrice || listing.price</code>.</td>
+                <td><code>Listing</code>.</td>
+                <td>Used as a directional market headline rather than a strict ADR audit.</td>
+              </tr>
+              <tr>
+                <td>High-Impact Events</td>
+                <td>Count of events where <code>impact === "high"</code>.</td>
+                <td><code>MarketEvent</code>.</td>
+                <td>Window is whatever event set exists in DB, typically next 90 days in UI language.</td>
+              </tr>
+              <tr>
+                <td>Total Events</td>
+                <td>Total number of page events loaded for the org.</td>
+                <td><code>MarketEvent</code>.</td>
+                <td>Raw record count.</td>
+              </tr>
+              <tr>
+                <td>Benchmark quartiles</td>
+                <td>Sort same-area listing prices and read p25 / p50 / p75 / p90 by percentile index.</td>
+                <td><code>/api/agent-tools/benchmark</code>.</td>
+                <td>This is area-based local benchmarking in the current route, not a full external comp scrape.</td>
+              </tr>
+              <tr>
+                <td>Verdict</td>
+                <td><code>UNDERPRICED</code> if price &lt; p25, <code>OVERPRICED</code> if &gt; p90, <code>SLIGHTLY_ABOVE</code> if &gt; p75, otherwise <code>FAIR</code>.</td>
+                <td>Same benchmark route.</td>
+                <td>Clear, client-friendly market positioning label.</td>
+              </tr>
+              <tr>
+                <td>Recommended weekend price</td>
+                <td><code>Math.round(p50 * 1.15)</code>.</td>
+                <td>Same benchmark route.</td>
+                <td>Current implementation assumes a 15% weekend premium.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Agent, Tool, and Feed Stack</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Agent or feed</th><th>Responsibility</th><th>Main calls</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Benchmark Agent / local benchmark route</td>
+                <td>Provides comp set, quartiles, verdict, and recommended weekday/weekend price.</td>
+                <td><code>GET /api/agent-tools/benchmark</code>, conceptually aligned with tool call <code>get_property_benchmark</code>.</td>
+                <td><span class="badge live">Verified current route</span></td>
+              </tr>
+              <tr>
+                <td>Marketing Agent, Eventbrite, Ticketmaster, DTCM, RSS, Airbtics</td>
+                <td>Documented intended market context stack used when "Run Aria" or event sync workflows are active.</td>
+                <td><code>POST /api/market-setup</code> in docs, <code>POST /api/v1/system/events/sync</code> in UI reference, third-party feeds in <code>agent-call-reference.md</code>.</td>
+                <td><span class="badge planned">Documented workflow</span></td>
+              </tr>
+              <tr>
+                <td>Sync Events button</td>
+                <td>UI intends to refresh events and benchmarks for the market.</td>
+                <td><code>POST /api/v1/system/events/sync</code> from <code>market-client.tsx</code>.</td>
+                <td><span class="badge partial">Route not present in current frontend tree inspected here</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="inbox">
+        <div class="section-head">
+          <div>
+            <h2>4. Guest Inbox</h2>
+            <p>Route: <code>/guest-chat</code>. This is the guest communications surface: message rail, draft-reply generation, thread summary, and operational escalation.</p>
+          </div>
+          <div class="meta">
+            <span class="badge live">Inbound conversation sync verified</span>
+            <span class="badge partial">Outbound reply route currently saves locally rather than posting back to Hostaway</span>
+          </div>
+        </div>
+
+        <div class="page-shot">
+          <div class="shot-frame">
+            <div class="shot-sidebar">
+              <div class="brand">
+                <strong>PriceOS</strong>
+                <span>Revenue Intelligence</span>
+              </div>
+              <div class="nav-item">Dashboard</div>
+              <div class="nav-item">Pricing</div>
+              <div class="nav-item">Market</div>
+              <div class="nav-item active">Guest Inbox</div>
+              <div class="nav-item">Properties</div>
+              <div class="nav-item">Groups</div>
+              <div class="nav-item">Analytics</div>
+            </div>
+            <div class="shot-main">
+              <div class="shot-topbar">
+                <div>
+                  <h3>Guest Inbox</h3>
+                  <p>Webhook status, AI mode, conversation search, thread summary, draft suggestions, and guest issue tickets.</p>
+                </div>
+                <div class="tab-row">
+                  <span class="tab active">Live conversations</span>
+                  <span class="tab">AI summary</span>
+                  <span class="tab">Escalations</span>
+                </div>
+              </div>
+              <div class="kpi-grid">
+                <div class="kpi"><span class="k-label">Webhook</span><strong>Live</strong><small>Derived from webhook status route</small></div>
+                <div class="kpi"><span class="k-label">AI Mode</span><strong>Approval</strong><small>Read-only here, configured in Settings</small></div>
+                <div class="kpi"><span class="k-label">Needs Reply</span><strong>7</strong><small>Unread or last sender = guest</small></div>
+                <div class="kpi"><span class="k-label">Open Tickets</span><strong>3</strong><small>Operational issues from guest-agent tickets</small></div>
+              </div>
+              <div class="viz-grid">
+                <div class="rail">
+                  <h4>Conversation Rail</h4>
+                  <div class="table-lines">
+                    <div><span>Sarah J. / Airbnb</span><span>Happy</span></div>
+                    <div><span>Mike C. / Direct</span><span>Concerned</span></div>
+                    <div><span>Ahmed A. / Booking</span><span>Neutral</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Thread + Draft</h4>
+                  <div class="thread-stack">
+                    <div class="guest"><span>Guest: Is parking included?</span><span>8:42 PM</span></div>
+                    <div class="host"><span>AI draft: Yes, free parking is available.</span><span>Ready</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Summary Panel</h4>
+                  <div class="legend-list">
+                    <div><span>Sentiment</span><span>Neutral</span></div>
+                    <div><span>Themes</span><span>Check-in / Parking</span></div>
+                    <div><span>Action items</span><span>Reply before arrival</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Escalation Tickets</h4>
+                  <div class="table-lines">
+                    <div><span>Broken AC complaint</span><span>High / 4h SLA</span></div>
+                    <div><span>Late housekeeping</span><span>Medium / 12h SLA</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <h3>Visible UI Pieces</h3>
+            <ul>
+              <li>Conversation rail with guest name, channel, property, last message, unread count, sentiment, and stay dates.</li>
+              <li>Webhook badge that deep-links to Settings > Connections semantics.</li>
+              <li>AI Mode badge showing Manual vs Live, and Auto vs Approval behavior as a read-only reflection of Settings.</li>
+              <li>Summary panel, draft rewrite controls, thumbs up/down feedback, and operational ticket panel.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>How the Page Loads</h3>
+            <ul>
+              <li><code>/api/comms-settings?orgId=...</code> for liveMode and autoReply.</li>
+              <li><code>/api/hostaway/webhook-status</code> for Live / Setup needed / Invalid / No credentials badge.</li>
+              <li><code>/api/hostaway/conversations/cached?orgId=...</code> for the conversation rail.</li>
+              <li><code>/api/guest-agent/tickets?orgId=...</code> for linked guest issue tickets.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Conversation, Summary, and Reply Logic</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Feature</th><th>How it works now</th><th>Source</th><th>Client explanation</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Needs Reply</td>
+                <td>A conversation needs reply if <code>doc.needsReply</code> is true or the last message sender is <code>guest</code>.</td>
+                <td><code>/api/hostaway/conversations/cached</code>.</td>
+                <td>This is the main operational workload indicator in the Inbox.</td>
+              </tr>
+              <tr>
+                <td>Unread bubble</td>
+                <td>Uses <code>unreadCount</code> if available, otherwise <code>1</code> when the conversation needs reply.</td>
+                <td>Same cached conversation route.</td>
+                <td>Keeps the rail simple and action-oriented.</td>
+              </tr>
+              <tr>
+                <td>Sentiment in rail</td>
+                <td>If no AI summary exists, the UI uses a keyword heuristic against the latest guest message: complaint words -> negative, thank-you words -> positive, otherwise neutral.</td>
+                <td><code>guessSentiment()</code> inside <code>guest-inbox-wired.tsx</code>.</td>
+                <td>Gives ops teams quick triage before opening the thread.</td>
+              </tr>
+              <tr>
+                <td>Thread summary</td>
+                <td><code>POST /api/guest-agent/threads/:id/summary</code> calls the Lyzr Conversation Summary Agent. If parsing fails, it falls back to a simple message-count-based summary.</td>
+                <td><code>hostaway_conversations</code> plus Lyzr agent.</td>
+                <td>Summarizes the thread into sentiment, themes, action items, and bullet points.</td>
+              </tr>
+              <tr>
+                <td>Draft reply generation</td>
+                <td><code>POST /api/hostaway/suggest-reply</code> creates a background <code>Job</code>, calls the Lyzr Chat Response Agent, then stores the generated result in the job record.</td>
+                <td><code>jobs</code> collection and Lyzr service.</td>
+                <td>Allows asynchronous reply drafting instead of blocking the UI.</td>
+              </tr>
+              <tr>
+                <td>Save reply</td>
+                <td><code>POST /api/hostaway/save-reply</code> appends an admin message to the MongoDB conversation and clears <code>needsReply</code>.</td>
+                <td><code>hostaway_conversations</code>.</td>
+                <td>Current route saves locally. In a fully live production loop this would also post outward to Hostaway.</td>
+              </tr>
+              <tr>
+                <td>Draft feedback</td>
+                <td><code>POST /api/hostaway/draft-feedback</code> stores good/bad feedback records in <code>draft_feedbacks</code>.</td>
+                <td>MongoDB feedback collection.</td>
+                <td>Useful for model tuning and QA visibility.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Agents, Tool Calls, and Responsibility</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Agent</th><th>Responsibility</th><th>Calls or tools</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Guest Reply Agent / Chat Response Agent</td>
+                <td>Drafts guest replies in a hospitality tone using the active thread context.</td>
+                <td><code>POST /api/hostaway/suggest-reply</code>, Lyzr Chat Response Agent ID, tool references such as <code>list_guest_conversations</code> and <code>get_guest_summary</code>.</td>
+                <td><span class="badge live">Verified route and prompt docs</span></td>
+              </tr>
+              <tr>
+                <td>Conversation Summary Agent</td>
+                <td>Produces sentiment, themes, action items, and bullet points for a thread.</td>
+                <td><code>POST /api/guest-agent/threads/:id/summary</code>.</td>
+                <td><span class="badge live">Verified current route</span></td>
+              </tr>
+              <tr>
+                <td>Guest Agent / escalation logic</td>
+                <td>Creates or surfaces ops tickets for maintenance, complaints, and severe cases.</td>
+                <td><code>GET /api/guest-agent/tickets</code>, guest-agent prompt rules.</td>
+                <td><span class="badge live">Ticket API verified</span></td>
+              </tr>
+              <tr>
+                <td>Webhook integration</td>
+                <td>Turns Hostaway guest messages into inbox updates.</td>
+                <td><code>/api/hostaway/webhook-status</code>, <code>/api/hostaway/webhook-manage</code>, <code>/api/hostaway/conversations/sync</code>, inbound webhook URL.</td>
+                <td><span class="badge live">Inbound sync verified</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="properties">
+        <div class="section-head">
+          <div>
+            <h2>5. Properties</h2>
+            <p>Route: <code>/properties</code>. This is both a property selection hub and a property analytics launcher. It also links into deeper property-level tabs through <code>/properties/[id]</code>.</p>
+          </div>
+          <div class="meta">
+            <span class="badge live">Property list and property analytics verified</span>
+            <span class="badge live">Property detail subpage present</span>
+          </div>
+        </div>
+
+        <div class="page-shot">
+          <div class="shot-frame">
+            <div class="shot-sidebar">
+              <div class="brand">
+                <strong>PriceOS</strong>
+                <span>Revenue Intelligence</span>
+              </div>
+              <div class="nav-item">Dashboard</div>
+              <div class="nav-item">Pricing</div>
+              <div class="nav-item">Market</div>
+              <div class="nav-item">Guest Inbox</div>
+              <div class="nav-item active">Properties</div>
+              <div class="nav-item">Groups</div>
+              <div class="nav-item">Analytics</div>
+            </div>
+            <div class="shot-main">
+              <div class="shot-topbar">
+                <div>
+                  <h3>Properties</h3>
+                  <p>Selected vs inactive properties, activation workflow, property card stats, and property detail analytics.</p>
+                </div>
+                <div class="tab-row">
+                  <span class="tab active">Selected</span>
+                  <span class="tab">Inactive</span>
+                  <span class="tab">Property Detail</span>
+                </div>
+              </div>
+              <div class="kpi-grid">
+                <div class="kpi"><span class="k-label">Occupancy</span><strong>76%</strong><small>30-day window</small></div>
+                <div class="kpi"><span class="k-label">Avg Price</span><strong>AED 932</strong><small>Reservation ADR or base rate</small></div>
+                <div class="kpi"><span class="k-label">Pending Proposals</span><strong>5</strong><small>Per property card or detail panel</small></div>
+                <div class="kpi"><span class="k-label">Revenue</span><strong>AED 214k</strong><small>Total active reservation value</small></div>
+              </div>
+              <div class="viz-grid">
+                <div class="viz">
+                  <h4>Property Cards</h4>
+                  <div class="table-lines">
+                    <div><span>Marina Suite</span><span>Activated</span></div>
+                    <div><span>JVC Studio</span><span>Activated</span></div>
+                    <div><span>Palm Villa</span><span>Inactive</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Pending Proposals Panel</h4>
+                  <div class="table-lines">
+                    <div><span>Apr 19</span><span>+12%</span></div>
+                    <div><span>Apr 22</span><span>-4%</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Property Analytics</h4>
+                  <div class="legend-list">
+                    <div><span>Bookings</span><span>32</span></div>
+                    <div><span>Avg LOS</span><span>3.8 nights</span></div>
+                    <div><span>Occupancy</span><span>81%</span></div>
+                    <div><span>Revenue</span><span>AED 112k</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Property Detail Tabs</h4>
+                  <div class="legend-list">
+                    <div><span>Details</span><span>Amenities and capacity</span></div>
+                    <div><span>Calendar</span><span>CalendarGrid</span></div>
+                    <div><span>Bookings</span><span>BookingsDataTable</span></div>
+                    <div><span>Rules / Financials</span><span>Autopilot + expense / statement views</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-3" style="margin-top:16px;">
+          <div class="card">
+            <h3>Main Properties Page</h3>
+            <ul>
+              <li>Tabs: <strong>Selected</strong> and <strong>Inactive</strong>.</li>
+              <li>Cards show occupancy, average price, pending proposals, revenue, and activation state.</li>
+              <li>Activate and Deactivate actions move properties into or out of the rest of the operating surfaces.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Property Detail Subpage</h3>
+            <ul>
+              <li>Route: <code>/properties/[id]</code>.</li>
+              <li>Tabs: Details, Calendar, Bookings, Rules, Financials.</li>
+              <li>Rules tab includes <code>AutopilotSettings</code> and <code>RulesTable</code>.</li>
+              <li>Financials tab includes owner statements and expense table surfaces.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Legacy / Placeholder Subpage</h3>
+            <ul>
+              <li>Route: <code>/properties/[id]/rules</code>.</li>
+              <li>Current page explicitly says seasonal pricing rules were removed in the redesign.</li>
+              <li>Useful client talking point: the product moved from static seasonal rules toward AI-driven pricing proposals and richer rules studio behavior.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Property Math and Detail Analytics</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Widget</th><th>Calculation</th><th>Source</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Property occupancy</td>
+                <td>Reservation overlap days inside a 30-day window divided by 30, capped at 100%.</td>
+                <td><code>/api/properties</code> using <code>Reservation</code>.</td>
+                <td>This page uses reservation-overlap occupancy, whereas Dashboard server-side uses inventory days per property.</td>
+              </tr>
+              <tr>
+                <td>Average price</td>
+                <td>Average of <code>totalPrice / nights</code> across active reservations, fallback to listing base price.</td>
+                <td><code>Reservation</code> and <code>Listing.price</code>.</td>
+                <td>Client-friendly ADR interpretation.</td>
+              </tr>
+              <tr>
+                <td>Total revenue</td>
+                <td>Sum of non-cancelled reservation value grouped by channel and then re-summed across the property.</td>
+                <td><code>revenueByChannel</code> map from <code>/api/properties</code>.</td>
+                <td>Displayed on cards and reused by channel contribution widgets.</td>
+              </tr>
+              <tr>
+                <td>Pending proposals panel</td>
+                <td>Fetches pending proposals for a property through <code>/api/v1/revenue/proposals?listingId=...&amp;status=pending</code>.</td>
+                <td><code>InventoryMaster</code>.</td>
+                <td>Lets account teams explain the next pricing actions for one listing.</td>
+              </tr>
+              <tr>
+                <td>Property analytics cards and charts</td>
+                <td>Uses the same <code>/api/properties/analytics</code> route later reused by Analytics page.</td>
+                <td><code>Listing</code>, <code>Reservation</code>, <code>InventoryMaster</code>.</td>
+                <td>Bookings, Avg LOS, Occupancy, Revenue, Booking Velocity, LOS Distribution, Occupancy Trend, ADR vs RevPAR, Revenue by Channel.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Property Actions and Endpoints</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Action</th><th>Endpoint</th><th>Purpose</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Load properties</td><td><code>GET /api/properties?orgId=...</code></td><td>Returns property cards with occupancy, ADR, channel revenue, and activation state.</td><td><span class="badge live">Verified current route</span></td></tr>
+              <tr><td>Activate property</td><td><code>POST /api/properties/activate</code></td><td>Turns a property on for dashboards and analytics.</td><td><span class="badge planned">Referenced by UI</span></td></tr>
+              <tr><td>Deactivate property</td><td><code>POST /api/properties/deactivate</code></td><td>Removes the property from analytics, chat, pricing, and related views.</td><td><span class="badge planned">Referenced by UI</span></td></tr>
+              <tr><td>Property detail PMS view</td><td><code>createPMSClient().getListing / getCalendar / getReservations</code></td><td>Builds the deeper property hub tabs.</td><td><span class="badge live">Verified page loader</span></td></tr>
+              <tr><td>Autopilot settings</td><td><code>/api/listings/:id/engine-config</code>, <code>/api/listings/:id/run-engine</code></td><td>Controls last-minute, far-out, DOW, gap-fill, and related rule knobs.</td><td><span class="badge planned">UI verified, routes not validated in this pass</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="groups">
+        <div class="section-head">
+          <div>
+            <h2>6. Groups</h2>
+            <p>Routes: <code>/groups</code> and <code>/groups/[id]</code>. Groups let PriceOS manage collections of listings as a single commercial or geographic unit.</p>
+          </div>
+          <div class="meta">
+            <span class="badge live">Group creation and detail routes verified</span>
+          </div>
+        </div>
+
+        <div class="page-shot">
+          <div class="shot-frame">
+            <div class="shot-sidebar">
+              <div class="brand">
+                <strong>PriceOS</strong>
+                <span>Revenue Intelligence</span>
+              </div>
+              <div class="nav-item">Dashboard</div>
+              <div class="nav-item">Pricing</div>
+              <div class="nav-item">Market</div>
+              <div class="nav-item">Guest Inbox</div>
+              <div class="nav-item">Properties</div>
+              <div class="nav-item active">Groups</div>
+              <div class="nav-item">Analytics</div>
+            </div>
+            <div class="shot-main">
+              <div class="shot-topbar">
+                <div>
+                  <h3>Groups</h3>
+                  <p>Portfolio segmentation with shared pricing rules and shared operational reporting.</p>
+                </div>
+                <div class="tab-row">
+                  <span class="tab active">Group List</span>
+                  <span class="tab">Group Detail</span>
+                  <span class="tab">Group Rules</span>
+                </div>
+              </div>
+              <div class="kpi-grid">
+                <div class="kpi"><span class="k-label">Properties</span><strong>8</strong><small>Members inside one group</small></div>
+                <div class="kpi"><span class="k-label">Group Rules</span><strong>12</strong><small>Total rules</small></div>
+                <div class="kpi"><span class="k-label">Active Rules</span><strong>9</strong><small>Rules currently enabled</small></div>
+                <div class="kpi"><span class="k-label">Rule Priority</span><strong>High</strong><small>Group rules override overlapping property rules</small></div>
+              </div>
+              <div class="viz-grid">
+                <div class="viz">
+                  <h4>Group Builder</h4>
+                  <div class="legend-list">
+                    <div><span>Name / Description</span><span>Editable</span></div>
+                    <div><span>Color</span><span>Palette picker</span></div>
+                    <div><span>Property selection</span><span>Filtered by location and bedrooms</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Group Header Stats</h4>
+                  <div class="table-lines">
+                    <div><span>Properties</span><span>8</span></div>
+                    <div><span>Group Rules</span><span>12</span></div>
+                    <div><span>Active Rules</span><span>9</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Rule Categories</h4>
+                  <div class="legend-list">
+                    <div><span>Guardrails</span><span>4</span></div>
+                    <div><span>Lead Time</span><span>3</span></div>
+                    <div><span>Date Overrides</span><span>2</span></div>
+                    <div><span>Occupancy</span><span>3</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Property Membership</h4>
+                  <div class="table-lines">
+                    <div><span>Marina Suite</span><span>Dubai Marina / 2BR</span></div>
+                    <div><span>Beachfront Villa</span><span>JBR / 3BR</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <h3>Group List Page</h3>
+            <ul>
+              <li>Create group modal supports name, description, palette color, and listing selection.</li>
+              <li>Selection filters are driven by property location and bedroom buckets.</li>
+              <li>This is the UI place where commercial structure is created before analytics and pricing can be viewed by group.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Group Detail Page</h3>
+            <ul>
+              <li>Header exposes properties count, group rule count, and active rule count.</li>
+              <li>Properties section shows the exact properties in the group.</li>
+              <li>Rules section uses category tabs and reiterates that group rules take precedence over overlapping property-level rules.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Group Rules and Calls</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Feature</th><th>How it works</th><th>Endpoints</th><th>Client relevance</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Create / update / delete group</td>
+                <td>Groups are CRUD objects with name, description, color, and member listing IDs.</td>
+                <td><code>/api/groups</code>, <code>/api/groups/:id</code>.</td>
+                <td>Used to model neighborhoods, owners, product lines, or strategic clusters.</td>
+              </tr>
+              <tr>
+                <td>Group rule categories</td>
+                <td>Rules are organized by the same pricing taxonomies used elsewhere: guardrails, seasons, lead time, gap logic, LOS discounts, date overrides, occupancy.</td>
+                <td><code>/api/groups/:id/rules</code>, <code>/api/groups/:id/rules/:ruleId</code>.</td>
+                <td>Keeps group-level strategy visually aligned with property-level pricing controls.</td>
+              </tr>
+              <tr>
+                <td>Rule priority</td>
+                <td>UI explicitly tells the user that group rules override overlapping property rules.</td>
+                <td>Explained in group detail page and group create form.</td>
+                <td>Very important in client discussions because it explains which rule wins.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="analytics">
+        <div class="section-head">
+          <div>
+            <h2>7. Analytics</h2>
+            <p>Route: <code>/analytics</code>. This page is the clearest "explain the numbers" destination for clients because it exposes both property-level and group-level KPI math.</p>
+          </div>
+          <div class="meta">
+            <span class="badge live">Verified current route</span>
+            <span class="badge live">Property analytics endpoint verified</span>
+          </div>
+        </div>
+
+        <div class="page-shot">
+          <div class="shot-frame">
+            <div class="shot-sidebar">
+              <div class="brand">
+                <strong>PriceOS</strong>
+                <span>Revenue Intelligence</span>
+              </div>
+              <div class="nav-item">Dashboard</div>
+              <div class="nav-item">Pricing</div>
+              <div class="nav-item">Market</div>
+              <div class="nav-item">Guest Inbox</div>
+              <div class="nav-item">Properties</div>
+              <div class="nav-item">Groups</div>
+              <div class="nav-item active">Analytics</div>
+            </div>
+            <div class="shot-main">
+              <div class="shot-topbar">
+                <div>
+                  <h3>Analytics</h3>
+                  <p>Revenue, occupancy, booking pace, LOS, channel contribution, and group aggregation.</p>
+                </div>
+                <div class="tab-row">
+                  <span class="tab active">Properties</span>
+                  <span class="tab">Groups</span>
+                  <span class="tab">30d / 60d / 90d / Custom</span>
+                </div>
+              </div>
+              <div class="kpi-grid">
+                <div class="kpi"><span class="k-label">Bookings</span><strong>94</strong><small>Selected date range</small></div>
+                <div class="kpi"><span class="k-label">Avg LOS</span><strong>3.7 nights</strong><small>Total nights / bookings</small></div>
+                <div class="kpi"><span class="k-label">Occupancy</span><strong>79%</strong><small>Booked inventory days / total days</small></div>
+                <div class="kpi"><span class="k-label">Revenue</span><strong>AED 402k</strong><small>Non-cancelled reservation value</small></div>
+              </div>
+              <div class="viz-grid">
+                <div class="viz">
+                  <h4>Booking Velocity</h4>
+                  <div class="spark">
+                    <div class="spark-line"></div>
+                    <div class="spark-line"></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>ADR vs RevPAR</h4>
+                  <div class="spark">
+                    <div class="spark-line"></div>
+                    <div class="spark-line"></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Length of Stay Distribution</h4>
+                  <div class="legend-list">
+                    <div><span>1-2</span><span>31</span></div>
+                    <div><span>3-4</span><span>27</span></div>
+                    <div><span>5-7</span><span>22</span></div>
+                    <div><span>8-14</span><span>10</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Revenue by Channel</h4>
+                  <div class="legend-list">
+                    <div><span>Airbnb</span><span>AED 182k</span></div>
+                    <div><span>Booking.com</span><span>AED 151k</span></div>
+                    <div><span>Direct</span><span>AED 69k</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <h3>Property Analytics Tab</h3>
+            <ul>
+              <li>Date presets: 30d, 60d, 90d, or custom range.</li>
+              <li>Charts: Booking Velocity, Occupancy Trend, ADR vs RevPAR, LOS Distribution, Revenue by Channel.</li>
+              <li>Ticket Severity Breakdown appears with Total Tickets, Open/Active, and Resolved Rate cards.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Group Analytics Tab</h3>
+            <ul>
+              <li>KPI strip adds Properties, Total Reservations, Avg Occupancy, Avg Price, Total Revenue.</li>
+              <li>Also shows group ticket KPIs and charts for revenue share, occupancy by property, revenue by property, average nightly price, reservations by property, and pending proposals.</li>
+              <li>This is the best client-facing page for explaining multi-property performance consolidation.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Exact Property Analytics Formula Set</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Metric or chart</th><th>How the route calculates it</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Total Bookings</td>
+                <td><code>filteredReservations.length</code> after date-range overlap filtering.</td>
+                <td><code>/api/properties/analytics</code> using <code>Reservation</code>.</td>
+              </tr>
+              <tr>
+                <td>Total Revenue</td>
+                <td>Sum of <code>reservation.totalPrice</code> for non-cancelled reservations in range.</td>
+                <td><code>Reservation</code>.</td>
+              </tr>
+              <tr>
+                <td>Avg LOS</td>
+                <td><code>totalNights / totalBookings</code>, rounded to one decimal.</td>
+                <td><code>Reservation.nights</code>.</td>
+              </tr>
+              <tr>
+                <td>Occupancy %</td>
+                <td><code>bookedDays / totalDays</code> where days come from <code>InventoryMaster</code> records in range.</td>
+                <td><code>InventoryMaster.status</code>.</td>
+              </tr>
+              <tr>
+                <td>Avg Daily Revenue</td>
+                <td><code>Math.round(totalRevenue / totalDays)</code>.</td>
+                <td>Derived in analytics route.</td>
+              </tr>
+              <tr>
+                <td>Booking Velocity</td>
+                <td>Counts bookings by <code>checkIn</code> date, then computes a 7-day moving average.</td>
+                <td><code>Reservation.checkIn</code>.</td>
+              </tr>
+              <tr>
+                <td>LOS Distribution</td>
+                <td>Buckets nights into <code>1-2</code>, <code>3-4</code>, <code>5-7</code>, <code>8-14</code>, and <code>15+</code>.</td>
+                <td><code>Reservation.nights</code>.</td>
+              </tr>
+              <tr>
+                <td>Occupancy Trend</td>
+                <td>Builds one row per day in range and marks <code>bookedDays</code>, <code>blockedDays</code>, and daily occupancy.</td>
+                <td><code>InventoryMaster</code>.</td>
+              </tr>
+              <tr>
+                <td>ADR vs RevPAR</td>
+                <td><code>adr = currentPrice</code>; <code>revpar = price if booked else 0</code>.</td>
+                <td><code>InventoryMaster.currentPrice</code>.</td>
+              </tr>
+              <tr>
+                <td>Revenue by Channel</td>
+                <td>Group reservations by <code>channelName</code>, sum revenue, count bookings, compute <code>revenuePct</code>.</td>
+                <td><code>Reservation.channelName</code> and <code>totalPrice</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Group Analytics Roll-up Logic</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Group metric</th><th>How it is aggregated</th><th>Source</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Properties</td><td>Count of member listings attached to the selected group.</td><td><code>/api/groups</code> plus <code>/api/properties</code>.</td></tr>
+              <tr><td>Total Reservations</td><td>Sum of <code>property.totalReservations</code> across all group members.</td><td>Property payload from <code>/api/properties</code>.</td></tr>
+              <tr><td>Avg Occupancy</td><td>Average of member <code>occupancyPct</code>.</td><td>Property payload.</td></tr>
+              <tr><td>Avg Price</td><td>Average of member <code>avgPrice</code>.</td><td>Property payload.</td></tr>
+              <tr><td>Total Revenue</td><td>Sum of member <code>totalRevenue</code>.</td><td>Property payload.</td></tr>
+              <tr><td>Pending Proposals chart</td><td>Reads each member property's <code>pendingProposals</code>.</td><td>Property payload.</td></tr>
+              <tr><td>Group ticket metrics</td><td>Filters tickets from <code>/api/guest-agent/tickets</code> to those whose <code>listingId</code> belongs to the group and then computes total, open, resolved, and resolved rate.</td><td><code>ops_tickets</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="onboarding">
+        <div class="section-head">
+          <div>
+            <h2>Separate Flow A: Onboarding</h2>
+            <p>Route: <code>/onboarding</code>. The onboarding wizard is a structured five-step launch flow, not a dashboard page.</p>
+          </div>
+          <div class="meta">
+            <span class="badge live">Verified current route and save flow</span>
+          </div>
+        </div>
+
+        <div class="flow">
+          <div class="flow-step">
+            <div class="num">1</div>
+            <div>
+              <h3>Connect</h3>
+              <p>The user enters Hostaway Account ID and API Secret or launches Demo Mode. The wizard calls <code>/api/hostaway/metadata</code> to validate credentials and fetch property names only. A demo fallback can load eight sample Dubai listings.</p>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">2</div>
+            <div>
+              <h3>Select</h3>
+              <p>The user selects which listings to activate. This determines which properties are later seeded into the working portfolio and shown across Dashboard, Pricing, Market, and Analytics.</p>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">3</div>
+            <div>
+              <h3>Market</h3>
+              <p>The user picks a market template such as Dubai, London, or New York. The market code later drives event and market-intelligence behavior through settings and agent context.</p>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">4</div>
+            <div>
+              <h3>Strategy</h3>
+              <p>The user selects conservative, balanced, or aggressive posture and can configure defaults that mirror Pricing Rules Studio concepts: guardrails, seasons, lead time, gap logic, LOS discounts, date overrides, and occupancy logic.</p>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">5</div>
+            <div>
+              <h3>Complete</h3>
+              <p>On completion, <code>/api/onboarding</code> stores the current step, selected listings, activated listings, and listings array, re-issues the JWT, and seeds real Hostaway listings into MongoDB when the user is not in demo mode.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Operational Notes</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Detail</th><th>Current repo behavior</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Resume behavior</td><td>The page reads <code>onboardingStep</code> from the JWT and resumes the wizard where the user left off.</td></tr>
+              <tr><td>Approval gate</td><td>Unapproved users are redirected to <code>/pending-approval</code>.</td></tr>
+              <tr><td>Completion gate</td><td>Users with <code>onboardingStep = complete</code> are redirected to <code>/dashboard</code>.</td></tr>
+              <tr><td>Persistence</td><td><code>Organization.onboarding</code> stores the step and related wizard data, and a new access token is issued after each save.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="settings">
+        <div class="section-head">
+          <div>
+            <h2>Separate Flow B: Settings</h2>
+            <p>Route: <code>/settings</code>. In the current repo, this page uses two tabs: <strong>Connections</strong> and <strong>Organization</strong>.</p>
+          </div>
+          <div class="meta">
+            <span class="badge live">Verified current route</span>
+            <span class="badge live">Webhook management verified</span>
+          </div>
+        </div>
+
+        <div class="page-shot">
+          <div class="shot-frame">
+            <div class="shot-sidebar">
+              <div class="brand">
+                <strong>PriceOS</strong>
+                <span>Revenue Intelligence</span>
+              </div>
+              <div class="nav-item">Dashboard</div>
+              <div class="nav-item">Pricing</div>
+              <div class="nav-item">Market</div>
+              <div class="nav-item">Guest Inbox</div>
+              <div class="nav-item">Properties</div>
+              <div class="nav-item">Groups</div>
+              <div class="nav-item">Analytics</div>
+              <div class="nav-item active">Settings</div>
+            </div>
+            <div class="shot-main">
+              <div class="shot-topbar">
+                <div>
+                  <h3>Settings</h3>
+                  <p>Credentials, webhook registration, guest communications mode, market configuration, and organization profile.</p>
+                </div>
+                <div class="tab-row">
+                  <span class="tab active">Connections</span>
+                  <span class="tab">Organization</span>
+                </div>
+              </div>
+              <div class="viz-grid">
+                <div class="viz">
+                  <h4>PMS Integration</h4>
+                  <div class="legend-list">
+                    <div><span>Account ID</span><span>Saved per org</span></div>
+                    <div><span>Hostaway API Key</span><span>Masked field</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Webhook Integration</h4>
+                  <div class="legend-list">
+                    <div><span>Status</span><span>Live / Not registered / Invalid / No credentials</span></div>
+                    <div><span>Actions</span><span>Test / Register / Remove / Mark Manual</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Guest Communications</h4>
+                  <div class="legend-list">
+                    <div><span>AI Mode</span><span>Manual vs Live</span></div>
+                    <div><span>Reply Mode</span><span>Auto vs Approval</span></div>
+                  </div>
+                </div>
+                <div class="viz">
+                  <h4>Market and Organization</h4>
+                  <div class="legend-list">
+                    <div><span>Primary Market</span><span>Market template code</span></div>
+                    <div><span>Currency Override</span><span>Optional</span></div>
+                    <div><span>Timezone</span><span>Organization-level</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:16px;">
+          <div class="card">
+            <h3>Connections Tab Sections</h3>
+            <ul>
+              <li>PMS Integration: Hostaway credentials and save action.</li>
+              <li>Webhook Integration: status pill, derived webhook URL, test/register/remove actions, manual fallback instructions.</li>
+              <li>Guest Communications: AI live/manual switch and Auto vs Approval reply mode.</li>
+              <li>Market Configuration: primary market, currency override, market intelligence spec card.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Organization Tab Sections</h3>
+            <ul>
+              <li>Organization name, email, timezone.</li>
+              <li>Active plan card with plan tier, limits, role, and system state.</li>
+              <li>This tab explains account context rather than pricing logic.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Settings Calls and Responsibilities</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Setting surface</th><th>Endpoint or logic</th><th>What it controls</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Load organization settings</td><td><code>GET /api/user/settings</code></td><td>Populates org fields, plan, market code, and saved credentials.</td><td><span class="badge live">Referenced by UI</span></td></tr>
+              <tr><td>Markets list</td><td><code>GET /api/markets</code></td><td>Builds market template picker.</td><td><span class="badge live">Referenced by UI</span></td></tr>
+              <tr><td>Comms mode</td><td><code>GET /api/comms-settings</code> and <code>PUT /api/comms-settings</code></td><td>Stores <code>settings.comms.liveMode</code> and <code>settings.comms.autoReply</code>.</td><td><span class="badge live">Verified current route</span></td></tr>
+              <tr><td>Webhook badge and connection test</td><td><code>GET /api/hostaway/webhook-status</code></td><td>Determines if credentials exist, whether they authenticate, and whether a webhook is still active.</td><td><span class="badge live">Verified current route</span></td></tr>
+              <tr><td>Register / update webhook</td><td><code>POST /api/hostaway/webhook-manage</code></td><td>Lists existing unified webhooks, creates or updates the best match, and persists <code>hostawayWebhookId</code> and URL to the organization record.</td><td><span class="badge live">Verified current route</span></td></tr>
+              <tr><td>Manual webhook confirmation</td><td><code>POST /api/hostaway/webhook-manage/mark-manual</code></td><td>Marks a webhook as manually registered using <code>hostawayWebhookId = "manual"</code>.</td><td><span class="badge live">Verified current route</span></td></tr>
+              <tr><td>Remove webhook</td><td><code>DELETE /api/hostaway/webhook-manage</code></td><td>Disables unified webhook by PUT <code>isEnabled = 0</code> and clears local record.</td><td><span class="badge live">Verified current route</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="users">
+        <div class="section-head">
+          <div>
+            <h2>Separate Flow C: User Management</h2>
+            <p>Route: <code>/users</code>. This page is the administrative control room for access approval, onboarding progression, role changes, and user creation.</p>
+          </div>
+          <div class="meta">
+            <span class="badge live">Verified current route</span>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>Main Page Structure</h3>
+            <ul>
+              <li>Header summarizes total users, pending users, and users still mid-onboarding.</li>
+              <li>Search by name or email.</li>
+              <li>Separate sections for Pending Approval and Active Users.</li>
+              <li>Per-user rows expose role badge, onboarding badge, approval status, and expandable admin controls.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Invite Modal</h3>
+            <ul>
+              <li>Fields: full name, email, role, market, optional temporary password, skip onboarding toggle.</li>
+              <li>New users are created through <code>POST /api/admin/users</code>.</li>
+              <li>In the current implementation, new users are auto-approved and stored as <code>Organization</code> records with role and onboarding metadata.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>User Management Endpoints and Responsibilities</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Action</th><th>Endpoint</th><th>What it does</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>List users</td><td><code>GET /api/admin/users</code></td><td>Returns user rows with role, approval state, market, currency, plan, and onboarding step.</td></tr>
+              <tr><td>Create user</td><td><code>POST /api/admin/users</code></td><td>Creates a new record with password hash, default plan, market, and onboarding start or skip-complete state.</td></tr>
+              <tr><td>Change role / onboarding step / approval</td><td><code>PATCH /api/admin/users</code></td><td>Updates role, approval flag, or onboarding step from the expanded admin controls.</td></tr>
+              <tr><td>Approve user quickly</td><td><code>POST /api/admin/users/[id]/approve</code></td><td>Fast approval path for pending users.</td></tr>
+              <tr><td>Skip all onboarding</td><td>PATCH helper through the UI</td><td>Sets <code>onboarding.step = complete</code> and <code>isApproved = true</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="webhooks">
+        <div class="section-head">
+          <div>
+            <h2>How Webhooks Work</h2>
+            <p>The webhook is the bridge between Hostaway guest messaging and the PriceOS Guest Inbox.</p>
+          </div>
+        </div>
+
+        <div class="flow">
+          <div class="flow-step">
+            <div class="num">1</div>
+            <div>
+              <h3>Credentials are stored in Settings</h3>
+              <p>The org saves <code>hostawayAccountId</code> and <code>hostawayApiKey</code>. Without these, the webhook cannot be tested or registered.</p>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">2</div>
+            <div>
+              <h3>PriceOS derives a public webhook URL</h3>
+              <p>If the app is running locally, the code intentionally falls back to a production base URL so Hostaway has a public endpoint it can reach.</p>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">3</div>
+            <div>
+              <h3>Register or update unified webhook</h3>
+              <p><code>POST /api/hostaway/webhook-manage</code> lists existing unified webhooks, finds a match by exact URL, stored webhook ID, or same path, then creates or updates the record at Hostaway.</p>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">4</div>
+            <div>
+              <h3>Hostaway sends message notifications to PriceOS</h3>
+              <p>When guest messages land, Hostaway posts into the configured webhook path. The broader design goal is near-real-time Inbox freshness without polling.</p>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">5</div>
+            <div>
+              <h3>PriceOS syncs and stores conversation threads</h3>
+              <p>The verified sync route <code>POST /api/hostaway/conversations/sync?orgId=...</code> fetches conversations and their messages from Hostaway, heals missing listing-to-hostaway mappings where possible, and stores them in <code>hostaway_conversations</code>.</p>
+            </div>
+          </div>
+          <div class="flow-step">
+            <div class="num">6</div>
+            <div>
+              <h3>Guest Inbox consumes the cached conversations</h3>
+              <p>The UI reads <code>/api/hostaway/conversations/cached</code>, calculates needs-reply state, and lets the Guest Reply Agent draft a response.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>Webhook Status Meanings</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Status shown in UI</th><th>Meaning</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Live</td><td>Credentials exist, authentication succeeds, and the webhook ID is still active or manually confirmed.</td></tr>
+              <tr><td>Not registered</td><td>Credentials are valid, but no active webhook is registered for this org.</td></tr>
+              <tr><td>Credentials invalid</td><td>Hostaway authentication failed or a saved JWT-style credential expired.</td></tr>
+              <tr><td>No credentials</td><td>Settings are missing Hostaway Account ID or API key.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="note-box" style="margin-top:16px;">
+          <strong>Client-facing explanation:</strong> a webhook is effectively a "push notification channel" from Hostaway to PriceOS. It eliminates the need for constant polling and is what makes the Guest Inbox feel immediate.
+        </div>
+      </section>
+
+      <section class="section" id="agents">
+        <div class="section-head">
+          <div>
+            <h2>Agents and Tool Calls</h2>
+            <p>This is the compact map of who each agent is, what it is responsible for, and which tools or endpoints it uses.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Agent Matrix</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Agent / engine</th><th>Main responsibility</th><th>Main pages</th><th>Typical tools or calls</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Aria / CRO Router</td>
+                <td>Primary portfolio and pricing explainer. Reads injected system context and answers portfolio questions.</td>
+                <td>Dashboard, Agent Chat, any Aria popup surface.</td>
+                <td><code>POST /api/agent/chat</code>, tool API references such as <code>get_portfolio_overview</code>, <code>get_portfolio_revenue_snapshot</code>, <code>get_property_calendar_metrics</code>.</td>
+              </tr>
+              <tr>
+                <td>Benchmark Agent</td>
+                <td>Comp pricing and market positioning.</td>
+                <td>Market, Pricing context.</td>
+                <td><code>get_property_benchmark</code>, Airbtics context, benchmark DB docs.</td>
+              </tr>
+              <tr>
+                <td>Marketing / Event Research Agent</td>
+                <td>Market events, holidays, news, demand signals.</td>
+                <td>Market, Run Aria workflow, future event sync narrative.</td>
+                <td>Eventbrite, Ticketmaster, DTCM, RSS, <code>POST /api/market-setup</code> in docs.</td>
+              </tr>
+              <tr>
+                <td>Guardrails Agent / Price Guard</td>
+                <td>Floor, ceiling, risk, and safe-move enforcement.</td>
+                <td>Pricing and onboarding strategy contexts.</td>
+                <td>Listing floor/ceiling, proposal change %, guardrail prompts, rules studio config.</td>
+              </tr>
+              <tr>
+                <td>Pricing Engine</td>
+                <td>Night-by-night proposal generation and proposal state progression.</td>
+                <td>Pricing, Properties, Analytics.</td>
+                <td><code>POST /api/engine/run-all</code>, <code>POST /api/v1/revenue/proposals</code>.</td>
+              </tr>
+              <tr>
+                <td>Guest Reply Agent / Chat Response Agent</td>
+                <td>Drafts guest replies.</td>
+                <td>Guest Inbox.</td>
+                <td><code>POST /api/hostaway/suggest-reply</code>, guest reply prompt, conversation history.</td>
+              </tr>
+              <tr>
+                <td>Conversation Summary Agent</td>
+                <td>Thread summaries, themes, and action items.</td>
+                <td>Guest Inbox.</td>
+                <td><code>POST /api/guest-agent/threads/:id/summary</code>.</td>
+              </tr>
+              <tr>
+                <td>Guest Agent / escalation layer</td>
+                <td>Detects maintenance or complaint issues and exposes them as tickets.</td>
+                <td>Guest Inbox, Operations.</td>
+                <td><code>GET /api/guest-agent/tickets</code>, guest-agent prompt rules, <code>ops_tickets</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>OpenAPI Tool Surface For Lyzr Agents</h3>
+          <table class="data-table">
+            <thead>
+              <tr><th>Tool operation</th><th>What it returns</th><th>Best use case</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>get_portfolio_overview</code></td><td>Portfolio snapshot for a date range.</td><td>Aria answering high-level revenue or occupancy questions.</td></tr>
+              <tr><td><code>get_agent_system_status</code></td><td>System health state.</td><td>Support or operations explanations.</td></tr>
+              <tr><td><code>get_portfolio_revenue_snapshot</code></td><td>Revenue grouped by day, week, or property.</td><td>Client-facing trend explanations.</td></tr>
+              <tr><td><code>get_property_profile</code></td><td>Property metadata.</td><td>Property-specific responses.</td></tr>
+              <tr><td><code>get_property_calendar_metrics</code></td><td>Calendar and occupancy metrics for a listing.</td><td>Pricing and analytics reasoning.</td></tr>
+              <tr><td><code>get_property_reservations</code></td><td>Reservations in a range.</td><td>LOS, booking pace, and revenue breakdown.</td></tr>
+              <tr><td><code>get_property_market_events</code></td><td>Relevant events.</td><td>Market-based price explanation.</td></tr>
+              <tr><td><code>get_property_benchmark</code></td><td>Competitive benchmark data.</td><td>Pricing confidence and positioning.</td></tr>
+              <tr><td><code>list_guest_conversations</code></td><td>Guest conversations.</td><td>Inbox agent context.</td></tr>
+              <tr><td><code>get_guest_summary</code></td><td>Guest summary detail.</td><td>Quick guest support synthesis.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="appendix">
+        <div class="section-head">
+          <div>
+            <h2>Appendix: Additional Implemented Pages In This Repo</h2>
+            <p>These are not part of the primary 7-page scope used above, but they do exist in the current app and may come up in client discussion.</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3>Agent Chat</h3>
+            <ul>
+              <li>Route: <code>/agent-chat</code>.</li>
+              <li>Dedicated Aria workspace with dashboard stats such as Total Properties, Avg Base Price, Occupancy Rate, and 30-Day Revenue.</li>
+              <li>Prompt docs describe CRO Router as the always-called orchestrator for every chat message.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Operations</h3>
+            <ul>
+              <li>Route: <code>/operations</code>.</li>
+              <li>KPI row: Active Tickets, SLA Overdue, Average SLA, Resolved.</li>
+              <li>Table view and card view for <code>ops_tickets</code>, sourced through <code>/api/guest-agent/tickets</code>.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="footer" style="margin-top:16px;">
+          Built from direct inspection of the current files under <code>src/app</code>, <code>src/components</code>, <code>src/app/api</code>, <code>docs/agent-call-reference.md</code>, <code>PRICEOS_HOW_IT_WORKS.md</code>, <code>hostaway_webhook.md</code>, and <code>openapi-agent-tools-v1.json</code>. Where the repo contains design-era references that do not fully match current route wiring, this guide explicitly labels them as partial or intended workflow.
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

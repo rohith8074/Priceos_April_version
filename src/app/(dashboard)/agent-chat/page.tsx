@@ -96,13 +96,21 @@ export default async function AgentChatPage() {
       // Choose maximum calculated occupancy for safety
       const calculatedOccupancy = Math.max(invOcc, resOcc);
       
+      // Average currentPrice from InventoryMaster — real dynamic rate per property
+      const pricePoints = pInvs
+        .filter((d: any) => Number(d.currentPrice) > 0)
+        .map((d: any) => Number(d.currentPrice));
+      const avgInvPrice = pricePoints.length > 0
+        ? Math.round(pricePoints.reduce((a: number, b: number) => a + b, 0) / pricePoints.length)
+        : Number(p.basePrice ?? p.price ?? 500);
+
       return {
         ...p,
         id: p._id,
         _id: p._id,
-        price: Number(p.basePrice ?? p.price ?? 500),
+        price: avgInvPrice,
         occupancy: calculatedOccupancy,
-        avgPrice: Number(p.avgPrice ?? p.basePrice ?? p.price ?? 500),
+        avgPrice: avgInvPrice,
       };
     });
   } catch (err) {

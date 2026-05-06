@@ -39,6 +39,8 @@ type ConvStatus = "active" | "resolved";
 
 interface InboxConversation {
   id: string;
+  backendId: string;         // raw MongoDB _id of the conversation (for readThread tool)
+  hostawayListingId: string; // Hostaway numeric listing ID (for getPropertyData, sendAccessDetails, etc.)
   guestName: string;
   guestInitials: string;
   avatarColor: string;
@@ -164,8 +166,15 @@ function mapConversation(c: BackendConversation, property: PropertyWithMetrics, 
     : c.status === "resolved";
   const convStatus: ConvStatus = needsReply ? "active" : isResolved ? "resolved" : "active";
 
+  const hostawayListingId =
+    (property as PropertyWithMetrics & { hostawayId?: string }).hostawayId ||
+    (c.listingMapId ? String(c.listingMapId) : "") ||
+    property.id;
+
   return {
     id: `${property.id}-${c.id}`,
+    backendId: c.id,
+    hostawayListingId,
     guestName: c.guestName || "Unknown Guest",
     guestInitials: getInitials(c.guestName || "UG"),
     avatarColor: AVATAR_COLORS[index % AVATAR_COLORS.length],
@@ -471,6 +480,8 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
     // Mock creating a new test conversation
     const newTestConv: InboxConversation = {
       id: `test-${Date.now()}`,
+      backendId: `test-${Date.now()}`,
+      hostawayListingId: (properties[0] as PropertyWithMetrics & { hostawayId?: string })?.hostawayId || properties[0]?.id || "test-prop",
       guestName: "Test Guest",
       guestInitials: "TG",
       avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)],
@@ -540,20 +551,21 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
           messages: conv.messages.map((m) => ({ sender: m.role === "host" ? "admin" : "guest", text: m.content, time: m.time })),
           guestName: conv.guestName,
           propertyName: conv.property,
-          listingId: conv.propertyId,
+          listingId: conv.hostawayListingId,
           orgId,
+          threadId: conv.backendId,
+          sessionId: `inbox-${conv.backendId}`,
+          commsState: liveMode ? "active" : "paused",
+          checkIn: conv.checkIn || undefined,
+          checkOut: conv.checkOut || undefined,
           additionalContext: rewriteContext.trim() || undefined,
-          sessionId: `inbox-${conv.id}-${Date.now()}`,
-          threadId: conv.id,
         }),
       });
       if (!res.ok) throw new Error("Agent unavailable");
       const { jobId } = await res.json();
       const result = await pollJob<{ message: string; raw_json?: Record<string, unknown> }>(jobId);
-      let text = result.message || "";
-      const raw = result.raw_json as Record<string, unknown> | undefined;
-      if (raw) text = (raw.suggested_reply as { content?: string })?.content || (raw.chat_response as string) || text;
-      const trimmed = text.trim();
+      // message is already suggested_reply.content extracted by the route
+      const trimmed = (result.message || "").trim();
       setAiDraft(trimmed);
       setEditableDraft(trimmed);
       setDraftSentiment(detectDraftSentiment(trimmed));
@@ -582,19 +594,20 @@ export function GuestInboxWired({ orgId, properties }: { orgId: string; properti
           messages: conv.messages.map((m) => ({ sender: m.role === "host" ? "admin" : "guest", text: m.content, time: m.time })),
           guestName: conv.guestName,
           propertyName: conv.property,
-          listingId: conv.propertyId,
+          listingId: conv.hostawayListingId,
           orgId,
-          sessionId: `inbox-${conv.id}-${Date.now()}`,
-          threadId: conv.id,
+          threadId: conv.backendId,
+          sessionId: `inbox-${conv.backendId}`,
+          commsState: liveMode ? "active" : "paused",
+          checkIn: conv.checkIn || undefined,
+          checkOut: conv.checkOut || undefined,
         }),
       });
       if (!res.ok) throw new Error("Agent unavailable");
       const { jobId } = await res.json();
       const result = await pollJob<{ message: string; raw_json?: Record<string, unknown> }>(jobId);
-      let text = result.message || "";
-      const raw = result.raw_json as Record<string, unknown> | undefined;
-      if (raw) text = (raw.suggested_reply as { content?: string })?.content || (raw.chat_response as string) || text;
-      const trimmed = text.trim();
+      // message is already suggested_reply.content extracted by the route
+      const trimmed = (result.message || "").trim();
       setAiDraft(trimmed);
       setEditableDraft(trimmed);
       setDraftSentiment(detectDraftSentiment(trimmed));

@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PriceOS Agents: Roles and Responsibilities</title>
+  <style>
+    :root {
+      --bg: #081018;
+      --bg-2: #0c141d;
+      --panel: rgba(13, 20, 29, 0.9);
+      --panel-2: rgba(18, 28, 39, 0.94);
+      --panel-3: rgba(22, 35, 49, 0.96);
+      --line: rgba(255, 255, 255, 0.08);
+      --line-strong: rgba(255, 255, 255, 0.16);
+      --text: #eef4f8;
+      --muted: #9eb0bf;
+      --subtle: #718395;
+      --gold: #f2b84f;
+      --gold-soft: rgba(242, 184, 79, 0.14);
+      --teal: #58c5c7;
+      --teal-soft: rgba(88, 197, 199, 0.12);
+      --green: #3ad58a;
+      --green-soft: rgba(58, 213, 138, 0.13);
+      --red: #ff7b7b;
+      --red-soft: rgba(255, 123, 123, 0.14);
+      --blue: #70b2ff;
+      --blue-soft: rgba(112, 178, 255, 0.14);
+      --shadow: 0 28px 60px rgba(0, 0, 0, 0.34);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --sans: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+      --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+      --mono: "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at top left, rgba(242, 184, 79, 0.12), transparent 26%),
+        radial-gradient(circle at bottom right, rgba(88, 197, 199, 0.1), transparent 24%),
+        linear-gradient(180deg, #071018 0%, #0a121a 100%);
+      line-height: 1.6;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 90%);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.9em;
+      color: #ffe4a7;
+    }
+
+    .layout {
+      width: min(1540px, calc(100% - 34px));
+      margin: 18px auto 56px;
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .toc {
+      position: sticky;
+      top: 18px;
+      padding: 22px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: rgba(11, 18, 26, 0.92);
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+    }
+
+    .toc h2,
+    h1,
+    h3,
+    h4 {
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    .toc h2 {
+      font-size: 1rem;
+      margin-bottom: 14px;
+    }
+
+    .toc p,
+    .toc li,
+    .toc a,
+    .section p,
+    .section li,
+    td,
+    th {
+      color: var(--muted);
+    }
+
+    .toc ul {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 16px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .toc a.link {
+      display: block;
+      padding: 11px 12px;
+      border-radius: 12px;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.02);
+      transition: 180ms ease;
+      font-size: 0.93rem;
+    }
+
+    .toc a.link:hover {
+      color: var(--text);
+      border-color: rgba(242, 184, 79, 0.25);
+      background: rgba(242, 184, 79, 0.08);
+    }
+
+    .mini-note {
+      padding: 13px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+      font-size: 0.84rem;
+    }
+
+    .content {
+      display: grid;
+      gap: 22px;
+    }
+
+    .hero,
+    .section {
+      overflow: hidden;
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(12, 19, 28, 0.98), rgba(10, 17, 25, 0.94));
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      position: relative;
+      padding: 34px;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      top: -56px;
+      right: -56px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(242, 184, 79, 0.2), transparent 72%);
+    }
+
+    .section {
+      padding: 28px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      color: var(--gold);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-size: 0.76rem;
+      font-weight: 800;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4 {
+      font-family: var(--serif);
+      line-height: 1.05;
+    }
+
+    h1 {
+      max-width: 920px;
+      font-size: clamp(2.4rem, 4vw, 4.5rem);
+      margin-bottom: 16px;
+    }
+
+    h2 {
+      font-size: clamp(1.8rem, 2.4vw, 2.6rem);
+      margin-bottom: 10px;
+    }
+
+    h3 {
+      font-size: 1.38rem;
+      margin-bottom: 10px;
+    }
+
+    h4 {
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    .lede {
+      max-width: 980px;
+      font-size: 1.04rem;
+    }
+
+    .badge-row,
+    .pill-row,
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .badge-row {
+      margin-top: 18px;
+    }
+
+    .badge,
+    .pill,
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .badge.live,
+    .chip.live {
+      border-color: rgba(58, 213, 138, 0.24);
+      background: var(--green-soft);
+      color: #a4f4c9;
+    }
+
+    .badge.doc,
+    .chip.doc {
+      border-color: rgba(112, 178, 255, 0.24);
+      background: var(--blue-soft);
+      color: #b8d7ff;
+    }
+
+    .badge.alert,
+    .chip.alert {
+      border-color: rgba(255, 123, 123, 0.24);
+      background: var(--red-soft);
+      color: #ffc3c3;
+    }
+
+    .badge.gold,
+    .chip.gold {
+      border-color: rgba(242, 184, 79, 0.24);
+      background: var(--gold-soft);
+      color: #ffd991;
+    }
+
+    .stats,
+    .grid-2,
+    .grid-3,
+    .grid-4,
+    .agent-grid,
+    .detail-grid,
+    .matrix-grid,
+    .lane-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .stats {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-top: 26px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3,
+    .lane-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .grid-4,
+    .agent-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .detail-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 16px;
+    }
+
+    .matrix-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    .card,
+    .stat,
+    .lane,
+    .detail,
+    .callout,
+    .agent-card {
+      position: relative;
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+      backdrop-filter: blur(10px);
+    }
+
+    .stat strong {
+      display: block;
+      margin-bottom: 6px;
+      font-family: var(--serif);
+      font-size: 2rem;
+      color: var(--text);
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .section-head p {
+      max-width: 860px;
+    }
+
+    .callout {
+      border-color: rgba(242, 184, 79, 0.2);
+      background:
+        linear-gradient(180deg, rgba(242, 184, 79, 0.08), rgba(255, 255, 255, 0.03));
+    }
+
+    .timeline {
+      display: grid;
+      gap: 14px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 16px;
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .step-number {
+      display: grid;
+      place-items: center;
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, rgba(242, 184, 79, 0.22), rgba(88, 197, 199, 0.12));
+      color: var(--text);
+      font-family: var(--serif);
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+
+    .agent-card {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 100%;
+    }
+
+    .agent-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .agent-top h3 {
+      margin-bottom: 6px;
+    }
+
+    .agent-top p {
+      margin: 0;
+    }
+
+    .role-tag {
+      display: inline-flex;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+      font-size: 0.78rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .info-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .info {
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .info strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--text);
+      font-size: 0.86rem;
+      letter-spacing: 0.01em;
+      text-transform: uppercase;
+    }
+
+    .info p,
+    .info li {
+      font-size: 0.94rem;
+    }
+
+    ul.clean {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.94rem;
+    }
+
+    th,
+    td {
+      padding: 14px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--text);
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 800;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .matrix {
+      overflow: auto;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .footer-note {
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px dashed rgba(255, 255, 255, 0.16);
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .source-list {
+      columns: 2;
+      column-gap: 24px;
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .muted {
+      color: var(--subtle);
+    }
+
+    @media (max-width: 1260px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        position: static;
+      }
+
+      .grid-4,
+      .agent-grid,
+      .matrix-grid,
+      .stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 860px) {
+      .section,
+      .hero,
+      .toc {
+        padding: 20px;
+      }
+
+      .grid-2,
+      .grid-3,
+      .grid-4,
+      .agent-grid,
+      .detail-grid,
+      .lane-grid,
+      .matrix-grid,
+      .stats {
+        grid-template-columns: 1fr;
+      }
+
+      .step {
+        grid-template-columns: 1fr;
+      }
+
+      .source-list {
+        columns: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="toc">
+      <h2>Agent Guide</h2>
+      <ul>
+        <li><a class="link" href="#overview">Overview</a></li>
+        <li><a class="link" href="#operating-model">Operating Model</a></li>
+        <li><a class="link" href="#ui-mapping">UI Mapping</a></li>
+        <li><a class="link" href="#core-agents">Core Revenue Agents</a></li>
+        <li><a class="link" href="#specialists">Pricing Specialists</a></li>
+        <li><a class="link" href="#market-setup">Market and Setup Agents</a></li>
+        <li><a class="link" href="#guest-agents">Guest Communication Agents</a></li>
+        <li><a class="link" href="#execution-agents">Execution and Control</a></li>
+        <li><a class="link" href="#tools">Tool and API Matrix</a></li>
+        <li><a class="link" href="#talking-points">Client Talking Points</a></li>
+        <li><a class="link" href="#sources">Source Notes</a></li>
+      </ul>
+      <div class="mini-note">
+        This page is written as a client-shareable explanation of the PriceOS agent layer. It separates user-facing agents, specialist workers, guest automation, and execution safeguards.
+      </div>
+    </aside>
+
+    <main class="content">
+      <section class="hero" id="overview">
+        <div class="eyebrow">PriceOS Agent Dossier</div>
+        <h1>Every PriceOS Agent, what it owns, what it calls, and where human approval still matters.</h1>
+        <p class="lede">
+          PriceOS is not one monolithic AI assistant. It is a layered operating model: a portfolio guide for dashboards, a revenue orchestrator for pricing conversations,
+          specialist workers for analysis, setup agents that seed market intelligence, guest communication agents for inbox operations, and hard-control agents that verify
+          or execute only after approval. This page is designed to explain that structure in plain English while staying faithful to the repo's prompts, route handlers, and tool specs.
+        </p>
+        <div class="badge-row">
+          <span class="badge live">Live routes included</span>
+          <span class="badge doc">Prompt-library responsibilities included</span>
+          <span class="badge gold">Client-facing wording</span>
+          <span class="badge alert">Safety and approval gates called out explicitly</span>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <strong>14</strong>
+            <span>Named agents or agent functions documented across prompts, routes, and setup references.</span>
+          </div>
+          <div class="stat">
+            <strong>5</strong>
+            <span>Primary agent layers: portfolio assist, orchestration, specialists, guest comms, execution control.</span>
+          </div>
+          <div class="stat">
+            <strong>3</strong>
+            <span>Approval gates that can intervene: PriceGuard review, Guardrails clamp, and human push approval.</span>
+          </div>
+          <div class="stat">
+            <strong>2</strong>
+            <span>Guest loops: reply drafting and conversation summarisation, each with different responsibilities.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="operating-model">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">How The Agent Layer Works</div>
+            <h2>Operating model from question to action</h2>
+            <p>
+              The cleanest way to explain PriceOS to a client is to show that analysis and execution are intentionally separated.
+              Some agents advise. Some classify. Some enrich context. Only one execution layer pushes approved changes to the PMS.
+            </p>
+          </div>
+        </div>
+        <div class="timeline">
+          <div class="step">
+            <div class="step-number">1</div>
+            <div>
+              <h3>Context is assembled first</h3>
+              <p>
+                Portfolio, listing, inventory, reservation, event, benchmark, and guest-thread context are loaded either from injected system context,
+                internal database reads, or approved tool calls. Atlas uses injected portfolio context only. Aria can operate from context first and, in the tool-led prompt design,
+                fetch property data through agent tools when a fresh property analysis is needed.
+              </p>
+              <div class="chip-row">
+                <span class="chip doc">Dashboard: zero tools</span>
+                <span class="chip doc">Property chat: context + property tools</span>
+                <span class="chip doc">Guest inbox: thread and reply tools</span>
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-number">2</div>
+            <div>
+              <h3>Specialists analyse one narrow problem at a time</h3>
+              <p>
+                PriceOS splits responsibilities on purpose. Booking Intelligence explains bookings and revenue. Property Analyst optimises open dates.
+                Benchmark compares against competitors. Market Research explains events and seasonality. PriceGuard classifies risk.
+                This means each agent stays narrow, auditable, and easier to explain.
+              </p>
+              <div class="chip-row">
+                <span class="chip gold">No single agent owns everything</span>
+                <span class="chip gold">Each worker has a narrow mandate</span>
+                <span class="chip gold">Safety is layered, not implied</span>
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-number">3</div>
+            <div>
+              <h3>Recommendations are reviewed before anything is pushed live</h3>
+              <p>
+                PriceGuard decides whether a proposed price change is routine, review-worthy, or risky. Guardrails then enforce the hard floor, ceiling, and daily-change boundaries.
+                Approved items can move to the Pricing section, but that still does not mean the PMS has been updated yet.
+              </p>
+              <div class="chip-row">
+                <span class="chip alert">Classification layer</span>
+                <span class="chip alert">Hard-clamp layer</span>
+                <span class="chip alert">Human confirmation layer</span>
+              </div>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-number">4</div>
+            <div>
+              <h3>Only the execution layer writes out to the PMS</h3>
+              <p>
+                The Channel Sync Agent is the controlled executor. It accepts only approved proposals, writes the change to the PMS,
+                reads it back to verify success, logs the result, and can trigger rollback if the write fails or verifies incorrectly.
+              </p>
+              <div class="chip-row">
+                <span class="chip live">Write only after approval</span>
+                <span class="chip live">Verification read-back required</span>
+                <span class="chip live">Rollback supported</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="ui-mapping">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">UI Mapping</div>
+            <h2>How the UI labels map to the deeper agent model</h2>
+            <p>
+              Some areas of the PriceOS UI show friendly status labels rather than the prompt-library agent names.
+              The table below helps a client understand which UI label corresponds to which deeper responsibility.
+            </p>
+          </div>
+        </div>
+        <div class="matrix">
+          <table>
+            <thead>
+              <tr>
+                <th>UI / Status Label</th>
+                <th>Underlying Agent or Function</th>
+                <th>Main responsibility</th>
+                <th>What the client should understand</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>cro</code></td>
+                <td>Aria, the CRO Router</td>
+                <td>Interpret the user's pricing question, route analysis, merge recommendations.</td>
+                <td>This is the conversational revenue manager.</td>
+              </tr>
+              <tr>
+                <td><code>event_intelligence</code></td>
+                <td>Marketing Agent + Market Research</td>
+                <td>Bring in event, holiday, news, demand, and event-lift context.</td>
+                <td>This is the market-awareness layer.</td>
+              </tr>
+              <tr>
+                <td><code>pricing_optimizer</code></td>
+                <td>Property Analyst + Gap &amp; LOS Optimizer</td>
+                <td>Turn open nights, rules, and calendar gaps into concrete proposals.</td>
+                <td>This is the calendar optimisation layer.</td>
+              </tr>
+              <tr>
+                <td><code>competitor_scanner</code></td>
+                <td>Benchmark Agent</td>
+                <td>Compare current pricing against the market and comp set.</td>
+                <td>This is the competitor-positioning layer.</td>
+              </tr>
+              <tr>
+                <td><code>adjustment_reviewer</code></td>
+                <td>PriceGuard</td>
+                <td>Classify proposal risk and decide which changes deserve attention.</td>
+                <td>This is the proposal reviewer, not the final writer.</td>
+              </tr>
+              <tr>
+                <td><code>channel_sync</code></td>
+                <td>Channel Sync Agent</td>
+                <td>Push approved prices to the PMS, verify, log, and rollback if needed.</td>
+                <td>This is the only controlled write-out layer.</td>
+              </tr>
+              <tr>
+                <td><code>anomaly_detector</code></td>
+                <td>Anomaly Detector</td>
+                <td>Watch for velocity collapse, outliers, stale syncs, or harmful price cliffs.</td>
+                <td>This is the post-change watchdog.</td>
+              </tr>
+              <tr>
+                <td><code>reservation_agent</code></td>
+                <td>Guest Reply Agent</td>
+                <td>Handle guest replies, access details, escalations, and ops tickets.</td>
+                <td>This is the guest communication layer.</td>
+              </tr>
+              <tr>
+                <td><code>data_aggregator</code></td>
+                <td>Context-building backend layer</td>
+                <td>Prepare cached Airbtics, benchmark, event, and DB context for agent use.</td>
+                <td>This behaves like a supporting system role more than a conversational agent.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="core-agents">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Core Revenue Agents</div>
+            <h2>The two user-facing intelligence layers</h2>
+            <p>
+              Atlas speaks for the portfolio. Aria speaks for the property-level revenue conversation.
+              They feel similar in the UI, but they are intentionally different in data scope and responsibility.
+            </p>
+          </div>
+        </div>
+        <div class="grid-2">
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Atlas</h3>
+                <p>Dashboard Agent and portfolio assistant</p>
+              </div>
+              <span class="role-tag">Portfolio Intelligence</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip doc">Prompt-defined</span>
+              <span class="chip gold">Dashboard chat</span>
+              <span class="chip alert">No tools allowed</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>What Atlas is responsible for</strong>
+                <p>
+                  Portfolio overviews, top and bottom performers, revenue breakdowns, cancellation analysis, channel concentration, market-event awareness,
+                  and dashboard-level action prompts for the operator.
+                </p>
+              </div>
+              <div class="info">
+                <strong>What Atlas reads</strong>
+                <p>
+                  Injected <code>[SYSTEM CONTEXT]</code> only. The documented context includes portfolio properties, reservation summary,
+                  revenue by channel, recent bookings, recent cancellations, and upcoming events.
+                </p>
+              </div>
+              <div class="info">
+                <strong>Tool calls</strong>
+                <p>
+                  None. Atlas is explicitly instructed to make zero tool calls and to answer only from the provided context block.
+                </p>
+              </div>
+              <div class="info">
+                <strong>Outputs</strong>
+                <p>
+                  A structured dashboard response with portfolio summary, system health, alerts, and a markdown chat answer.
+                </p>
+              </div>
+              <div class="info">
+                <strong>What Atlas never does</strong>
+                <p>
+                  It never fetches tools, never exposes raw JSON, never reveals IDs or keys, and never pushes any live change.
+                </p>
+              </div>
+            </div>
+          </article>
+
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Aria</h3>
+                <p>CRO Router and conversational revenue manager</p>
+              </div>
+              <span class="role-tag">Revenue Orchestrator</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip doc">Prompt-defined</span>
+              <span class="chip gold">Agent Chat</span>
+              <span class="chip live">Action buttons flow</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>What Aria is responsible for</strong>
+                <p>
+                  Interpreting pricing questions, understanding the listing and date range, gathering the right data,
+                  routing to specialist analysts, combining the outputs, and returning a client-readable pricing recommendation.
+                </p>
+              </div>
+              <div class="info">
+                <strong>What Aria reads</strong>
+                <p>
+                  In the prompt-library design, Aria can use property tools. In the architecture reference, Aria can also answer from a fully assembled
+                  property context built from listing details, inventory, reservations, pricing rules, events, and cached Airbtics pacing.
+                </p>
+              </div>
+              <div class="info">
+                <strong>Tool calls documented for Aria</strong>
+                <p>
+                  <code>get_property_profile</code>, <code>get_property_calendar_metrics</code>, <code>get_property_reservations</code>,
+                  <code>get_property_market_events</code>, and <code>get_property_benchmark</code>.
+                </p>
+              </div>
+              <div class="info">
+                <strong>Outputs</strong>
+                <p>
+                  Routing metadata, pricing proposals, risk and comparison context, and a long-form markdown answer that the chat panel can render.
+                </p>
+              </div>
+              <div class="info">
+                <strong>What Aria never does</strong>
+                <p>
+                  Aria does not directly push pricing to the PMS. It also should not invent numbers or bypass PriceGuard, Guardrails, or human review.
+                </p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="specialists">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Pricing Specialists</div>
+            <h2>The worker agents that break pricing into explainable parts</h2>
+            <p>
+              These are the focused workers Aria can rely on or that the pricing pipeline conceptually mirrors.
+              Each one handles a different slice of the pricing problem so the client can see why a recommendation exists.
+            </p>
+          </div>
+        </div>
+        <div class="agent-grid">
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Property Analyst</h3>
+                <p>Also described as the Pricing Optimizer</p>
+              </div>
+              <span class="role-tag">Calendar Proposal Engine</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip doc">Prompt library</span>
+              <span class="chip gold">Gap-night logic</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>Find available nights, apply pricing rules in priority order, add event uplift, clamp to floor and ceiling, and write proposal reasoning per date.</p>
+              </div>
+              <div class="info">
+                <strong>Inputs</strong>
+                <p><code>inventory</code>, <code>pricing_rules</code>, <code>market_events</code>, <code>property</code>, and occupancy metrics.</p>
+              </div>
+              <div class="info">
+                <strong>Calculations it owns</strong>
+                <p><code>changePct = ((proposedPrice - currentPrice) / currentPrice) * 100</code>, plus summary counts such as pending vs auto-approved proposals.</p>
+              </div>
+              <div class="info">
+                <strong>What it never does</strong>
+                <p>It never edits booked or blocked nights and never writes live prices to channels.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Booking Intelligence</h3>
+                <p>Revenue, occupancy, LOS, and channel mix specialist</p>
+              </div>
+              <span class="role-tag">Booking Analyst</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip doc">Prompt library</span>
+              <span class="chip gold">Reservations focus</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>Explain revenue, occupancy, ADR, RevPAN, upcoming arrivals, average length of stay, and booking channel mix from the bookings already on hand.</p>
+              </div>
+              <div class="info">
+                <strong>Inputs</strong>
+                <p><code>active_bookings</code> and <code>metrics</code> passed in by the orchestrator or pipeline.</p>
+              </div>
+              <div class="info">
+                <strong>Calculations it owns</strong>
+                <p>ADR, RevPAN, channel aggregation, occupancy from booked vs bookable days, and arrival sorting.</p>
+              </div>
+              <div class="info">
+                <strong>What it never does</strong>
+                <p>It never invents missing demand data and never proposes live price pushes by itself.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>PriceGuard</h3>
+                <p>Adjustment Reviewer and risk classifier</p>
+              </div>
+              <span class="role-tag">Proposal Risk Layer</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip doc">Prompt library</span>
+              <span class="chip live">UI references present</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>Review proposal magnitude, detect guardrail breaches, downgrade or upgrade risk based on event justification, and decide which changes should appear for approval.</p>
+              </div>
+              <div class="info">
+                <strong>Inputs</strong>
+                <p>Proposed prices in inventory, floor and ceiling bounds, occupancy context, and event overlap.</p>
+              </div>
+              <div class="info">
+                <strong>Risk logic</strong>
+                <p>Micro adjustments can auto-approve; moderate and high changes are escalated; event-backed spikes can be justified but still surfaced.</p>
+              </div>
+              <div class="info">
+                <strong>What it never does</strong>
+                <p>It does not push prices, does not erase safe auto-approved changes, and does not replace the hard clamp layer.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Gap &amp; LOS Optimizer</h3>
+                <p>Minimum-stay and gap-fill specialist</p>
+              </div>
+              <span class="role-tag">Restriction Optimizer</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip doc">Prompt library</span>
+              <span class="chip gold">LOS proposals</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>Find unbookable gaps, recommend temporary minimum-stay reductions, and optionally pair them with urgency-based discounts for last-minute fill.</p>
+              </div>
+              <div class="info">
+                <strong>Inputs</strong>
+                <p>Calendar data, reservation spacing, seasonal patterns, days-to-arrival, floor and ceiling bounds, and minimum-stay limits.</p>
+              </div>
+              <div class="info">
+                <strong>Outputs</strong>
+                <p><code>gap_fill</code> and <code>los_calibration</code> proposals with urgency, proposed minimum stay, optional price discount, and human-readable reasoning.</p>
+              </div>
+              <div class="info">
+                <strong>What it never does</strong>
+                <p>It never pushes LOS changes directly to Hostaway and never alters booked dates.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="market-setup">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Market and Setup Agents</div>
+            <h2>The agents that enrich the property before day-to-day pricing happens</h2>
+            <p>
+              PriceOS uses a setup-time intelligence pass to bring in competitor context, events, holidays, news, and initial price boundaries.
+              This is the part a client can think of as the platform's market onboarding brain.
+            </p>
+          </div>
+        </div>
+        <div class="grid-2">
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Marketing Agent</h3>
+                <p>Documented both as event research and as gap-fill messaging support</p>
+              </div>
+              <span class="role-tag">Demand Narrative Layer</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip doc">Run Aria setup</span>
+              <span class="chip doc">Prompt library</span>
+              <span class="chip gold">Events + copy</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>
+                  In setup mode, it turns city, date range, Airbtics pacing, and seasonal context into a structured events, holidays, and demand narrative.
+                  In runtime prompt form, it also suggests promotional copy, listing improvements, and channel-specific messaging to fill calendar gaps.
+                </p>
+              </div>
+              <div class="info">
+                <strong>Trigger</strong>
+                <p><code>POST /api/market-setup</code> according to the agent-call reference, plus promotional support in marketing-oriented prompt flows.</p>
+              </div>
+              <div class="info">
+                <strong>Inputs and APIs behind it</strong>
+                <p>City, area, dates, Airbtics pacing snapshot, plus event feeds such as Eventbrite, Ticketmaster, DTCM, and RSS data synced beforehand.</p>
+              </div>
+              <div class="info">
+                <strong>Writes and outputs</strong>
+                <p>Structured market-event payloads, demand outlook, and in the setup flow, saved market-event intelligence in Mongo-backed collections.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Benchmark Agent</h3>
+                <p>Competitor Scanner and market-positioning layer</p>
+              </div>
+              <span class="role-tag">Competitive Positioning</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip doc">Run Aria setup</span>
+              <span class="chip live">Benchmark route exists</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>Place the listing on a percentile curve, compare it to the comp set, and recommend target weekday, weekend, and event rates.</p>
+              </div>
+              <div class="info">
+                <strong>Trigger</strong>
+                <p><code>POST /api/market-setup</code> in the documented setup flow, plus runtime benchmark reads when Aria or the UI asks how the listing compares.</p>
+              </div>
+              <div class="info">
+                <strong>Inputs</strong>
+                <p>City, area, bedrooms, base price, date range, and Airbtics ADR percentiles such as P25, P50, P75, and P90.</p>
+              </div>
+              <div class="info">
+                <strong>Writes and outputs</strong>
+                <p>Positioning verdict, percentile context, recommended rates, comp examples, and BenchmarkData records used later in UI widgets and analysis.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Market Research</h3>
+                <p>Runtime explainer for events, seasonality, and external demand signals</p>
+              </div>
+              <span class="role-tag">Event Impact Interpreter</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip doc">Prompt library</span>
+              <span class="chip gold">Market explanations</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>Translate market events into practical pricing guidance and area-level impact. If there is no event, explain the seasonal baseline rather than inventing a spike.</p>
+              </div>
+              <div class="info">
+                <strong>Inputs</strong>
+                <p><code>market_events</code> at runtime, plus the property's area and current base price so it can convert uplift percentages into actual currency values.</p>
+              </div>
+              <div class="info">
+                <strong>Outputs</strong>
+                <p>Event windows, impact tiers, recommended prices, seasonal commentary, and a top recommendation for the property manager.</p>
+              </div>
+              <div class="info">
+                <strong>What it never does</strong>
+                <p>It never fabricates missing events and never writes the PMS price itself.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Guardrails Agent</h3>
+                <p>Silent hard-boundary enforcer</p>
+              </div>
+              <span class="role-tag">Safety Clamp Layer</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip doc">Setup and pipeline safety</span>
+              <span class="chip alert">Hard limits</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>Enforce the absolute floor and ceiling, clamp out-of-bounds proposals, escalate excessive single-day changes, and write warning insights when a clamp occurs.</p>
+              </div>
+              <div class="info">
+                <strong>Trigger</strong>
+                <p>
+                  The setup docs show a conditional first-run role when floor and ceiling are empty. The prompt library also defines a background validation pass
+                  after proposals are generated.
+                </p>
+              </div>
+              <div class="info">
+                <strong>Writes and outputs</strong>
+                <p>Adjusted proposal values, guardrail flags, updated change percentages, and warning insights for the dashboard or logs.</p>
+              </div>
+              <div class="info">
+                <strong>What it never does</strong>
+                <p>It never suppresses valid safe changes and never acts as the final human approver.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="guest-agents">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Guest Communication Agents</div>
+            <h2>Two separate guest-intelligence jobs: reply now, summarise later</h2>
+            <p>
+              The guest layer is intentionally split. One agent behaves like a live operations responder. The other behaves like an analyst that condenses inbox patterns
+              for the property manager.
+            </p>
+          </div>
+        </div>
+        <div class="grid-2">
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Guest Reply Agent</h3>
+                <p>Also called Reservation Agent or Chat Response Agent in different docs</p>
+              </div>
+              <span class="role-tag">Live Guest Ops</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip live">Guest Inbox draft route</span>
+              <span class="chip live">Webhook auto-reply path</span>
+              <span class="chip gold">Hospitality tone</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>
+                  Read the guest's message, identify intent and sentiment, answer normal operational questions, create operations tickets when something is broken,
+                  escalate risky cases, and send access details through the proper secure path instead of free-text guessing.
+                </p>
+              </div>
+              <div class="info">
+                <strong>Current live routes</strong>
+                <p>
+                  <code>POST /api/hostaway/suggest-reply</code> drafts replies in the background. The Hostaway webhook route can also trigger the guest agent automatically when live mode is enabled.
+                </p>
+              </div>
+              <div class="info">
+                <strong>Documented action tools</strong>
+                <p>
+                  <code>read_thread</code>, <code>send_reply</code>, <code>create_ops_ticket</code>, <code>escalate_thread</code>,
+                  <code>send_access_details</code>, and <code>close_thread</code>.
+                </p>
+              </div>
+              <div class="info">
+                <strong>Current route prompt behaviour</strong>
+                <p>
+                  The live draft route explicitly asks the Lyzr agent to read thread context and then choose the correct action path,
+                  including guest messaging, ticket creation, escalation, access sharing, property-data lookup, or upsell support.
+                </p>
+              </div>
+              <div class="info">
+                <strong>What it never does</strong>
+                <p>It must not invent entry codes, offer refunds, reveal owner notes, or ignore manual-review states like paused or approval-required communication settings.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Conversation Summary Agent</h3>
+                <p>Guest insight summariser for trends and actions</p>
+              </div>
+              <span class="role-tag">Inbox Intelligence</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip live">Per-thread summary route</span>
+              <span class="chip doc">Prompt library</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>Read a conversation set or thread, judge overall sentiment, identify repeating themes, count unresolved replies, and give the property manager concrete action items.</p>
+              </div>
+              <div class="info">
+                <strong>Current live route</strong>
+                <p><code>POST /api/guest-agent/threads/[id]/summary</code> loads the conversation, calls the Lyzr summary agent, and returns sentiment, themes, action items, and bullet points.</p>
+              </div>
+              <div class="info">
+                <strong>Documented tool model</strong>
+                <p>The session-init and prompt docs also describe a direct tool-driven version using <code>get_guest_conversations</code> for listing-wide summary generation.</p>
+              </div>
+              <div class="info">
+                <strong>Outputs</strong>
+                <p>Sentiment badge, recurring themes, action list, bullet summaries, total conversation count, and <code>needsReplyCount</code>.</p>
+              </div>
+              <div class="info">
+                <strong>What it never does</strong>
+                <p>It never sends replies to guests and never includes contact details or internal identifiers in the summary.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+        <div class="callout" style="margin-top: 18px;">
+          <h3>Guest communication approval boundary</h3>
+          <p>
+            One important client-facing point is that reply intelligence and live sending are different. The current repo includes draft generation,
+            webhook-triggered reply logic, and a save-reply route that stores admin replies into MongoDB. That means the guest layer can assist heavily,
+            but approval or live-send policy is still controllable through communication state and webhook settings.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" id="execution-agents">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Execution and Control</div>
+            <h2>The layers that make automation safe enough to explain confidently</h2>
+            <p>
+              These agents exist so the client can trust that analysis does not automatically mean uncontrolled action.
+              One writes only after approval. One watches for unintended consequences.
+            </p>
+          </div>
+        </div>
+        <div class="grid-2">
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Channel Sync Agent</h3>
+                <p>The controlled PMS write layer</p>
+              </div>
+              <span class="role-tag">Execution Agent</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip live">TypeScript class exists</span>
+              <span class="chip doc">Push-after-approval</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>Take already approved proposals, write them to the PMS calendar, verify the write by reading back the calendar, update database state, log the batch, and rollback failed dates if needed.</p>
+              </div>
+              <div class="info">
+                <strong>Trigger</strong>
+                <p>Only after CRO-authorised approval and only for proposals whose verdict is approved. The documented session payload explicitly includes <code>cro_authorization: true</code>.</p>
+              </div>
+              <div class="info">
+                <strong>System calls it makes</strong>
+                <p>PMS API write, PMS API read-back, and MongoDB writes to execution logs and inventory state.</p>
+              </div>
+              <div class="info">
+                <strong>What it writes</strong>
+                <p>Approved current prices, sync timestamps, batch-level execution results, and failure states such as <code>sync_failed</code>.</p>
+              </div>
+              <div class="info">
+                <strong>What it never does</strong>
+                <p>It never pushes unapproved pricing, never ignores stale-data checks, and never hides a failed verification.</p>
+              </div>
+            </div>
+          </article>
+
+          <article class="agent-card">
+            <div class="agent-top">
+              <div>
+                <h3>Anomaly Detector</h3>
+                <p>Post-change watchdog and rollback recommender</p>
+              </div>
+              <span class="role-tag">Monitoring Agent</span>
+            </div>
+            <div class="chip-row">
+              <span class="chip doc">Prompt-defined</span>
+              <span class="chip gold">Score-based monitoring</span>
+            </div>
+            <div class="info-list">
+              <div class="info">
+                <strong>Responsibility</strong>
+                <p>Detect booking velocity collapse, price outliers, data staleness, repeated execution failures, price cliffs between adjacent dates, and damaging revenue impact after a change.</p>
+              </div>
+              <div class="info">
+                <strong>Trigger</strong>
+                <p>Full analysis requests, explicit anomaly checks, daily sweeps, and documented post-sync monitoring windows such as 30 minutes after a Channel Sync execution.</p>
+              </div>
+              <div class="info">
+                <strong>Inputs</strong>
+                <p>Price change history, before/after booking snapshots, comp-set ADR, last sync timestamp, calendar metrics, reservations, and benchmark context passed in by the orchestrator.</p>
+              </div>
+              <div class="info">
+                <strong>Outputs</strong>
+                <p>Anomaly score, severity tier, actions recommended, rollback recommendation, and autopilot-pause recommendation.</p>
+              </div>
+              <div class="info">
+                <strong>What it never does</strong>
+                <p>It does not modify prices directly and does not write to the PMS. It advises the orchestrator and operator on whether a rollback should happen.</p>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="tools">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Tool and API Matrix</div>
+            <h2>What each agent actually calls</h2>
+            <p>
+              This is the section a client can use to understand that every agent is scoped. The point is not that "AI knows everything";
+              the point is that each agent has a limited contract.
+            </p>
+          </div>
+        </div>
+
+        <h3>Property revenue tool layer</h3>
+        <div class="matrix" style="margin-bottom: 18px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Tool</th>
+                <th>Main agent using it</th>
+                <th>Purpose</th>
+                <th>OpenAPI path</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>get_property_profile</code></td>
+                <td>Aria / property chat flows</td>
+                <td>Returns listing name, type, area, amenities, current, floor, and ceiling pricing context.</td>
+                <td><code>/get-property-profile</code></td>
+              </tr>
+              <tr>
+                <td><code>get_property_calendar_metrics</code></td>
+                <td>Aria, Property Analyst, anomaly checks</td>
+                <td>Returns occupancy, booked and available nights, and lead-time metrics for the requested range.</td>
+                <td><code>/get-property-calendar-metrics</code></td>
+              </tr>
+              <tr>
+                <td><code>get_property_reservations</code></td>
+                <td>Aria, Booking Intelligence</td>
+                <td>Returns bookings, guest dates, channel mix, revenue, and stay length inputs.</td>
+                <td><code>/get-property-reservations</code></td>
+              </tr>
+              <tr>
+                <td><code>get_property_market_events</code></td>
+                <td>Aria, Market Research</td>
+                <td>Returns events, demand signals, and demand-impact windows for a property or market range.</td>
+                <td><code>/get-property-market-events</code></td>
+              </tr>
+              <tr>
+                <td><code>get_property_benchmark</code></td>
+                <td>Aria, Benchmark analysis</td>
+                <td>Returns percentile positioning, comp rates, and recommended market-aligned pricing targets.</td>
+                <td><code>/get-property-benchmark</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Guest communication tool layer</h3>
+        <div class="matrix" style="margin-bottom: 18px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Tool or route</th>
+                <th>Main agent using it</th>
+                <th>Purpose</th>
+                <th>Why it matters</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>read_thread</code></td>
+                <td>Guest Reply Agent</td>
+                <td>Load the reservation, listing context, and prior thread before replying.</td>
+                <td>Prevents tone-deaf or context-free replies.</td>
+              </tr>
+              <tr>
+                <td><code>send_reply</code></td>
+                <td>Guest Reply Agent</td>
+                <td>Draft or send a reply with approval logic.</td>
+                <td>Separates drafting from policy-based sending.</td>
+              </tr>
+              <tr>
+                <td><code>create_ops_ticket</code></td>
+                <td>Guest Reply Agent</td>
+                <td>Create a maintenance or operations follow-up for a physical issue.</td>
+                <td>Keeps the guest workflow connected to operations.</td>
+              </tr>
+              <tr>
+                <td><code>escalate_thread</code></td>
+                <td>Guest Reply Agent</td>
+                <td>Hand risky conversations to a human.</td>
+                <td>Used for legal, refund, injury, or severe complaint cases.</td>
+              </tr>
+              <tr>
+                <td><code>send_access_details</code></td>
+                <td>Guest Reply Agent</td>
+                <td>Securely send entry codes or access instructions.</td>
+                <td>Stops the model from guessing sensitive details.</td>
+              </tr>
+              <tr>
+                <td><code>POST /api/hostaway/suggest-reply</code></td>
+                <td>Guest Reply Agent route</td>
+                <td>Generate a draft reply in a background job through Lyzr.</td>
+                <td>Current live route for inbox drafting.</td>
+              </tr>
+              <tr>
+                <td><code>POST /api/guest-agent/threads/[id]/summary</code></td>
+                <td>Conversation Summary route</td>
+                <td>Generate sentiment, themes, and action items for a thread.</td>
+                <td>Current live route for guest conversation intelligence.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Setup and external market intelligence layer</h3>
+        <div class="matrix">
+          <table>
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Agent or layer using it</th>
+                <th>Purpose</th>
+                <th>Typical output</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Airbtics summary, metrics, pacing</td>
+                <td>Market setup, Benchmark, Marketing, pricing context builder</td>
+                <td>Bring in ADR percentiles, market summary, and booking pace.</td>
+                <td>Market context, P25/P50/P75 anchors, pacing signals.</td>
+              </tr>
+              <tr>
+                <td>Eventbrite</td>
+                <td>Event sync and market setup flows</td>
+                <td>Discover events that can influence demand.</td>
+                <td>Event records and timing windows.</td>
+              </tr>
+              <tr>
+                <td>Ticketmaster</td>
+                <td>Event sync and market setup flows</td>
+                <td>Add ticketed entertainment demand signals.</td>
+                <td>Live event enrichment.</td>
+              </tr>
+              <tr>
+                <td>DTCM and RSS feeds</td>
+                <td>Market setup and sync flows</td>
+                <td>Supplement official or city-specific event calendars.</td>
+                <td>Broader destination context and recurring event coverage.</td>
+              </tr>
+              <tr>
+                <td><code>POST /api/market-setup</code></td>
+                <td>Marketing, Benchmark, Guardrails setup sequence</td>
+                <td>Run the full onboarding or "Run Aria" enrichment cycle.</td>
+                <td>MarketEvent, BenchmarkData, and property guardrail suggestions.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="talking-points">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Client Talking Points</div>
+            <h2>The simplest way to explain the agent model to a client</h2>
+            <p>
+              If this needs to be presented in a meeting, these are the messages that make the architecture feel trustworthy and understandable.
+            </p>
+          </div>
+        </div>
+        <div class="lane-grid">
+          <div class="lane">
+            <h3>1. PriceOS separates advice from execution</h3>
+            <p>
+              Most agents are analytical. They explain, compare, score, summarise, or recommend. Only the Channel Sync layer is allowed to write pricing into the PMS,
+              and only after approval.
+            </p>
+          </div>
+          <div class="lane">
+            <h3>2. Every agent is scoped</h3>
+            <p>
+              Atlas does portfolio health. Aria orchestrates property analysis. Guest Reply handles guest operations. Summary looks for guest trends.
+              Narrow mandates make behaviour easier to audit and explain.
+            </p>
+          </div>
+          <div class="lane">
+            <h3>3. Safety is layered, not assumed</h3>
+            <p>
+              PriceGuard reviews proposal risk. Guardrails enforce absolute pricing bounds. Human approval still sits between analysis and live channel updates.
+            </p>
+          </div>
+          <div class="lane">
+            <h3>4. Market context is not guesswork</h3>
+            <p>
+              Setup agents use benchmark data, Airbtics context, and synced event sources so that price recommendations are grounded in market conditions rather than generic AI text.
+            </p>
+          </div>
+          <div class="lane">
+            <h3>5. Guest communication has clear escalation paths</h3>
+            <p>
+              The guest agent can answer normal hospitality questions, but maintenance, legal, refund, or injury issues are escalated instead of being improvised.
+            </p>
+          </div>
+          <div class="lane">
+            <h3>6. Monitoring continues after a change</h3>
+            <p>
+              Once prices are pushed, the anomaly layer can still watch for harmful outcomes like booking collapse, stale syncs, or suspicious price cliffs.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="sources">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Source Notes</div>
+            <h2>What this page was compiled from</h2>
+            <p>
+              This guide was written from the repo's current prompt files, architecture notes, OpenAPI tool specs, and live guest-inbox route handlers.
+              Where the repo contains two documented operating modes, this page calls that out instead of hiding it.
+            </p>
+          </div>
+        </div>
+        <div class="footer-note">
+          <p>
+            Important nuance: some prompt files describe a more tool-driven orchestration model, while the current architecture reference also documents
+            a full-context chat path where the CRO can answer from a pre-built context payload. That is not a contradiction in product story terms:
+            it means PriceOS is designed to support both preassembled context and controlled live fetches depending on the flow.
+          </p>
+        </div>
+        <div class="grid-2" style="margin-top: 18px;">
+          <div class="card">
+            <h3>Primary repo references</h3>
+            <ul class="source-list">
+              <li><code>docs/agent-call-reference.md</code></li>
+              <li><code>PRICEOS_HOW_IT_WORKS.md</code></li>
+              <li><code>updated_prompts_2/00-dashboard-agent.md</code></li>
+              <li><code>updated_prompts_2/01-cro-router.md</code></li>
+              <li><code>updated_prompts_2/02-guest-reply-agent.md</code></li>
+              <li><code>updated_prompts_2/conversation-summary-agent.md</code></li>
+              <li><code>updated_prompts_2/session-init-payloads.md</code></li>
+              <li><code>updated_prompts_2/08-channel-sync-agent.md</code></li>
+              <li><code>updated_prompts_2/09-anomaly-detector.md</code></li>
+              <li><code>src/lib/agents/prompts/*.md</code></li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Live implementation references used for alignment</h3>
+            <ul class="source-list">
+              <li><code>src/app/api/hostaway/suggest-reply/route.ts</code></li>
+              <li><code>src/app/api/guest-agent/threads/[id]/summary/route.ts</code></li>
+              <li><code>src/app/api/webhook/hostaway/route.ts</code></li>
+              <li><code>src/app/api/hostaway/save-reply/route.ts</code></li>
+              <li><code>src/lib/agents/channel-sync-agent.ts</code></li>
+              <li><code>src/lib/agents/constants.ts</code></li>
+              <li><code>src/components/agents/agent-status-panel.tsx</code></li>
+              <li><code>openapi-agent-tools-property-v1.json</code></li>
+              <li><code>openapi-agent-tools-guest-v1.json</code></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

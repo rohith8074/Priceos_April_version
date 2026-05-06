@@ -34,18 +34,43 @@ export async function GET(req: NextRequest) {
     }
 
     const [resDocs, invDocs] = await Promise.all([
-      Reservation.find({ listingId: listingOid }).lean(),
+      Reservation.find({
+        listingId: listingOid,
+        status: { $ne: "cancelled" },
+        checkOut: { $gte: from },
+        checkIn: { $lte: to },
+      }).lean(),
       InventoryMaster.find({ listingId: listingOid, date: { $gte: from, $lte: to } }).lean(),
     ]);
 
     const bookedDays = invDocs.filter((d: any) => d.status === "booked").length;
     const blockedDays = invDocs.filter((d: any) => d.status === "blocked").length;
     const totalDays = invDocs.length;
-    const availableDays = totalDays - bookedDays - blockedDays;
-    const occupancy = totalDays > 0 ? Math.round((bookedDays / totalDays) * 100) : 0;
+    const availableDays = Math.max(0, totalDays - bookedDays - blockedDays);
+    const invOccupancy = totalDays > 0 ? Math.round((bookedDays / totalDays) * 100) : 0;
 
-    const sumPrices = invDocs.reduce((sum: number, x: any) => sum + Number(x.currentPrice || listing.price || 0), 0);
-    const avgPrice = totalDays > 0 ? Math.round(sumPrices / totalDays) : Math.round(Number(listing.price || 0));
+    // Reservation-based occupancy fallback (used when inventory has no booked records)
+    const windowStart = from ? new Date(from) : new Date();
+    const windowEnd = to ? new Date(to) : windowStart;
+    const windowDays = Math.max(1, Math.ceil((windowEnd.getTime() - windowStart.getTime()) / 86_400_000) + 1);
+    let resBookedNights = 0;
+    for (const r of resDocs as any[]) {
+      const cin = r.checkIn > from ? r.checkIn : from;
+      const cout = r.checkOut < to ? r.checkOut : to;
+      if (cout > cin) {
+        resBookedNights += Math.ceil((new Date(cout).getTime() - new Date(cin).getTime()) / 86_400_000);
+      }
+    }
+    const resOccupancy = Math.min(100, Math.round((resBookedNights / windowDays) * 100));
+    const occupancy = Math.max(invOccupancy, resOccupancy);
+
+    // Average price: prefer InventoryMaster currentPrice, else listing base price
+    const pricePoints = invDocs
+      .filter((d: any) => Number(d.currentPrice) > 0)
+      .map((d: any) => Number(d.currentPrice));
+    const avgPrice = pricePoints.length > 0
+      ? Math.round(pricePoints.reduce((a: number, b: number) => a + b, 0) / pricePoints.length)
+      : Math.round(Number(listing.price || 0));
 
     const calendarDays = invDocs.map((d: any) => ({
       date: d.date,

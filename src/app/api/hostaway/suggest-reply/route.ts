@@ -6,13 +6,24 @@ import { callLyzrAgent } from "@/lib/services/lyzr";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages = [], guestName = "Guest", propertyName = "Property", orgId, threadId } = body;
+    const {
+      messages = [],
+      guestName = "Guest",
+      propertyName = "Property",
+      orgId,
+      threadId,
+      listingId,
+      sessionId,
+      commsState = "active",
+      checkIn,
+      checkOut,
+      additionalContext,
+    } = body;
 
     await connectToDatabase();
 
     const jobId = `job-draft-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-    // Create the job immediately in "running" status
     await Job.create({
       jobId,
       status: "running",
@@ -20,37 +31,62 @@ export async function POST(req: NextRequest) {
       error: null,
     });
 
-    // Fire-and-forget background execution directly via Lyzr
+    // Fire-and-forget background execution
     (async () => {
       try {
-        const agentId = process.env.LYZR_Chat_Response_Agent_ID || "699d8ab150b4c733eb376fd4";
-        
-        let history = "";
-        for (const m of messages) {
-          const sender = m.sender === "guest" || m.role === "guest" ? "Guest" : "Host";
-          const text = m.text || m.content || "";
-          history += `${sender}: ${text}\n`;
-        }
+        // Prefer the dedicated guest-reply agent (which has Hostaway OpenAPI tools).
+        // Fall back to the generic chat agent only if not configured.
+        const agentId =
+          process.env.LYZR_GUEST_REPLY_AGENT_ID ||
+          process.env.LYZR_Chat_Response_Agent_ID ||
+          "699d8ab150b4c733eb376fd4";
 
-        const prompt = `
-Suggest a hospitality-focused reply to the guest: ${guestName}
-Property: ${propertyName}
+        // Stable session so the agent retains memory across multiple draft clicks
+        // for the same conversation thread.
+        const lyzrSessionId = sessionId || `inbox-${threadId || jobId}`;
 
-Conversation History:
-${history}
+        // Build the last guest message as the trigger — the agent will call
+        // readThread(thread_id) to fetch full reservation context via its tools.
+        const lastGuestMsg = [...messages]
+          .reverse()
+          .find((m: { sender?: string; role?: string }) => m.sender === "guest" || m.role === "guest");
+        const guestMessage =
+          (lastGuestMsg as { text?: string; content?: string } | undefined)?.text ||
+          (lastGuestMsg as { text?: string; content?: string } | undefined)?.content ||
+          (messages[messages.length - 1] as { text?: string; content?: string } | undefined)?.text ||
+          "";
 
-Rules:
-1. Be warm, empathetic, and professional.
-2. Do NOT mention being an AI.
-3. If there is a maintenance issue, mention that you'll look into it.
-4. Provide the reply in a JSON format: {"reply": "..."}
-`;
+        // Include the last few messages as fallback context in case readThread
+        // is unavailable, but keep it short so it doesn't overshadow tool data.
+        const recentHistory = (messages as { sender?: string; role?: string; text?: string; content?: string }[])
+          .slice(-6)
+          .map((m) => `${m.sender === "guest" || m.role === "guest" ? "Guest" : "Host"}: ${m.text || m.content || ""}`)
+          .join("\n");
+
+        const stayInfo =
+          checkIn && checkOut ? `\nGuest stay: ${checkIn} → ${checkOut}` : "";
+        const rewriteNote = additionalContext
+          ? `\n\nProperty manager note: ${additionalContext}`
+          : "";
+
+        const prompt = `Guest message: "${guestMessage}"
+
+Recent conversation:
+${recentHistory}${stayInfo}${rewriteNote}
+
+Instructions:
+1. Call readThread using the thread_id from session context to fetch full reservation details.
+2. Classify the guest intent using the decision table in your system prompt.
+3. Use the correct tool: sendGuestMessage (most replies), createOpsTicket (maintenance/issues), escalateThread (angry/legal/refund), sendAccessDetails (wifi/door codes), getPropertyData (amenities/rules), sendUpsellOffer (early check-in/extension).
+4. Draft a warm, professional reply. Never invent access codes or house rules — use tool data only.`;
 
         const systemVars = {
           guest_name: guestName,
           property_name: propertyName,
           org_id: orgId || "69d776a671c7b939aaf49053",
+          listing_id: listingId || "",
           thread_id: threadId || jobId,
+          comms_state: commsState,
           today: new Date().toISOString().slice(0, 10),
         };
 
@@ -58,7 +94,7 @@ Rules:
           agentId,
           prompt,
           "priceos-user",
-          jobId,
+          lyzrSessionId,
           systemVars
         );
 
@@ -67,22 +103,21 @@ Rules:
         if (job) {
           if (result.ok) {
             job.status = "complete";
-            
-            // Extract reply string safely from Lyzr's JSON output or fallback to raw text
-            let finalMessage = result.response;
-            if (result.parsedJson) {
-              finalMessage = 
-                result.parsedJson.suggested_reply?.content || 
-                result.parsedJson.chat_response || 
-                result.parsedJson.reply || 
-                result.parsedJson.content || 
-                result.parsedJson.message || 
-                result.response;
-            }
+
+            // Extract the guest-facing reply text from the structured output.
+            // The agent returns { triage, suggested_reply: { content, approval_required, action_buttons }, chat_response }.
+            const parsed = result.parsedJson;
+            const draftContent: string =
+              parsed?.suggested_reply?.content ||
+              result.response;
 
             job.result = {
-              message: finalMessage,
-              raw_json: result.parsedJson,
+              // message = the draft text the UI shows in the reply textarea
+              message: draftContent,
+              // raw_json carries the full structured output so the UI can read
+              // triage intent/urgency, approval_required, action_buttons, and
+              // chat_response (the property manager explanation)
+              raw_json: parsed ?? null,
             };
           } else {
             job.status = "error";

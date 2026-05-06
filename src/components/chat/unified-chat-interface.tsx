@@ -466,6 +466,7 @@ export function UnifiedChatInterface({ properties: _properties, orgId }: Props) 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          orgId,
           dateRange: {
             from: format(dateRange.from, "yyyy-MM-dd"),
             to: format(dateRange.to, "yyyy-MM-dd"),
