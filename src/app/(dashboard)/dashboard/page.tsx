@@ -95,14 +95,29 @@ export default async function OverviewPage() {
 
     const listingInv = inventory.filter((r) => (r.listingId ?? r.listing_id) === listingId);
     const bookedInv = listingInv.filter((r) => r.status === "booked" || r.status === "reserved");
-    const bookedDays = bookedInv.length;
-    const totalDays = listingInv.length;
-    const occupancy = totalDays > 0 ? Math.round((bookedDays / totalDays) * 100) : 0;
+    const invOccupancy = listingInv.length > 0 ? Math.round((bookedInv.length / listingInv.length) * 100) : 0;
 
     // ADR from actual Hostaway-synced reservations (totalPrice / nights per booking)
     const listingReservations = reservations.filter(
       (r) => (r.listingId ?? r.listing_id) === listingId && r.status !== "cancelled"
     );
+
+    // Reservation-based occupancy fallback (30-day window)
+    const WINDOW_DAYS = 30;
+    let resBookedDays = 0;
+    for (const r of listingReservations) {
+      if (!r.checkIn || !r.checkOut) continue;
+      if (r.checkOut < todayStr || r.checkIn > plus29Str) continue;
+      const cinStr = r.checkIn > todayStr ? r.checkIn : todayStr;
+      const coutStr = r.checkOut < plus29Str ? r.checkOut : plus29Str;
+      if (coutStr > cinStr) {
+        resBookedDays += Math.ceil(
+          (new Date(coutStr).getTime() - new Date(cinStr).getTime()) / 86400000
+        );
+      }
+    }
+    const resOccupancy = Math.min(100, Math.round((resBookedDays / WINDOW_DAYS) * 100));
+    const occupancy = Math.max(invOccupancy, resOccupancy);
     const adrEntries = listingReservations
       .filter((r) => Number(r.totalPrice) > 0 && Number(r.nights) > 0)
       .map((r) => Number(r.totalPrice) / Number(r.nights));

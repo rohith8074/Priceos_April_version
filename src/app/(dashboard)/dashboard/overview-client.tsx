@@ -101,81 +101,95 @@ export function OverviewClient({
       setSyncLogs(prev => [...prev, { ts: ts(), msg, type }]);
     const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-    log("Connecting to PriceOS database (MongoDB)...");
-    await wait(500);
-    log("✓ Database connection established", "success");
+    log("Connecting to Hostaway API...");
     await wait(300);
-    log("Note: Live Hostaway API not yet integrated — reading from local DB", "info");
-    await wait(400);
-    log("Registering sync run record...");
 
+    // Start the background sync
     try {
       const runRes = await fetch("/api/sync/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, sourceId: "all" }),
+        body: JSON.stringify({ orgId }),
       });
-      await wait(300);
       if (runRes.ok) {
-        const runData = await runRes.json();
-        log(`✓ Sync run saved (ID: ${String(runData.runId ?? "").substring(0, 10)}…)`, "success");
-      } else {
-        log("Sync run recorded", "info");
-      }
-    } catch {
-      log("Sync run record skipped — backend unavailable", "error");
-    }
-
-    await wait(500);
-    log("─────────────────────────────────", "info");
-    log("Reading from local database...", "info");
-    await wait(400);
-    log("Querying listings collection...");
-    await wait(600);
-
-    try {
-      const statusRes = await fetch(`/api/sync/status?orgId=${orgId}`);
-      if (statusRes.ok) {
-        const s = await statusRes.json();
-
-        log(`✓ ${s.listings?.count ?? 0} properties found in database`, "success");
-        if (s.listings?.lastSyncedAt) {
-          log(`  └ Last modified: ${new Date(s.listings.lastSyncedAt).toLocaleString("en-US")}`, "info");
-        }
-
-        await wait(400);
-        log("Querying reservations collection...");
-        await wait(600);
-        log(`✓ ${s.reservations?.count ?? 0} reservations found in database`, "success");
-        if (s.reservations?.lastSyncedAt) {
-          log(`  └ Last modified: ${new Date(s.reservations.lastSyncedAt).toLocaleString("en-US")}`, "info");
-        }
-
-        await wait(400);
-        log("Querying inventory_masters collection...");
-        await wait(600);
-        log(`✓ ${s.inventory_master?.daysCount ?? 0} calendar days found in database`, "success");
-        if (s.inventory_master?.lastSyncedAt) {
-          log(`  └ Last modified: ${new Date(s.inventory_master.lastSyncedAt).toLocaleString("en-US")}`, "info");
+        const data = await runRes.json();
+        if (data.status === "already_syncing") {
+          log("Sync already running — watching live progress…", "info");
+        } else {
+          log("✓ Hostaway sync started", "success");
         }
       } else {
-        log("Could not read sync status — check backend", "error");
+        const errData = await runRes.json().catch(() => ({}));
+        log(`Failed to start sync: ${errData.error ?? runRes.statusText}`, "error");
+        setIsSyncing(false);
+        return;
       }
     } catch {
-      log("Status check failed — backend may be offline", "error");
+      log("Could not reach backend — check server logs", "error");
+      setIsSyncing(false);
+      return;
     }
 
-    await wait(300);
     log("─────────────────────────────────", "info");
-    log("✓ Sync complete — dashboard data is up to date", "success");
 
-    // Re-enable button immediately after logs complete
+    // Poll /api/sync/progress until the sync finishes
+    const MAX_POLLS = 120; // 6 min max at 3 s intervals
+    const lastStepStatus: Record<string, string> = {};
+
+    for (let i = 0; i < MAX_POLLS; i++) {
+      await wait(3000);
+
+      try {
+        const res = await fetch("/api/sync/progress");
+        if (!res.ok) continue;
+
+        const prog = await res.json() as {
+          status: string;
+          message: string;
+          errorMessage?: string;
+          steps: { id: string; label: string; status: string; detail?: string; count?: number }[];
+        };
+
+        for (const step of prog.steps ?? []) {
+          const key = `${step.id}:${step.status}`;
+          if (lastStepStatus[step.id] === key) continue;
+          lastStepStatus[step.id] = key;
+
+          if (step.status === "running") {
+            log(`⟳ ${step.label}: ${step.detail ?? "in progress…"}`, "info");
+          } else if (step.status === "complete") {
+            log(`✓ ${step.label}: ${step.detail ?? `${step.count ?? 0} synced`}`, "success");
+          } else if (step.status === "error") {
+            log(`✗ ${step.label}: failed`, "error");
+          }
+        }
+
+        if (prog.status === "complete") {
+          log("─────────────────────────────────", "info");
+          log("✓ Sync complete — dashboard data is up to date", "success");
+          setIsSyncing(false);
+          toast.success("Sync complete. Dashboard is up to date.", { duration: 4000 });
+          await wait(2000);
+          window.location.reload();
+          return;
+        }
+
+        if (prog.status === "error") {
+          log("─────────────────────────────────", "info");
+          log(`✗ Sync failed: ${prog.errorMessage ?? prog.message}`, "error");
+          setIsSyncing(false);
+          toast.error("Sync failed. Check logs for details.");
+          return;
+        }
+      } catch {
+        // ignore transient fetch errors, keep polling
+      }
+    }
+
+    log("─────────────────────────────────", "info");
+    log("Sync is taking longer than expected — check server logs.", "error");
     setIsSyncing(false);
-    toast.success("Sync complete. Dashboard is up to date.", { duration: 4000 });
-
-    // Reload page after a short pause so user can read the final log line
-    await wait(2000);
-    window.location.reload();
+    toast.error("Sync timed out.");
   };
 
   const [revenueFilter, setRevenueFilter] = useState("10");
