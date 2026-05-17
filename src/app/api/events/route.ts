@@ -15,52 +15,35 @@ export async function GET(req: NextRequest) {
     await connectToDatabase();
 
     const todayStr = new Date().toISOString().split("T")[0];
+    const ninetyDaysDate = new Date();
+    ninetyDaysDate.setDate(ninetyDaysDate.getDate() + 90);
+    const ninetyDaysStr = ninetyDaysDate.toISOString().split("T")[0];
+
     const dateFrom = searchParams.get("dateFrom") || todayStr;
     const dateTo = searchParams.get("dateTo") || "";
 
-    // Events active during the requested range: startDate <= dateTo AND endDate >= dateFrom
-    const query: Record<string, any> = {
+    // Primary query: events overlapping the selected range
+    const primaryEvents = await MarketEvent.find({
       orgId: new Types.ObjectId(orgId),
       isActive: true,
       startDate: dateTo ? { $lte: dateTo } : { $lte: dateFrom },
       endDate: { $gte: dateFrom },
-    };
+    }).sort({ startDate: 1 }).limit(100).lean();
 
-    const events = await MarketEvent.find(query).sort({ startDate: 1 }).limit(100).lean();
+    // If no events in range, also look ahead 90 days from today
+    const allEvents = primaryEvents.length > 0
+      ? primaryEvents
+      : await MarketEvent.find({
+          orgId: new Types.ObjectId(orgId),
+          isActive: true,
+          startDate: { $gte: todayStr, $lte: ninetyDaysStr },
+        }).sort({ startDate: 1 }).limit(50).lean();
 
-    if (!events || events.length === 0) {
-      // Provide fallback events for UI polish as done in Python backend
-      return NextResponse.json({
-        events: [
-          {
-            _id: "mock_1",
-            name: "Dubai Food Festival 2026",
-            startDate: "2026-04-25",
-            endDate: "2026-05-10",
-            impactLevel: "high",
-            upliftPct: 15.0,
-            description: "City-wide culinary celebration driving high demand for short-term rentals.",
-            source: "market_template",
-            area: "Dubai",
-            isActive: true
-          },
-          {
-            _id: "mock_2",
-            name: "Eid Al Fitr Holidays",
-            startDate: "2026-03-30",
-            endDate: "2026-04-02",
-            impactLevel: "high",
-            upliftPct: 25.0,
-            description: "Major public holiday with high regional travel and staycation demand.",
-            source: "market_template",
-            area: "Dubai",
-            isActive: true
-          }
-        ]
-      }, { status: 200 });
+    if (!allEvents || allEvents.length === 0) {
+      return NextResponse.json({ events: [] }, { status: 200 });
     }
 
-    const formattedEvents = events.map((e: any) => ({
+    const formattedEvents = allEvents.map((e: any) => ({
       _id: e._id.toString(),
       name: e.name,
       startDate: e.startDate,
@@ -69,6 +52,9 @@ export async function GET(req: NextRequest) {
       upliftPct: Number(e.upliftPct || 0),
       description: e.description || "",
       source: e.source || "",
+      sourceUrl: e.sourceUrl || null,
+      venue: e.venue || null,
+      category: e.category || null,
       area: e.area || null,
       isActive: e.isActive,
       updatedAt: e.updatedAt ? new Date(e.updatedAt).toISOString() : null,

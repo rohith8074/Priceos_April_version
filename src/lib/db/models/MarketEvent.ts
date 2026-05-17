@@ -11,7 +11,13 @@ export interface IMarketEvent extends Document {
   impactLevel: "high" | "medium" | "low";
   upliftPct: number;
   description?: string;
-  source: "ai_detected" | "ticketmaster" | "eventbrite" | "manual" | "market_template";
+  source: "ai_detected" | "ticketmaster" | "eventbrite" | "manual" | "market_template" | "serp" | "perplexity" | "dtcm";
+  sourceUrl?: string;       // Direct link to event page / news article
+  attendeeCount?: number;   // Estimated attendance (improves impact scoring)
+  demandScore?: number;     // 0-100 composite demand score
+  category?: string;        // e.g. "Concert", "Sports", "Trade Show"
+  venue?: string;           // Venue name
+  externalId?: string;      // Source-specific dedup key (e.g. "serp:news:...", "dtcm:gitex-2026")
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -35,15 +41,22 @@ const MarketEventSchema = new Schema<IMarketEvent>(
     description: { type: String },
     source: {
       type: String,
-      enum: ["ai_detected", "ticketmaster", "eventbrite", "manual", "market_template"],
+      enum: ["ai_detected", "ticketmaster", "eventbrite", "manual", "market_template", "serp", "perplexity", "dtcm"],
       default: "ai_detected",
     },
+    sourceUrl: { type: String },
+    attendeeCount: { type: Number },
+    demandScore: { type: Number, min: 0, max: 100 },
+    category: { type: String },
+    venue: { type: String },
+    externalId: { type: String, sparse: true },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
 
 MarketEventSchema.index({ orgId: 1, startDate: 1, endDate: 1 });
+MarketEventSchema.index({ orgId: 1, externalId: 1 }, { sparse: true });
 
 export const MarketEvent: Model<IMarketEvent> =
   mongoose.models.MarketEvent ??

@@ -24,6 +24,9 @@ interface MarketEventRow {
     upliftPct: number;
     description?: string;
     source?: string;
+    sourceUrl?: string | null;
+    venue?: string | null;
+    category?: string | null;
     area?: string;
     isActive: boolean;
 }
@@ -115,22 +118,21 @@ export function MarketEventsTable() {
     const handleRunAgent = async () => {
         setLoading(true);
         try {
-            await fetch('/api/market-setup', {
+            const res = await fetch('/api/events/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     orgId: "69d776a671c7b939aaf49053",
-                    context: {
-                        type: contextType,
-                        propertyId: propertyId
-                    },
-                    dateRange: dateRange
+                    force: true,
                 })
             });
-            // Re-trigger the fetch which will update the UI
-            triggerMarketRefresh();
+            const data = await res.json();
+            if (data.ok) {
+                triggerMarketRefresh();
+            }
         } catch (e) {
             console.error("Failed to run market agent", e);
+        } finally {
             setLoading(false);
         }
     };
@@ -248,9 +250,9 @@ export function MarketEventsTable() {
 
                                         <TableCell className="align-top pt-4">
                                             <div className="flex flex-col gap-1.5 max-w-[300px]">
-                                                {ev.source && ev.source.startsWith('http') ? (
+                                                {ev.sourceUrl ? (
                                                     <a
-                                                        href={ev.source}
+                                                        href={ev.sourceUrl}
                                                         target="_blank"
                                                         rel="noreferrer"
                                                         className="group/link flex flex-col gap-1.5"
@@ -267,11 +269,7 @@ export function MarketEventsTable() {
                                                     </a>
                                                 ) : (
                                                     <>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-sm font-bold text-foreground">
-                                                                {ev.name}
-                                                            </span>
-                                                        </div>
+                                                        <span className="text-sm font-bold text-foreground">{ev.name}</span>
                                                         <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 group-hover:line-clamp-none transition-all">
                                                             {ev.description}
                                                         </p>
@@ -279,11 +277,23 @@ export function MarketEventsTable() {
                                                 )}
 
                                                 <div className="flex flex-wrap gap-2 mt-1.5">
+                                                    {ev.venue && (
+                                                        <Badge variant="outline" className="text-[9px] bg-muted/50 text-muted-foreground border-border/50">{ev.venue}</Badge>
+                                                    )}
                                                     {ev.area && (
                                                         <Badge variant="outline" className="text-[9px] bg-blue-500/5 text-blue-500 border-blue-500/20">{ev.area}</Badge>
                                                     )}
+                                                    {ev.source === 'serp' && (
+                                                        <Badge variant="outline" className="text-[9px] bg-violet-500/10 text-violet-600 border-violet-500/30 flex items-center gap-1">
+                                                            <div className="h-1 w-1 bg-violet-500 rounded-full animate-pulse" />
+                                                            SERP Live
+                                                        </Badge>
+                                                    )}
+                                                    {ev.source === 'dtcm' && (
+                                                        <Badge variant="outline" className="text-[9px] bg-sky-500/10 text-sky-600 border-sky-500/30">Dubai Tourism</Badge>
+                                                    )}
                                                     {ev.source === 'market_template' && (
-                                                        <Badge variant="outline" className="text-[9px] bg-blue-500/10 text-blue-500 border-blue-500/30">From Database</Badge>
+                                                        <Badge variant="outline" className="text-[9px] bg-blue-500/10 text-blue-500 border-blue-500/30">Curated</Badge>
                                                     )}
                                                     {ev.source === 'perplexity' && (
                                                         <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-600 border-amber-500/30 flex items-center gap-1">
@@ -291,10 +301,10 @@ export function MarketEventsTable() {
                                                             Agent AI Search
                                                         </Badge>
                                                     )}
-                                                    {ev.source && ev.source.startsWith('http') && (
+                                                    {(ev.source === 'ai_detected' || ev.source === 'eventbrite' || ev.source === 'ticketmaster') && (
                                                         <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-600 border-emerald-500/30 flex items-center gap-1">
-                                                            <div className="h-1 w-1 bg-emerald-500 rounded-full animate-pulse" />
-                                                            Live Web Source
+                                                            <div className="h-1 w-1 bg-emerald-500 rounded-full" />
+                                                            {ev.source === 'eventbrite' ? 'Eventbrite' : ev.source === 'ticketmaster' ? 'Ticketmaster' : 'RSS Feed'}
                                                         </Badge>
                                                     )}
                                                 </div>

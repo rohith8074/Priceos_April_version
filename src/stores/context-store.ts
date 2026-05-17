@@ -95,15 +95,20 @@ export const useContextStore = create<ContextStore>()(
           propertyId: null,
           propertyName: null,
           propertyCurrency: "AED",
+          calendarMetrics: null,
+          conversationSummary: null,
         }),
 
-      // Switch to specific property
+      // Switch to specific property — clear stale metrics immediately so the
+      // calendar doesn't flash the previous property's data during the fetch
       setPropertyContext: (id: string, name: string, currency?: string) =>
         set({
           contextType: "property",
           propertyId: id,
           propertyName: name,
           propertyCurrency: currency || "AED",
+          calendarMetrics: null,
+          conversationSummary: null,
         }),
     }),
     {

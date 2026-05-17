@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db/mongodb";
-import { Job, ChatMessage, Listing } from "@/lib/db/models";
+import { Job, ChatMessage } from "@/lib/db/models";
 import { callLyzrAgent } from "@/lib/services/lyzr";
+import { buildAgentContext } from "@/lib/agents/db-context-builder";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { message, sessionId, graphSessionId, orgId, listingId } = body;
+    const { message, sessionId, orgId, listingId } = body;
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -16,7 +17,6 @@ export async function POST(req: NextRequest) {
 
     const jobId = `job-global-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-    // Create the job immediately in "running" status
     await Job.create({
       jobId,
       status: "running",
@@ -28,34 +28,53 @@ export async function POST(req: NextRequest) {
     (async () => {
       try {
         await connectToDatabase();
-        
+
         const agentId = process.env.LYZR_DASHBOARD_AGENT_ID || "69df6b63fac6b1f936ca8e7b";
 
         let messageToSend = message;
+
         if (sessionId) {
           const priorCount = await ChatMessage.countDocuments({ sessionId });
+
           if (priorCount === 0) {
-            let propertyDetails = "";
-            if (listingId && listingId !== "portfolio_wide") {
-              const listing = await Listing.findById(listingId).lean();
-              if (listing) {
-                propertyDetails = `\n\n[PROPERTY_DATA]\n` +
-                  `- Name: ${(listing as any).name}\n` +
-                  `- Base Price: ${(listing as any).basePrice ?? (listing as any).price}\n` +
-                  `- City: ${(listing as any).city || "Dubai"}\n` +
-                  `- Area: ${(listing as any).area || "Dubai Marina"}\n` +
-                  `- Bedrooms: ${(listing as any).bedrooms || 1}\n` +
-                  `- Bathrooms: ${(listing as any).bathrooms || 1}`;
-              }
+            // Turn 1: inject full portfolio context.
+            // listingId null/undefined → buildAgentContext calls buildDashboardContext()
+            // which aggregates ALL properties: reservations, occupancy, channel mix,
+            // cancellation rate, upcoming events, per-property forward occupancy.
+            let fullContext = "";
+            const resolvedListingId = (listingId && listingId !== "portfolio_wide") ? listingId : null;
+
+            try {
+              fullContext = await buildAgentContext(
+                orgId || "priceos-user",
+                resolvedListingId,
+                undefined // dashboard context has no date restriction
+              );
+            } catch (ctxErr: any) {
+              console.warn(`[chat/global ${jobId}] buildAgentContext failed:`, ctxErr?.message);
+              fullContext = JSON.stringify({
+                note: "Portfolio context unavailable. Answer from general Dubai STR knowledge only.",
+              });
             }
-            messageToSend = `[SESSION_INIT]\norg_id: ${orgId || "priceos-user"}\nlisting_id: ${listingId || "portfolio_wide"}${propertyDetails}\n\nUser Request: ${message}`;
+
+            messageToSend = [
+              "[SESSION_INIT]",
+              `org_id: ${orgId || "priceos-user"}`,
+              `scope: ${resolvedListingId ? `property:${resolvedListingId}` : "portfolio_wide"}`,
+              "",
+              "FULL_CONTEXT:",
+              fullContext,
+              "",
+              "User Request:",
+              message,
+            ].join("\n");
           }
         }
-        
+
         const result = await callLyzrAgent(
           agentId,
           messageToSend,
-          "priceos-user",
+          orgId || "priceos-user",
           sessionId || jobId
         );
 
@@ -71,7 +90,7 @@ export async function POST(req: NextRequest) {
           await job.save();
         }
       } catch (bgErr: any) {
-        console.error(`[Background Job ${jobId}] Failed:`, bgErr);
+        console.error(`[Background Job ${jobId}] Dashboard agent error:`, bgErr);
         try {
           const job = await Job.findOne({ jobId });
           if (job) {

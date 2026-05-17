@@ -22,14 +22,24 @@ export async function GET(req: NextRequest) {
       role: { $in: ["user", "assistant"] },
     };
 
+    // Filter by sessionId prefix — encodes property + date range — so all past
+    // conversations for this scope appear regardless of when the chat was held.
+    // A createdAt filter would hide chats from previous days about a future window.
     if (propertyId && propertyId !== "null" && Types.ObjectId.isValid(propertyId)) {
-      match["context.propertyId"] = new Types.ObjectId(propertyId);
-    }
-
-    if (from || to) {
-      match.createdAt = {};
-      if (from) match.createdAt.$gte = new Date(from);
-      if (to) match.createdAt.$lte = new Date(`${to}T23:59:59.999Z`);
+      if (from && to) {
+        // Exact scope: property + date range (most common case)
+        match.sessionId = { $regex: `^property-${propertyId}-${from}-${to}` };
+      } else {
+        // Any conversation for this property
+        match.sessionId = { $regex: `^property-${propertyId}-` };
+      }
+    } else if (!propertyId || propertyId === "null") {
+      // Portfolio-level sessions
+      if (from && to) {
+        match.sessionId = { $regex: `^portfolio-${from}-${to}` };
+      } else {
+        match.sessionId = { $regex: `^portfolio-` };
+      }
     }
 
     const results = await ChatMessage.aggregate([

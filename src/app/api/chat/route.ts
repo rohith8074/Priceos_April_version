@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db/mongodb";
-import { Job, ChatMessage, Listing } from "@/lib/db/models";
+import { Job, ChatMessage } from "@/lib/db/models";
 import { callLyzrAgent } from "@/lib/services/lyzr";
+import mongoose from "mongoose";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { message, orgId, context, sessionId } = body;
+    const { message, orgId, context, sessionId, dateRange } = body;
 
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -16,7 +17,6 @@ export async function POST(req: NextRequest) {
 
     const jobId = `job-aria-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-    // Create the job immediately in "running" status
     await Job.create({
       jobId,
       status: "running",
@@ -29,29 +29,29 @@ export async function POST(req: NextRequest) {
       try {
         await connectToDatabase();
 
-        const agentId = "69998743f4d61186679a9515"; // Aria CRO Router Agent
+        // Aria Concierge — the fast Q&A persona that reads pre-computed analyses
+        // from AgentCache via tools. Falls back to the old CRO Router agent if
+        // the env var isn't configured (transitional safety).
+        const agentId =
+          process.env.Lyzr_Precompute_Agent_ID ||
+          process.env.LYZR_ARIA_CONCIERGE_AGENT_ID ||
+          "6a09d9428e3a6bafa13d8284";
 
-        // Check if this is the first message in the session
-        let messageToSend = message;
-        if (sessionId) {
-          const priorCount = await ChatMessage.countDocuments({ sessionId });
-          if (priorCount === 0) {
-            let propertyDetails = "";
-            if (context?.propertyId) {
-              const listing = await Listing.findById(context.propertyId).lean();
-              if (listing) {
-                propertyDetails = `\n\n[PROPERTY_DATA]\n` +
-                  `- Name: ${(listing as any).name}\n` +
-                  `- Base Price: ${(listing as any).basePrice ?? (listing as any).price}\n` +
-                  `- City: ${(listing as any).city || "Dubai"}\n` +
-                  `- Area: ${(listing as any).area || "Dubai Marina"}\n` +
-                  `- Bedrooms: ${(listing as any).bedrooms || 1}\n` +
-                  `- Bathrooms: ${(listing as any).bathrooms || 1}`;
-              }
-            }
-            messageToSend = `[SESSION_INIT]\norg_id: ${orgId || "priceos-user"}\nlisting_id: ${context?.propertyId || "portfolio_wide"}${propertyDetails}\n\nUser Request: ${message}`;
-          }
-        }
+        const listingId = context?.propertyId || null;
+        const fromStr = dateRange?.from || null;
+        const toStr = dateRange?.to || null;
+
+        // Aria Concierge's tools require dateFrom/dateTo to look up the right
+        // cache scope. The agent's system prompt expects this exact envelope.
+        const envelope = [
+          `org_id: ${orgId || "priceos-user"}`,
+          `listing_id: ${listingId || "portfolio"}`,
+          fromStr ? `date_from: ${fromStr}` : null,
+          toStr ? `date_to: ${toStr}` : null,
+          context?.propertyName ? `property_name: ${context.propertyName}` : null,
+          "",
+          `User Query: ${message}`,
+        ].filter(Boolean).join("\n");
 
         let systemVars: any = {};
         if (context) {
@@ -62,11 +62,31 @@ export async function POST(req: NextRequest) {
           };
         }
 
+        // Persist user message before calling Lyzr so history is recorded even on failure
+        const orgOid = orgId && mongoose.Types.ObjectId.isValid(orgId)
+          ? new mongoose.Types.ObjectId(orgId) : null;
+        const propertyOid = context?.propertyId && mongoose.Types.ObjectId.isValid(context.propertyId)
+          ? new mongoose.Types.ObjectId(context.propertyId) : null;
+        const msgContext = context?.type
+          ? { type: context.type as "portfolio" | "property", ...(propertyOid ? { propertyId: propertyOid } : {}) }
+          : undefined;
+        const effectiveSessionId = sessionId || jobId;
+
+        if (orgOid) {
+          await ChatMessage.create({
+            orgId: orgOid,
+            sessionId: effectiveSessionId,
+            role: "user",
+            content: message, // original user text, not the injected SESSION_INIT block
+            ...(msgContext ? { context: msgContext } : {}),
+          });
+        }
+
         const result = await callLyzrAgent(
           agentId,
-          messageToSend,
+          envelope,
           orgId || "priceos-user",
-          sessionId || jobId,
+          effectiveSessionId,
           systemVars
         );
 
@@ -78,6 +98,17 @@ export async function POST(req: NextRequest) {
               message: result.response,
               raw_json: result.parsedJson,
             };
+            // Persist assistant response so session history is queryable
+            if (orgOid) {
+              await ChatMessage.create({
+                orgId: orgOid,
+                sessionId: effectiveSessionId,
+                role: "assistant",
+                content: result.response,
+                ...(msgContext ? { context: msgContext } : {}),
+                ...(result.parsedJson ? { metadata: { parsedJson: result.parsedJson } } : {}),
+              });
+            }
           } else {
             job.status = "error";
             job.error = result.error || "Failed to execute agent request";

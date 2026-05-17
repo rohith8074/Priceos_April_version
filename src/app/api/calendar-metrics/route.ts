@@ -43,25 +43,33 @@ export async function GET(req: NextRequest) {
       InventoryMaster.find({ listingId: listingOid, date: { $gte: from, $lte: to } }).lean(),
     ]);
 
-    const bookedDays = invDocs.filter((d: any) => d.status === "booked").length;
-    const blockedDays = invDocs.filter((d: any) => d.status === "blocked").length;
-    const totalDays = invDocs.length;
-    const availableDays = Math.max(0, totalDays - bookedDays - blockedDays);
-    const invOccupancy = totalDays > 0 ? Math.round((bookedDays / totalDays) * 100) : 0;
-
-    // Reservation-based occupancy fallback (used when inventory has no booked records)
     const windowStart = from ? new Date(from) : new Date();
     const windowEnd = to ? new Date(to) : windowStart;
     const windowDays = Math.max(1, Math.ceil((windowEnd.getTime() - windowStart.getTime()) / 86_400_000) + 1);
-    let resBookedNights = 0;
+
+    // Build bookedDateSet first — used for both calendar visual AND occupancy %.
+    // Set-based deduplication prevents overlapping reservations from inflating the count.
+    const bookedDateSet = new Set<string>();
     for (const r of resDocs as any[]) {
-      const cin = r.checkIn > from ? r.checkIn : from;
-      const cout = r.checkOut < to ? r.checkOut : to;
-      if (cout > cin) {
-        resBookedNights += Math.ceil((new Date(cout).getTime() - new Date(cin).getTime()) / 86_400_000);
+      let cur = new Date(r.checkIn > from ? r.checkIn : from);
+      const resEnd = new Date(r.checkOut < to ? r.checkOut : to);
+      while (cur < resEnd) {
+        bookedDateSet.add(cur.toISOString().split("T")[0]);
+        cur.setDate(cur.getDate() + 1);
       }
     }
-    const resOccupancy = Math.min(100, Math.round((resBookedNights / windowDays) * 100));
+
+    const invBlockedDays = invDocs.filter((d: any) => d.status === "blocked").length;
+    const invBookedDays = invDocs.filter((d: any) => d.status === "booked").length;
+    const totalDays = invDocs.length;
+    // Inventory booked count: prefer reservation Set (avoids Hostaway calendar gaps)
+    const bookedDays = Math.max(invBookedDays, bookedDateSet.size);
+    const blockedDays = invBlockedDays;
+    const availableDays = Math.max(0, totalDays - bookedDays - blockedDays);
+
+    // Occupancy derived from reservation Set — exact unique booked dates, no double-count
+    const resOccupancy = Math.min(100, Math.round((bookedDateSet.size / windowDays) * 100));
+    const invOccupancy = totalDays > 0 ? Math.round((invBookedDays / totalDays) * 100) : 0;
     const occupancy = Math.max(invOccupancy, resOccupancy);
 
     // Average price: prefer InventoryMaster currentPrice, else listing base price
@@ -74,7 +82,7 @@ export async function GET(req: NextRequest) {
 
     const calendarDays = invDocs.map((d: any) => ({
       date: d.date,
-      status: d.status || "available",
+      status: bookedDateSet.has(d.date) ? "booked" : (d.status || "available"),
       price: Number(d.currentPrice || listing.price || 0)
     }));
 
@@ -85,7 +93,7 @@ export async function GET(req: NextRequest) {
         const ds = cur.toISOString().split("T")[0];
         calendarDays.push({
           date: ds,
-          status: "available",
+          status: bookedDateSet.has(ds) ? "booked" : "available",
           price: Number(listing.price || 0)
         });
         cur.setDate(cur.getDate() + 1);

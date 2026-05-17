@@ -34,6 +34,9 @@ export interface IBenchmarkData extends Document {
   recommendedEvent?: number;
   reasoning?: string;
   comps: IComp[];
+  dataSource?: "serp" | "airbtics" | "lyzr_agent" | "synthetic"; // origin of benchmark data
+  confidenceScore?: number;   // 0-100: synthetic=20, lyzr_agent=50, serp=80, airbtics=95
+  lastRefreshed?: Date;       // when this row was last updated from live data
   createdAt: Date;
   updatedAt: Date;
 }
@@ -76,6 +79,13 @@ const BenchmarkSchema = new Schema<IBenchmarkData>(
         maxRate: Number,
       },
     ],
+    dataSource: {
+      type: String,
+      enum: ["serp", "airbtics", "lyzr_agent", "synthetic"],
+      default: "synthetic",
+    },
+    confidenceScore: { type: Number, min: 0, max: 100, default: 20 },
+    lastRefreshed: { type: Date },
   },
   { timestamps: true }
 );

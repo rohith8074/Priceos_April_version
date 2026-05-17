@@ -148,75 +148,77 @@ Return factual booking intelligence derived from the data passed by the CRO Rout
 }
 ```
 
+
 ## Structured Output
+
+Always return ONLY the JSON object below — no markdown fences, no preamble, no commentary. This is your single response format. The Aria Concierge orchestrator caches this verbatim.
+
+### JSON schema
 
 ```json
 {
-  "name": "booking_intelligence_response",
-  "strict": true,
-  "schema": {
-    "type": "object",
-    "properties": {
-      "property_name": { "type": "string" },
-      "velocity": {
-        "type": "object",
-        "properties": {
-          "trend": { "type": "string", "enum": ["accelerating", "stable", "decelerating"] },
-          "total_booked_days": { "type": "integer" },
-          "total_available_days": { "type": "integer" },
-          "occupancy_pct": { "type": "number" },
-          "gross_revenue": { "type": "number" }
-        },
-        "required": ["trend", "total_booked_days", "total_available_days", "occupancy_pct", "gross_revenue"],
-        "additionalProperties": false
-      },
-      "length_of_stay": {
-        "type": "object",
-        "properties": {
-          "average_nights": { "type": "number" },
-          "buckets": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "range": { "type": "string" },
-                "count": { "type": "integer" },
-                "avg_price": { "type": "number" }
-              },
-              "required": ["range", "count", "avg_price"],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": ["average_nights", "buckets"],
-        "additionalProperties": false
-      },
-      "revenue": {
-        "type": "object",
-        "properties": {
-          "confirmed_gross": { "type": "number" },
-          "potential_revenue": { "type": "number" },
-          "avg_price_per_night": { "type": "number" }
-        },
-        "required": ["confirmed_gross", "potential_revenue", "avg_price_per_night"],
-        "additionalProperties": false
-      },
-      "day_of_week": {
-        "type": "object",
-        "properties": {
-          "weekend_avg_price": { "type": "number" },
-          "weekday_avg_price": { "type": "number" },
-          "weekend_premium_pct": { "type": "number" }
-        },
-        "required": ["weekend_avg_price", "weekday_avg_price", "weekend_premium_pct"],
-        "additionalProperties": false
-      },
-      "event_correlation": { "type": "string" },
-      "benchmark_comparison": { "type": "string" },
-      "summary": { "type": "string" }
-    },
-    "required": ["property_name", "velocity", "length_of_stay", "revenue", "day_of_week", "event_correlation", "benchmark_comparison", "summary"],
-    "additionalProperties": false
-  }
+  "summary": {
+    "total_bookings": "integer",
+    "confirmed": "integer",
+    "cancelled": "integer",
+    "checked_in": "integer",
+    "checked_out": "integer",
+    "cancellation_rate_pct": "number",
+    "avg_los_nights": "number",
+    "total_revenue_aed": "number",
+    "lost_revenue_aed": "number"
+  },
+  "channel_breakdown": [
+    {
+      "channel": "string",
+      "revenue_aed": "number",
+      "booking_count": "integer",
+      "share_pct": "number",
+      "avg_adr_aed": "number"
+    }
+  ],
+  "pacing": {
+    "next_7d_booked_pct": "number",
+    "next_30d_booked_pct": "number",
+    "wow_change_pct": "number",
+    "yoy_change_pct": "number | null"
+  },
+  "recent_bookings": [
+    {
+      "guest_name": "string",
+      "channel": "string",
+      "check_in": "YYYY-MM-DD",
+      "check_out": "YYYY-MM-DD",
+      "nights": "integer",
+      "revenue_aed": "number",
+      "lead_time_days": "integer",
+      "booking_value_tier": "high | mid | low"
+    }
+  ],
+  "recent_cancellations": [
+    {
+      "guest_name": "string",
+      "channel": "string",
+      "original_check_in": "YYYY-MM-DD",
+      "original_check_out": "YYYY-MM-DD",
+      "lost_revenue_aed": "number",
+      "days_before_arrival": "integer"
+    }
+  ],
+  "behavioral_patterns": [
+    {
+      "pattern": "string",
+      "evidence_count": "integer",
+      "significance": "high | medium | low"
+    }
+  ],
+  "data_warnings": ["string"]
 }
 ```
+
+### Rules
+- Return JSON only — no markdown fences, no commentary.
+- Include every booking in `recent_bookings` and every cancellation in `recent_cancellations` (no truncation). Aria Concierge needs the full set.
+- Always include `pacing` even if values are 0/null when data is sparse.
+- If a tool errors, set numeric fields to 0, array fields to [], and add an explanation to `data_warnings[]`.
+- Do not invent values.

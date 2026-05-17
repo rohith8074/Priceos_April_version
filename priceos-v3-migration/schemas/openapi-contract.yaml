@@ -1,0 +1,588 @@
+openapi: 3.0.3
+info:
+  title: PriceOS v3 Service API
+  version: 3.0.0
+  description: |
+    Python service that backs PriceOS v3. Lyzr agents call these endpoints
+    as tools. See /04-lyzr-agent-changes.md for which agent calls which endpoint.
+
+servers:
+  - url: https://api.priceos.io/v3
+    description: Production
+  - url: https://api-staging.priceos.io/v3
+    description: Staging
+
+security:
+  - apiKey: []
+
+paths:
+  /audit/log_decision:
+    post:
+      summary: Log an agent decision
+      description: Every Lyzr agent calls this as the final tool before returning.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditLogRequest'
+      responses:
+        '200':
+          description: Logged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogResponse'
+
+  /audit/replay:
+    post:
+      summary: Re-invoke a decision with overrides
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplayRequest'
+      responses:
+        '200':
+          description: Replay result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplayResponse'
+
+  /elasticity/predict:
+    post:
+      summary: Predict P(book) for candidate prices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ElasticityPredictRequest'
+      responses:
+        '200':
+          description: Predictions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ElasticityPredictResponse'
+
+  /elasticity/update:
+    post:
+      summary: Online Bayesian update from recent outcomes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                since:
+                  type: string
+                  format: date-time
+                scope:
+                  type: string
+      responses:
+        '200':
+          description: Update summary
+
+  /exploration/select:
+    post:
+      summary: Bandit arm selection for unbooked nights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExplorationSelectRequest'
+      responses:
+        '200':
+          description: Selected arm
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExplorationSelectResponse'
+
+  /regime/classify:
+    get:
+      summary: Daily regime score per city
+      parameters:
+        - name: city
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Regime state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegimeState'
+
+  /source_market/get_modifier:
+    post:
+      summary: Property-specific demand modifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                property_id:
+                  type: string
+                  format: uuid
+                target_date:
+                  type: string
+                  format: date
+              required: [property_id, target_date]
+      responses:
+        '200':
+          description: Modifier with breakdown
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceMarketModifier'
+
+  /comps/get_state:
+    post:
+      summary: Live comp set state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                property_id:
+                  type: string
+                  format: uuid
+                target_window:
+                  $ref: '#/components/schemas/DateRange'
+              required: [property_id, target_window]
+      responses:
+        '200':
+          description: Comp set state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompSetState'
+
+  /events/get_validated:
+    post:
+      summary: Verified events with confidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                city:
+                  type: string
+                target_window:
+                  $ref: '#/components/schemas/DateRange'
+                min_confidence:
+                  type: number
+                  default: 0.6
+              required: [city, target_window]
+      responses:
+        '200':
+          description: Validated events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ValidatedEvent'
+
+  /guest_signals/get_summary:
+    post:
+      summary: Trailing guest sentiment per property
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                property_id:
+                  type: string
+                  format: uuid
+                window_days:
+                  type: integer
+                  default: 30
+              required: [property_id]
+      responses:
+        '200':
+          description: Guest signal summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GuestSignalSummary'
+
+  /rm/queue:
+    get:
+      summary: RM dashboard queue
+      parameters:
+        - name: rm_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Queue payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RmQueue'
+
+  /rm/action:
+    post:
+      summary: Record an RM action
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RmAction'
+      responses:
+        '200':
+          description: Action applied
+
+  /backtest/run:
+    post:
+      summary: Run agent against history
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scope:
+                  type: string
+                window:
+                  $ref: '#/components/schemas/DateRange'
+                config_overrides:
+                  type: object
+              required: [scope, window]
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run_id:
+                    type: string
+                  status:
+                    type: string
+                  eta_minutes:
+                    type: integer
+
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    DateRange:
+      type: object
+      properties:
+        start:
+          type: string
+          format: date
+        end:
+          type: string
+          format: date
+
+    AuditLogRequest:
+      type: object
+      properties:
+        decision_id:
+          type: string
+          format: uuid
+        parent_decision_id:
+          type: string
+          format: uuid
+        property_id:
+          type: string
+          format: uuid
+        agent_name:
+          type: string
+        agent_version:
+          type: string
+        prompt_hash:
+          type: string
+        model:
+          type: string
+        temperature:
+          type: number
+        snapshot_id:
+          type: string
+          format: uuid
+        inputs:
+          type: object
+        outputs:
+          type: object
+        tool_calls:
+          type: array
+        duration_ms:
+          type: integer
+        trigger:
+          type: string
+          enum: [live, backtest, replay, shadow]
+      required: [decision_id, property_id, agent_name, agent_version, prompt_hash, model, temperature, inputs, outputs, trigger]
+
+    AuditLogResponse:
+      type: object
+      properties:
+        decision_id:
+          type: string
+        status:
+          type: string
+
+    ReplayRequest:
+      type: object
+      properties:
+        decision_id:
+          type: string
+          format: uuid
+        overrides:
+          type: object
+        mode:
+          type: string
+          enum: [shadow, backtest, sandbox]
+      required: [decision_id, mode]
+
+    ReplayResponse:
+      type: object
+      properties:
+        replay_decision_id:
+          type: string
+        original:
+          type: object
+        replayed:
+          type: object
+        diff:
+          type: object
+
+    ElasticityPredictRequest:
+      type: object
+      properties:
+        property_id:
+          type: string
+          format: uuid
+        target_date:
+          type: string
+          format: date
+        candidate_prices:
+          type: array
+          items:
+            type: number
+        features:
+          type: object
+      required: [property_id, target_date, candidate_prices, features]
+
+    ElasticityPredictResponse:
+      type: object
+      properties:
+        predictions:
+          type: array
+          items:
+            type: object
+            properties:
+              price:
+                type: number
+              p_book:
+                type: number
+              expected_revpar:
+                type: number
+              ci_95:
+                type: array
+                items:
+                  type: number
+        model_version:
+          type: string
+        posterior_age:
+          type: string
+        sample_size:
+          type: integer
+
+    ExplorationSelectRequest:
+      type: object
+      properties:
+        property_id:
+          type: string
+        target_date:
+          type: string
+          format: date
+        exploit_choice:
+          type: object
+        exploration_budget_remaining:
+          type: number
+        lead_time_days:
+          type: integer
+      required: [property_id, target_date, exploit_choice, exploration_budget_remaining]
+
+    ExplorationSelectResponse:
+      type: object
+      properties:
+        chosen_price:
+          type: number
+        is_exploration:
+          type: boolean
+        rationale:
+          type: string
+        expected_information_gain:
+          type: number
+        exploit_alternative:
+          type: object
+
+    RegimeState:
+      type: object
+      properties:
+        city:
+          type: string
+        as_of:
+          type: string
+          format: date-time
+        regime_score:
+          type: number
+        regime_label:
+          type: string
+        trend:
+          type: string
+        confidence:
+          type: number
+        per_source_market:
+          type: object
+        feature_contributions:
+          type: array
+        data_freshness:
+          type: object
+
+    SourceMarketModifier:
+      type: object
+      properties:
+        modifier:
+          type: number
+        breakdown:
+          type: array
+        notes:
+          type: string
+        cluster_id:
+          type: string
+        mix_window_days:
+          type: integer
+
+    CompSetState:
+      type: object
+      properties:
+        comp_set_size:
+          type: integer
+        by_target_date:
+          type: array
+        wow_change_pct:
+          type: number
+        movers:
+          type: array
+          items:
+            type: string
+
+    ValidatedEvent:
+      type: object
+      properties:
+        event_id:
+          type: string
+        name:
+          type: string
+        start_date:
+          type: string
+        end_date:
+          type: string
+        category:
+          type: string
+        expected_premium_low:
+          type: number
+        expected_premium_high:
+          type: number
+        applicable_areas:
+          type: array
+          items:
+            type: string
+        confidence:
+          type: number
+        verification_status:
+          type: string
+        source_urls:
+          type: array
+          items:
+            type: string
+
+    GuestSignalSummary:
+      type: object
+      properties:
+        sentiment_score:
+          type: number
+        thread_count:
+          type: integer
+        complaint_categories:
+          type: object
+        positive_themes:
+          type: array
+          items:
+            type: string
+        recurring_themes:
+          type: array
+          items:
+            type: string
+        trend:
+          type: string
+
+    RmQueue:
+      type: object
+      properties:
+        active:
+          type: array
+        watch:
+          type: array
+        routine_summary:
+          type: object
+        sidebar:
+          type: object
+
+    RmAction:
+      type: object
+      properties:
+        rm_id:
+          type: string
+        decision_id:
+          type: string
+        action:
+          type: string
+          enum: [approve_proposed, approve_runner_up, modify, reject, rollback, dismiss, escalate_to_owner]
+        modified_price:
+          type: number
+        modified_min_stay:
+          type: integer
+        rationale:
+          type: string
+      required: [rm_id, decision_id, action]

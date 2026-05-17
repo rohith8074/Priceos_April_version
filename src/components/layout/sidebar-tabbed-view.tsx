@@ -5,7 +5,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MarketEventsTable } from "@/components/events/market-events-table";
 import { BenchmarkWidget } from "@/components/signals/benchmark-widget";
 import { MarketOverviewWidget } from "@/components/signals/market-overview-widget";
-import { DemandPacingWidget } from "@/components/signals/demand-pacing-widget";
 import { CalendarVisualizer } from "@/components/chat/calendar-visualizer";
 import { useContextStore } from "@/stores/context-store";
 import {
@@ -66,13 +65,17 @@ export function SidebarTabbedView() {
     const [conversations, setConversations] = useState<SimulatedConversation[]>(mockConversations);
 
     useEffect(() => {
+        if (contextType !== "property" || !propertyId || !dateRange?.from || !dateRange?.to) {
+            return;
+        }
+        // Clear stale data immediately so the previous property's calendar
+        // doesn't show while the new fetch is in flight
+        setCalendarMetrics(null);
+
         const fetchMetrics = async () => {
-            if (contextType !== "property" || !propertyId || !dateRange?.from || !dateRange?.to) {
-                return;
-            }
             try {
-                const from = format(dateRange.from, "yyyy-MM-dd");
-                const to = format(dateRange.to, "yyyy-MM-dd");
+                const from = format(dateRange.from!, "yyyy-MM-dd");
+                const to = format(dateRange.to!, "yyyy-MM-dd");
                 const res = await fetch(`/api/calendar-metrics?listingId=${propertyId}&from=${from}&to=${to}`);
                 if (res.ok) {
                     const data = await res.json();
@@ -251,12 +254,8 @@ export function SidebarTabbedView() {
                             <MarketEventsTable />
                             <div className="px-3 pb-3 mt-3">
                                 <MarketOverviewWidget
+                                    listingId={propertyId ?? null}
                                     month={dateRange?.from ? format(dateRange.from, "yyyy-MM") : format(new Date(), "yyyy-MM")}
-                                    currency={propertyCurrency}
-                                />
-                                <DemandPacingWidget
-                                    dateFrom={dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : null}
-                                    dateTo={dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : null}
                                     currency={propertyCurrency}
                                 />
                                 <BenchmarkWidget

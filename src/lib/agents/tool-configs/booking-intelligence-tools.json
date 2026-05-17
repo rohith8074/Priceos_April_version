@@ -1,0 +1,147 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PriceOS Booking Intelligence Agent Tools",
+    "version": "1.0.0",
+    "description": "Tools for the Booking Intelligence sub-agent. Fetches reservation data for pattern analysis: lead times, channel mix, length of stay, and cancellation rates. All responses use the standard envelope: { status, data, metadata }."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/get-property-reservations": {
+      "get": {
+        "operationId": "get_property_reservations",
+        "summary": "Confirmed reservations for a listing",
+        "description": "Fetches all confirmed reservations for a listing within the specified date window. Each reservation includes guest name, booking channel, check-in/check-out dates, nights, total price, booking date (for lead time calculation), and cancellation status. Call this once per task — derive all metrics (lead time, channel mix, LOS) from the single response.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the organization",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the listing",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "description": "Include reservations with checkIn on or after this date (YYYY-MM-DD)",
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-06-01" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "description": "Include reservations with checkIn on or before this date (YYYY-MM-DD)",
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-06-30" }
+          },
+          {
+            "name": "includeCancelled",
+            "in": "query",
+            "required": false,
+            "description": "If true, includes cancelled reservations for cancellation rate calculation. Default: false.",
+            "schema": { "type": "boolean", "default": false }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array of reservation records for the window",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReservationsResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiMetadata": {
+        "type": "object",
+        "properties": {
+          "requestId": { "type": "string", "example": "req_a1b2c3d4e5f6" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ReservationsResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": { "$ref": "#/components/schemas/ReservationsData" },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "ReservationsData": {
+        "type": "object",
+        "properties": {
+          "totalCount": { "type": "integer", "example": 12 },
+          "confirmedCount": { "type": "integer", "example": 10 },
+          "cancelledCount": { "type": "integer", "description": "Only populated if includeCancelled=true", "example": 2 },
+          "reservations": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Reservation" }
+          }
+        }
+      },
+      "Reservation": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string", "example": "69d776a671c7b939aaf49060" },
+          "guestName": { "type": "string", "example": "Sarah Mitchell" },
+          "channel": { "type": "string", "enum": ["Airbnb", "Booking.com", "Direct", "VRBO", "Expedia", "Hostaway", "Other"], "example": "Airbnb" },
+          "checkIn": { "type": "string", "format": "date", "example": "2026-06-10" },
+          "checkOut": { "type": "string", "format": "date", "example": "2026-06-13" },
+          "nights": { "type": "integer", "example": 3 },
+          "totalPrice": { "type": "number", "format": "double", "description": "Total reservation revenue in AED", "example": 1860 },
+          "avgNightlyRate": { "type": "number", "format": "double", "description": "totalPrice / nights in AED", "example": 620 },
+          "bookingDate": { "type": "string", "format": "date", "description": "Date reservation was created — used to compute lead time (checkIn − bookingDate)", "example": "2026-05-24" },
+          "leadTimeDays": { "type": "integer", "description": "Days between bookingDate and checkIn", "example": 17 },
+          "status": { "type": "string", "enum": ["confirmed", "cancelled", "pending"], "example": "confirmed" },
+          "cancellationDate": { "type": "string", "format": "date", "nullable": true, "example": null }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid or missing query parameters",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["error"] },
+                "error": { "type": "object", "properties": { "code": { "type": "string", "example": "VALIDATION_ERROR" }, "message": { "type": "string", "example": "listingId is required" } } }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Listing or organization not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["error"] },
+                "error": { "type": "object", "properties": { "code": { "type": "string", "example": "NOT_FOUND" }, "message": { "type": "string", "example": "Listing not found" } } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

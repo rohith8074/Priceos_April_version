@@ -2,5 +2,19 @@
     "framework": "nextjs",
     "buildCommand": "npm run build",
     "installCommand": "npm install",
-    "outputDirectory": ".next"
+    "outputDirectory": ".next",
+    "crons": [
+        {
+            "path": "/api/cron/sync-events",
+            "schedule": "0 */4 * * *"
+        },
+        {
+            "path": "/api/cron/sync-news",
+            "schedule": "0 */6 * * *"
+        },
+        {
+            "path": "/api/cron/sync-comp-listings",
+            "schedule": "0 2 * * *"
+        }
+    ]
 }

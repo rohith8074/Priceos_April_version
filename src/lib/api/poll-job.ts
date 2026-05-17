@@ -23,7 +23,7 @@ export async function pollJob<T = Record<string, unknown>>(
     onPoll?: (elapsedMs: number) => void;
   } = {}
 ): Promise<T> {
-  const { intervalMs = 2000, timeoutMs = 120_000, onPoll } = options;
+  const { intervalMs = 5000, timeoutMs = 540_000, onPoll } = options;
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
@@ -46,5 +46,5 @@ export async function pollJob<T = Record<string, unknown>>(
     onPoll?.(Date.now() - (deadline - timeoutMs));
   }
 
-  throw new Error("Agent timed out — please try again");
+  throw new Error("Analysis is taking longer than expected (9 min limit). The agent may still be running — please try again in a moment.");
 }

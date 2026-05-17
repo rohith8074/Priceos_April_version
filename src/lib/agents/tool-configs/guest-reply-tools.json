@@ -1,0 +1,605 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PriceOS Guest Reply Agent (Maya) Tools",
+    "version": "1.0.0",
+    "description": "Tools for Maya, the Guest Reply Agent. Always classify guest intent first, then call only the tools needed for that intent. All responses use the standard envelope: { status, data, metadata }."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/read-thread": {
+      "get": {
+        "operationId": "read_thread",
+        "summary": "Fetch full reservation thread and comms state",
+        "description": "Fetches the complete reservation record for a guest thread: guest details, check-in/check-out dates, door access code, building access code, wifi password, house rules, and comms_state (active/paused/blocked). Always call this FIRST — comms_state determines whether you can send a reply at all.",
+        "parameters": [
+          {
+            "name": "threadId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the GuestThread",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full thread record with reservation details and access codes",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReadThreadResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/send-guest-message": {
+      "post": {
+        "operationId": "send_guest_message",
+        "summary": "Send a reply to the guest via Hostaway",
+        "description": "Sends the drafted reply to the guest via Hostaway. Only call when comms_state = 'active'. Do NOT call when comms_state = 'paused' (draft only) or 'blocked' (escalate instead).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SendGuestMessageRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message sent successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SendMessageResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "422": { "$ref": "#/components/responses/CommsPaused" }
+        }
+      }
+    },
+    "/create-ops-ticket": {
+      "post": {
+        "operationId": "create_ops_ticket",
+        "summary": "Create a maintenance or ops ticket",
+        "description": "Creates a task ticket for maintenance, cleaning, or appliance issues. Always create a ticket AND send an acknowledgement to the guest. Use priority='urgent' for AC failures in Jun–Aug (Dubai summer heat).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateOpsTicketRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ticket created successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreateOpsTicketResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/escalate-thread": {
+      "post": {
+        "operationId": "escalate_thread",
+        "summary": "Escalate thread to human property manager",
+        "description": "Flags the thread for immediate human manager review and sends the guest a holding message. Use for: refund demands, legal threats, abusive guests, repeated unresolved complaints, or comms_state = 'blocked'.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/EscalateThreadRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Thread escalated successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EscalateThreadResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/send-access-details": {
+      "post": {
+        "operationId": "send_access_details",
+        "summary": "Send check-in instructions and access codes to the guest",
+        "description": "Fetches the guest's door code, building access code, wifi password, and check-in instructions from the reservation record, then sends them to the guest. Use for check-in questions and access code requests. Do NOT call more than once per conversation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SendAccessDetailsRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Access details sent to guest",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SendAccessDetailsResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/get-property-data": {
+      "get": {
+        "operationId": "get_property_data",
+        "summary": "Fetch specific property information",
+        "description": "Fetches a specific property data field — amenities, house rules, pool/gym/parking info, pet policy, noise policy, or checkout procedure. Use only when the thread data from read-thread does not already contain the answer.",
+        "parameters": [
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the listing",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "field",
+            "in": "query",
+            "required": true,
+            "description": "The specific property data field to fetch",
+            "schema": {
+              "type": "string",
+              "enum": ["amenities", "house_rules", "pool_info", "gym_info", "parking_info", "pet_policy", "noise_policy", "checkout_procedure", "wifi_info", "all"],
+              "example": "amenities"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Property data for the requested field",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PropertyDataResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/send-upsell-offer": {
+      "post": {
+        "operationId": "send_upsell_offer",
+        "summary": "Send an upsell offer to the guest",
+        "description": "Sends a pre-formatted upsell offer. Use only when the guest explicitly asks about early check-in, late check-out, or extending their stay. Check availability in thread data first.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SendUpsellOfferRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upsell offer sent to guest",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SendUpsellOfferResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/list-guest-conversations": {
+      "get": {
+        "operationId": "list_guest_conversations",
+        "summary": "List all conversation threads for a property",
+        "description": "Returns all conversation threads for a property. Use to check prior contact history when the guest references a previous issue or repeats a complaint. Not needed for first-contact messages.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the organization",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the listing",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of conversation threads for the property",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GuestConversationsResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/get-guest-summary": {
+      "get": {
+        "operationId": "get_guest_summary",
+        "summary": "AI-generated guest sentiment summary",
+        "description": "Returns an AI-generated sentiment summary and action items across all guest conversations for a property in a date range. Portfolio review tool — use when the manager asks for a sentiment overview, NOT for individual guest reply tasks.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the organization",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the listing",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "description": "Start of the analysis window (YYYY-MM-DD)",
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-05-01" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "description": "End of the analysis window (YYYY-MM-DD)",
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-05-31" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Guest sentiment summary and action items",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/GuestSummaryResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiMetadata": {
+        "type": "object",
+        "properties": {
+          "requestId": { "type": "string", "example": "req_a1b2c3d4e5f6" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "ReadThreadResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": { "$ref": "#/components/schemas/ThreadData" },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "ThreadData": {
+        "type": "object",
+        "properties": {
+          "threadId": { "type": "string" },
+          "commsState": { "type": "string", "enum": ["active", "paused", "blocked"], "description": "active = send, paused = draft only, blocked = escalate immediately" },
+          "hostawayConversationId": { "type": "string" },
+          "guestName": { "type": "string", "example": "Ahmed Al Mansouri" },
+          "channel": { "type": "string", "example": "Airbnb" },
+          "reservation": { "$ref": "#/components/schemas/ReservationDetails" },
+          "property": { "$ref": "#/components/schemas/PropertyDetails" },
+          "accessCodes": { "$ref": "#/components/schemas/AccessCodes" },
+          "houseRules": { "type": "string" },
+          "messages": {
+            "type": "array",
+            "description": "Last 10 messages in the thread (newest last)",
+            "items": { "$ref": "#/components/schemas/ThreadMessage" }
+          }
+        }
+      },
+      "ReservationDetails": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string" },
+          "checkIn": { "type": "string", "format": "date", "example": "2026-06-10" },
+          "checkOut": { "type": "string", "format": "date", "example": "2026-06-13" },
+          "nights": { "type": "integer", "example": 3 },
+          "totalPrice": { "type": "number", "format": "double", "example": 1860 },
+          "status": { "type": "string", "enum": ["confirmed", "checked_in", "checked_out", "cancelled"] }
+        }
+      },
+      "PropertyDetails": {
+        "type": "object",
+        "properties": {
+          "listingId": { "type": "string" },
+          "name": { "type": "string", "example": "Marina Heights 1BR" },
+          "area": { "type": "string", "example": "Dubai Marina" },
+          "address": { "type": "string", "example": "Marina Walk, Building 5, Apt 1204" }
+        }
+      },
+      "AccessCodes": {
+        "type": "object",
+        "description": "Guest access credentials — never invent these; always fetch from read-thread",
+        "properties": {
+          "doorCode": { "type": "string", "nullable": true, "example": "1847#" },
+          "buildingCode": { "type": "string", "nullable": true, "example": "4521" },
+          "wifiName": { "type": "string", "nullable": true, "example": "MarinaHeights_Guest" },
+          "wifiPassword": { "type": "string", "nullable": true, "example": "Welcome2026!" },
+          "parkingSpace": { "type": "string", "nullable": true, "example": "Level B1, Space 14" },
+          "additionalInstructions": { "type": "string", "nullable": true }
+        }
+      },
+      "ThreadMessage": {
+        "type": "object",
+        "properties": {
+          "direction": { "type": "string", "enum": ["inbound", "outbound"] },
+          "content": { "type": "string" },
+          "sender": { "type": "string" },
+          "handledBy": { "type": "string", "enum": ["ai", "human", "reservation_agent"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SendGuestMessageRequest": {
+        "type": "object",
+        "required": ["threadId", "message"],
+        "properties": {
+          "threadId": { "type": "string" },
+          "message": { "type": "string", "description": "Reply text — 2–4 sentences, warm and professional" }
+        }
+      },
+      "SendMessageResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sent": { "type": "boolean", "example": true },
+              "hostawayMessageId": { "type": "string", "nullable": true },
+              "deliveredAt": { "type": "string", "format": "date-time" }
+            }
+          },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "CreateOpsTicketRequest": {
+        "type": "object",
+        "required": ["listingId", "category", "description", "priority"],
+        "properties": {
+          "listingId": { "type": "string" },
+          "category": { "type": "string", "enum": ["maintenance", "cleaning", "appliance", "plumbing", "electrical", "other"] },
+          "description": { "type": "string", "example": "Guest reports AC not working. Outside temp 42°C." },
+          "priority": { "type": "string", "enum": ["low", "medium", "high", "urgent"], "description": "Use 'urgent' for AC failures in Jun–Aug or any safety issue" },
+          "guestName": { "type": "string", "nullable": true },
+          "threadId": { "type": "string", "nullable": true }
+        }
+      },
+      "CreateOpsTicketResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": {
+            "type": "object",
+            "properties": {
+              "ticketId": { "type": "string", "example": "TASK-2847" },
+              "priority": { "type": "string", "example": "urgent" },
+              "estimatedResponseMinutes": { "type": "integer", "nullable": true, "example": 90 }
+            }
+          },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "EscalateThreadRequest": {
+        "type": "object",
+        "required": ["threadId", "reason"],
+        "properties": {
+          "threadId": { "type": "string" },
+          "reason": { "type": "string", "enum": ["refund_demand", "legal_threat", "abusive_guest", "repeated_complaint", "comms_blocked", "manager_requested"] },
+          "notes": { "type": "string", "nullable": true }
+        }
+      },
+      "EscalateThreadResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": {
+            "type": "object",
+            "properties": {
+              "escalated": { "type": "boolean", "example": true },
+              "managerNotified": { "type": "boolean", "example": true },
+              "holdingMessageSent": { "type": "boolean", "example": true }
+            }
+          },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "SendAccessDetailsRequest": {
+        "type": "object",
+        "required": ["threadId"],
+        "properties": {
+          "threadId": { "type": "string" }
+        }
+      },
+      "SendAccessDetailsResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": {
+            "type": "object",
+            "properties": {
+              "sent": { "type": "boolean", "example": true },
+              "fieldsIncluded": { "type": "array", "items": { "type": "string" }, "example": ["doorCode", "buildingCode", "wifiName", "wifiPassword"] }
+            }
+          },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "PropertyDataResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": {
+            "type": "object",
+            "properties": {
+              "field": { "type": "string", "example": "amenities" },
+              "value": { "description": "String for text fields, array for amenities", "example": ["Pool", "Gym", "Parking", "WiFi"] }
+            }
+          },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "SendUpsellOfferRequest": {
+        "type": "object",
+        "required": ["threadId", "offerType"],
+        "properties": {
+          "threadId": { "type": "string" },
+          "offerType": { "type": "string", "enum": ["early_check_in", "late_check_out", "extension"] }
+        }
+      },
+      "SendUpsellOfferResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": {
+            "type": "object",
+            "properties": {
+              "offerSent": { "type": "boolean", "example": true },
+              "offerType": { "type": "string", "example": "late_check_out" },
+              "priceQuoted": { "type": "number", "format": "double", "nullable": true, "description": "Additional cost in AED", "example": 200 },
+              "availability": { "type": "boolean", "example": true }
+            }
+          },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "GuestConversationsResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": {
+            "type": "object",
+            "properties": {
+              "totalThreads": { "type": "integer", "example": 5 },
+              "threads": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "threadId": { "type": "string" },
+                    "guestName": { "type": "string" },
+                    "channel": { "type": "string" },
+                    "checkIn": { "type": "string", "format": "date" },
+                    "checkOut": { "type": "string", "format": "date" },
+                    "status": { "type": "string", "enum": ["open", "closed", "escalated"] },
+                    "lastMessageAt": { "type": "string", "format": "date-time" },
+                    "messageCount": { "type": "integer" },
+                    "hasUnresolvedIssue": { "type": "boolean" }
+                  }
+                }
+              }
+            }
+          },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "GuestSummaryResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": {
+            "type": "object",
+            "properties": {
+              "totalConversations": { "type": "integer", "example": 8 },
+              "overallSentiment": { "type": "string", "enum": ["positive", "neutral", "mixed", "negative"] },
+              "sentimentBreakdown": {
+                "type": "object",
+                "properties": {
+                  "positive": { "type": "integer" },
+                  "neutral": { "type": "integer" },
+                  "negative": { "type": "integer" }
+                }
+              },
+              "topIssues": { "type": "array", "items": { "type": "string" }, "example": ["AC noise (2 guests)", "Slow WiFi (1 guest)"] },
+              "actionItems": { "type": "array", "items": { "type": "string" } },
+              "summary": { "type": "string" }
+            }
+          },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid or missing parameters",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["error"] },
+                "error": { "type": "object", "properties": { "code": { "type": "string", "example": "VALIDATION_ERROR" }, "message": { "type": "string" } } }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Thread, listing, or organization not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["error"] },
+                "error": { "type": "object", "properties": { "code": { "type": "string", "example": "NOT_FOUND" }, "message": { "type": "string" } } }
+              }
+            }
+          }
+        }
+      },
+      "CommsPaused": {
+        "description": "Cannot send — comms_state is paused or blocked",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["error"] },
+                "error": { "type": "object", "properties": { "code": { "type": "string", "example": "COMMS_PAUSED" }, "message": { "type": "string", "example": "Comms paused by manager — draft only, do not send." } } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

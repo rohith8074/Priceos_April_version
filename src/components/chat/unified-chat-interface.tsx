@@ -432,118 +432,124 @@ export function UnifiedChatInterface({ properties: _properties, orgId }: Props) 
     fetchMetrics();
   }, [contextType, propertyId, dateRange?.from?.getTime(), dateRange?.to?.getTime(), setGlobalMetrics]);
 
+  /**
+   * Refresh Intelligence — kicks off the precompute orchestrator that runs the
+   * five worker agents (PropertyAnalyst + BookingIntelligence + MarketResearch
+   * in parallel, then PriceGuard, then AnomalyDetector). Cached for 4 hours
+   * per (property + date range). On a fresh cache hit this returns instantly.
+   *
+   * Chat input enables as soon as the core three agents are ready
+   * (`corePhaseReady`) — PriceGuard and Anomaly fill in progressively.
+   */
   const handleMarketSetup = async () => {
-    if (isSettingUp || !dateRange?.from || !dateRange?.to) return;
-
-    // Guardrails are no longer a blocker — Agent 10 will set them if they are 0!
+    if (isSettingUp || !dateRange?.from || !dateRange?.to || !propertyId) return;
 
     setIsSettingUp(true);
     useContextStore.getState().setIsMarketAnalysisRunning(true);
 
-    toast("Initializing Aria...", {
-      description: "Setting up research agents for your location...",
+    const dateFromStr = format(dateRange.from, "yyyy-MM-dd");
+    const dateToStr = format(dateRange.to, "yyyy-MM-dd");
+
+    toast("Warming intelligence...", {
+      description: "Running property, booking, and market analysis in parallel.",
     });
 
     try {
-      // Simulate multiple toast stages for better UX since it takes a few seconds
-      setTimeout(() => {
-        if (useContextStore.getState().isMarketAnalysisRunning) {
-          toast("Searching Internet...", {
-            description: "Scanning for global events, holidays, and competitor rates...",
-          });
-        }
-      }, 3000);
-
-      setTimeout(() => {
-        if (useContextStore.getState().isMarketAnalysisRunning) {
-          toast("Benchmarking...", {
-            description: "Calculating market percentiles and price positioning...",
-          });
-        }
-      }, 7000);
-
-      const response = await fetch("/api/market-setup", {
+      const startRes = await fetch("/api/precompute-property", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orgId,
-          dateRange: {
-            from: format(dateRange.from, "yyyy-MM-dd"),
-            to: format(dateRange.to, "yyyy-MM-dd"),
-          },
-          context: {
-            type: contextType,
-            propertyId,
-            propertyName,
-          },
+          listingId: propertyId,
+          dateFrom: dateFromStr,
+          dateTo: dateToStr,
         }),
       });
 
-      const data = await response.json();
+      const startData = await startRes.json();
+      if (!startRes.ok) throw new Error(startData.error || "Failed to start precompute");
 
-      if (!response.ok) {
-        if (data.error?.includes("403") || data.error?.includes("permission")) {
-          throw new Error("Lyzr Permission Error: Your API key doesn't have permission to access this Agent.");
-        }
-        throw new Error(data.error || "Analysis failed");
-      }
+      const jobId: string = startData.jobId;
+      const cacheHit: boolean = !!startData.cacheHit;
 
-      // ── New Lyzr thread for this property + date range (keeps history of older threads in DB) ──
-      const newFrom = format(dateRange.from, "yyyy-MM-dd");
-      const newTo = format(dateRange.to, "yyyy-MM-dd");
-      const baseScopeId = buildBaseScopeId(propertyId || undefined, newFrom, newTo);
+      // Activate chat session immediately — backend will respond as data lands
+      const baseScopeId = buildBaseScopeId(propertyId || undefined, dateFromStr, dateToStr);
       const newSessionId = generateThreadSessionId(baseScopeId);
-
       setMessages([]);
       setSessionId(newSessionId);
       writeThreadPref(baseScopeId, newSessionId);
       ariaReadyScopeRef.current = baseScopeId;
       writeAriaReadyToStorage(baseScopeId);
-      setIsChatActive(true);
       setChatSessions((prev) => [
         { sessionId: newSessionId, lastMessageAt: new Date().toISOString(), messageCount: 0 },
         ...prev.filter((s) => s.sessionId !== newSessionId),
       ]);
 
-      console.log("🔍 Market Analysis Data Received:", {
-        eventsCount: data.eventsCount,
-        hasTrace: !!data.sqlTrace,
-        traceLength: data.sqlTrace?.length
-      });
-
-      // ── TECHNICAL PIPELINE TRACE ──
-      // Log to console for debugging, don't clutter the chat UI
-      if (data.sqlTrace && data.sqlTrace.length > 0) {
-        console.log(`🛠️ [Data Pipeline] ${data.sqlTrace.length} queries executed:`);
-        data.sqlTrace.forEach((t: any) => console.log(`  → ${t.name}: ${t.sql.substring(0, 80)}...`));
+      if (cacheHit) {
+        setIsChatActive(true);
+        toast.success("Aria is ready", { description: "Using cached intelligence (refreshed within last 4 hours)." });
+        triggerMarketRefresh();
+        return;
       }
 
-      // Start with a clean chat — no trace messages
-      setMessages([]);
+      // Poll status every 2s until corePhaseReady, then keep polling for full completion
+      let coreToastShown = false;
+      const maxPollMs = 5 * 60 * 1000; // 5 minutes
+      const t0 = Date.now();
 
-      toast.success("Aria is Ready", {
-        description: `Analyzed ${data.eventsCount} market signals in ${data.duration}. Ask me anything!`,
-      });
+      while (Date.now() - t0 < maxPollMs) {
+        await new Promise((r) => setTimeout(r, 2000));
 
-      if (data.guardrailsSetByAi && data.guardrails) {
-        // Wait a slight moment so they don't overlap too intensely
-        setTimeout(() => {
-          toast.info("Auto-Guardrails Configured", {
-            description: "Aria has set the floor and ceiling values automatically based on market intelligence. Check them; if you want, you can overwrite them too.",
-            duration: 8000, // Longer duration for reading
+        const statusRes = await fetch(`/api/precompute-property/${jobId}`);
+        if (!statusRes.ok) continue;
+        const status = await statusRes.json();
+
+        // Enable chat as soon as Property + Booking + MarketResearch are ready
+        if (status.corePhaseReady && !coreToastShown) {
+          coreToastShown = true;
+          setIsChatActive(true);
+          triggerMarketRefresh();
+          toast.success("Aria is ready", {
+            description: `${status.readyAgents.length}/5 analyses ready — pricing and anomaly checks still loading.`,
           });
-        }, 800);
+        }
+
+        if (status.overallStatus === "complete") {
+          if (!coreToastShown) {
+            // Cache hit case where corePhaseReady was true from the start
+            setIsChatActive(true);
+            triggerMarketRefresh();
+          }
+          toast.success("All 5 analyses ready", { description: "PriceGuard and anomaly checks complete." });
+          return;
+        }
+
+        if (status.overallStatus === "failed") {
+          throw new Error(
+            status.failedAgents?.length
+              ? `Agents failed: ${status.failedAgents.map((f: any) => f.agent).join(", ")}`
+              : "Precompute failed"
+          );
+        }
+
+        if (status.overallStatus === "partial") {
+          // Some agents failed, some succeeded — still let the user chat
+          if (!coreToastShown) {
+            setIsChatActive(true);
+            triggerMarketRefresh();
+          }
+          toast.warning("Some analyses incomplete", {
+            description: `${status.readyAgents.length}/5 ready. Failed: ${status.failedAgents?.map((f: any) => f.agent).join(", ") || "unknown"}`,
+          });
+          return;
+        }
       }
 
-      triggerMarketRefresh();
-      // Data injection now happens automatically on the user's first real message
-      // in route.ts — no need for a separate grounding call.
-
-
+      throw new Error("Precompute timed out after 5 minutes");
     } catch (error) {
-      console.error("Market Analysis Error:", error);
-      toast.error("Analysis Failed", {
-        description: error instanceof Error ? error.message : "Marketing Agent could not be reached.",
+      console.error("Refresh Intelligence Error:", error);
+      toast.error("Refresh Intelligence failed", {
+        description: error instanceof Error ? error.message : "Could not warm the cache.",
       });
     } finally {
       setIsSettingUp(false);
@@ -634,7 +640,8 @@ export function UnifiedChatInterface({ properties: _properties, orgId }: Props) 
       // Animate graph stages based on elapsed poll time
       const data = await pollJob<{ message: string; metadata?: unknown; proposals?: unknown[] }>(jobId, {
         onPoll: (elapsed) => {
-          const idx = Math.min(Math.floor(elapsed / 8000), stepKeys.length - 1);
+          // Spread 4 stages across ~360 s (expected full-analysis runtime)
+          const idx = Math.min(Math.floor(elapsed / 90_000), stepKeys.length - 1);
           const step = stepKeys[idx];
           const { tool, agent } = stepAgentMap[step];
           const now = new Date().toISOString();
@@ -957,7 +964,7 @@ export function UnifiedChatInterface({ properties: _properties, orgId }: Props) 
                       className="h-9 gap-2 bg-background hover:bg-background/80 border-border/50 font-bold shadow-sm"
                     >
                       <Settings className={`h-4 w-4 ${isSettingUp ? "animate-spin text-amber-500" : ""}`} />
-                      <span className="hidden sm:inline">{isSettingUp ? "Processing..." : "Run Aria"}</span>
+                      <span className="hidden sm:inline">{isSettingUp ? "Warming..." : "Refresh Intelligence"}</span>
                     </Button>
                   </span>
                 </TooltipTrigger>
@@ -1315,7 +1322,7 @@ export function UnifiedChatInterface({ properties: _properties, orgId }: Props) 
                       <Input
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder={!isChatActive ? "Select date range and click 'Run Aria' to start..." : "Ask about pricing, events, market rates..."}
+                        placeholder={!isChatActive ? "Select date range and click 'Refresh Intelligence' to start..." : "Ask about pricing, events, market rates..."}
                         disabled={isLoading || !isChatActive}
                         className="w-full"
                       />

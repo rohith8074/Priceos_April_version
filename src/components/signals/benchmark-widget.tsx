@@ -68,6 +68,15 @@ function CurrencyVal({ val, currency }: { val: string | null; currency: string }
     return <span className="font-bold">{currency} {Number(val).toFixed(0)}</span>;
 }
 
+interface BenchmarkDiagnostic {
+    code: string;
+    message: string;
+    query?: string;
+    organicCount?: number;
+    parseableRates?: number;
+    elapsedMs?: number;
+}
+
 export function BenchmarkWidget({ listingId, dateFrom, dateTo, refreshKey = 0, currency = "AED" }: BenchmarkWidgetProps) {
     const [open, setOpen] = useState(true);
     const [compsOpen, setCompsOpen] = useState(false);
@@ -75,7 +84,9 @@ export function BenchmarkWidget({ listingId, dateFrom, dateTo, refreshKey = 0, c
     const [comps, setComps] = useState<BenchmarkComp[]>([]);
     const [loading, setLoading] = useState(false);
     const [hasData, setHasData] = useState(false);
-    const { triggerMarketRefresh, isMarketAnalysisRunning } = useContextStore();
+    const [localRefreshTick, setLocalRefreshTick] = useState(0);
+    const [diagnostic, setDiagnostic] = useState<BenchmarkDiagnostic | null>(null);
+    const { isMarketAnalysisRunning } = useContextStore();
 
     const fetchBenchmark = useCallback(async () => {
         if (!listingId) return;
@@ -84,19 +95,23 @@ export function BenchmarkWidget({ listingId, dateFrom, dateTo, refreshKey = 0, c
             const params = new URLSearchParams({ listingId: String(listingId) });
             if (dateFrom) params.set("dateFrom", dateFrom);
             if (dateTo) params.set("dateTo", dateTo);
+            // Refresh button clicks (localRefreshTick > 0) explicitly bypass the
+            // 4-hr cache so SERP is always called when the user asks for it.
+            if (localRefreshTick > 0) params.set("forceRefresh", "1");
             const res = await fetch(`/api/benchmark?${params}`);
             const json = await res.json();
             if (json.success) {
                 setHasData(json.hasData);
                 setSummary(json.summary);
                 setComps(json.comps ?? []);
+                setDiagnostic(json.diagnostic ?? null);
             }
         } catch (e) {
             console.error("BenchmarkWidget fetch error:", e);
         } finally {
             setLoading(false);
         }
-    }, [listingId, dateFrom, dateTo, refreshKey]);
+    }, [listingId, dateFrom, dateTo, refreshKey, localRefreshTick]);
 
     useEffect(() => {
         fetchBenchmark();
@@ -123,13 +138,8 @@ export function BenchmarkWidget({ listingId, dateFrom, dateTo, refreshKey = 0, c
                 </div>
                 <div className="flex items-center gap-2">
                     {hasData && !isPending && summary?.source && (
-                        <span className={cn(
-                            "px-2 py-0.5 rounded-full text-[9px] font-bold border",
-                            summary.source === 'cache' ? "bg-blue-500/10 text-blue-500 border-blue-500/30" :
-                            summary.source === 'internet_fallback' ? "bg-amber-500/10 text-amber-600 border-amber-500/30" :
-                            "bg-slate-500/10 text-slate-500 border-slate-500/30"
-                        )}>
-                            {summary.source === 'cache' ? 'Airbtics API' : summary.source === 'internet_fallback' ? 'Agent 7 Research' : 'Historical DB'}
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                            {summary.source === 'serp' ? 'SERP API' : summary.source}
                         </span>
                     )}
                     {hasData && !isPending && (
@@ -140,10 +150,11 @@ export function BenchmarkWidget({ listingId, dateFrom, dateTo, refreshKey = 0, c
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            triggerMarketRefresh();
+                            setLocalRefreshTick((t) => t + 1);
                         }}
-                        className="p-1 rounded-full hover:bg-muted text-muted-foreground transition-colors"
-                        title="Refresh from database"
+                        disabled={isPending}
+                        className="p-1 rounded-full hover:bg-muted text-muted-foreground transition-colors disabled:opacity-50"
+                        title="Refresh from SERP (cached 4hrs per property)"
                     >
                         <RefreshCw className={`h-3 w-3 ${isPending ? "animate-spin" : ""}`} />
                     </button>
@@ -178,8 +189,16 @@ export function BenchmarkWidget({ listingId, dateFrom, dateTo, refreshKey = 0, c
                                 <BarChart3 className="h-7 w-7 opacity-20" />
                             </div>
                             <p className="text-[11px] font-black uppercase tracking-widest text-foreground/70">No benchmark data yet</p>
-                            <p className="text-[10px] opacity-60 mt-1 max-w-[200px] mx-auto leading-relaxed">
-                                Click <strong className="text-foreground">Run Aria</strong> to populate competitor rates and positioning insights
+                            <p className="text-[10px] opacity-60 mt-1 max-w-[240px] mx-auto leading-relaxed">
+                                {diagnostic?.message || "SERP returned no comparable listings for this area + bedroom count."}
+                            </p>
+                            {diagnostic?.query && (
+                                <p className="text-[9px] opacity-40 mt-2 max-w-[260px] mx-auto leading-relaxed italic break-words">
+                                    Query: {diagnostic.query}
+                                </p>
+                            )}
+                            <p className="text-[10px] opacity-60 mt-2 max-w-[220px] mx-auto leading-relaxed">
+                                Click <strong className="text-foreground">refresh</strong> to retry SERP now.
                             </p>
                         </div>
                     )}

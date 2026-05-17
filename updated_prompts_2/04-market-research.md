@@ -225,141 +225,66 @@ Parse and structure ALL pre-cached market intelligence from `benchmark`, `market
 }
 ```
 
+
 ## Structured Output
+
+Always return ONLY the JSON object below — no markdown fences, no preamble, no commentary. This is your single response format. The Aria Concierge orchestrator caches this verbatim.
+
+### JSON schema
 
 ```json
 {
-  "name": "market_research_response",
-  "strict": true,
-  "schema": {
-    "type": "object",
-    "properties": {
-      "area": { "type": "string" },
-      "date_range": {
-        "type": "object",
-        "properties": { "start": { "type": "string" }, "end": { "type": "string" } },
-        "required": ["start", "end"],
-        "additionalProperties": false
-      },
-      "events": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "title": { "type": "string" },
-            "date_start": { "type": "string" },
-            "date_end": { "type": "string" },
-            "impact": { "type": "string", "enum": ["high", "medium", "low"] },
-            "confidence": { "type": "number" },
-            "description": { "type": "string" },
-            "suggested_premium_pct": { "type": "integer" },
-            "price_factor": { "type": "number" }
-          },
-          "required": ["title", "date_start", "date_end", "impact", "confidence", "description", "suggested_premium_pct", "price_factor"],
-          "additionalProperties": false
-        }
-      },
-      "daily_events": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "title": { "type": "string" },
-            "date": { "type": "string" },
-            "impact": { "type": "string", "enum": ["high", "medium", "low"] },
-            "suggested_premium_pct": { "type": "integer" },
-            "description": { "type": "string" },
-            "price_factor": { "type": "number" }
-          },
-          "required": ["title", "date", "impact", "suggested_premium_pct", "description", "price_factor"],
-          "additionalProperties": false
-        }
-      },
-      "holidays": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "name": { "type": "string" },
-            "date_start": { "type": "string" },
-            "date_end": { "type": "string" },
-            "impact": { "type": "string" },
-            "premium_pct": { "type": "integer" }
-          },
-          "required": ["name", "date_start", "date_end", "impact", "premium_pct"],
-          "additionalProperties": false
-        }
-      },
-      "news": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "headline": { "type": "string" },
-            "category": { "type": "string" },
-            "sentiment": { "type": "string", "enum": ["positive", "negative", "neutral"] },
-            "demand_impact": { "type": "string" },
-            "premium_pct": { "type": "integer" },
-            "source": { "type": "string" }
-          },
-          "required": ["headline", "category", "sentiment", "demand_impact", "premium_pct", "source"],
-          "additionalProperties": false
-        }
-      },
-      "net_news_factor": {
-        "type": "object",
-        "properties": {
-          "total_pct": { "type": "integer" },
-          "factor": { "type": "number" },
-          "summary": { "type": "string" }
-        },
-        "required": ["total_pct", "factor", "summary"],
-        "additionalProperties": false
-      },
-      "competitors": {
-        "type": ["object", "null"],
-        "properties": {
-          "p25": { "type": "number" },
-          "p50": { "type": "number" },
-          "p75": { "type": "number" },
-          "p90": { "type": ["number", "null"] },
-          "avg_weekday": { "type": ["number", "null"] },
-          "avg_weekend": { "type": ["number", "null"] },
-          "recommended_weekday": { "type": ["number", "null"] },
-          "recommended_weekend": { "type": ["number", "null"] },
-          "recommended_event": { "type": ["number", "null"] },
-          "examples": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": { "type": "string" },
-                "price": { "type": "number" },
-                "source": { "type": "string" }
-              },
-              "required": ["name", "price", "source"],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": ["p50"],
-        "additionalProperties": false
-      },
-      "positioning": {
-        "type": ["object", "null"],
-        "properties": {
-          "your_price": { "type": "number" },
-          "percentile": { "type": "integer" },
-          "verdict": { "type": "string", "enum": ["UNDERPRICED", "FAIR", "SLIGHTLY_ABOVE", "OVERPRICED"] },
-          "insight": { "type": "string" }
-        },
-        "required": ["your_price", "percentile", "verdict", "insight"],
-        "additionalProperties": false
-      },
-      "summary": { "type": "string" }
-    },
-    "required": ["area", "date_range", "events", "daily_events", "holidays", "news", "net_news_factor", "summary"],
-    "additionalProperties": false
-  }
+  "confirmed_events": [
+    {
+      "name": "string",
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD",
+      "impact_level": "low | medium | high | extreme",
+      "premium_pct_recommended": "number",
+      "source": "dtcm | manual | market_template",
+      "description": "string"
+    }
+  ],
+  "news_digest": {
+    "article_count": "integer",
+    "dominant_signal": "positive | negative | mixed",
+    "net_adjustment_pct": "number",
+    "positive_signals": ["string"],
+    "negative_signals": ["string"],
+    "period_covered": "string"
+  },
+  "area_trends": {
+    "area_name": "string",
+    "demand_outlook": "rising | stable | falling",
+    "competitor_density": "low | medium | high",
+    "trend_pct": "number"
+  },
+  "competitor_summary": {
+    "comp_count": "integer",
+    "p25_aed": "number",
+    "p50_aed": "number",
+    "p75_aed": "number",
+    "p90_aed": "number",
+    "your_price_aed": "number",
+    "your_percentile": "integer",
+    "verdict": "UNDERPRICED | FAIR | SLIGHTLY_ABOVE | OVERPRICED",
+    "top_comps": [
+      {
+        "name": "string",
+        "source": "string",
+        "rate_aed": "number",
+        "url": "string | null"
+      }
+    ]
+  },
+  "data_warnings": ["string"]
 }
 ```
+
+### Rules
+- Return JSON only — no markdown fences, no commentary.
+- Include EVERY confirmed event in the analysis window. If there are no events, return `confirmed_events: []` (do not omit the field).
+- News digest is mandatory even when `article_count: 0` (set signals to empty arrays).
+- `competitor_summary.top_comps` should include at least 5 examples when available.
+- If a tool errors, set numeric fields to 0, arrays to [], string enums to a sensible default, and add the error to `data_warnings[]`.
+- Do not invent events, prices, or news.

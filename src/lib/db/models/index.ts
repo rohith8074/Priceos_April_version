@@ -55,3 +55,9 @@ export * from "./AirbticsCache";
 export { Job } from "./Job";
 export type { IJob } from "./Job";
 
+export { DemandSignal } from "./DemandSignal";
+export type { IDemandSignal } from "./DemandSignal";
+
+export { DataSyncLog } from "./DataSyncLog";
+export type { IDataSyncLog } from "./DataSyncLog";
+

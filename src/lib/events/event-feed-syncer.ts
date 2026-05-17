@@ -21,6 +21,7 @@
 
 import { connectDB, MarketEvent } from "@/lib/db";
 import mongoose from "mongoose";
+import https from "node:https";
 import { format, parseISO, addDays } from "date-fns";
 
 // ─────────────────────────────────────────────────────────
@@ -36,8 +37,12 @@ export interface NormalisedEvent {
   impactLevel: "high" | "medium" | "low";
   upliftPct: number;
   description: string;
-  source: "eventbrite" | "ticketmaster" | "dtcm" | "ai_detected" | "manual" | "market_template";
+  source: "eventbrite" | "ticketmaster" | "dtcm" | "ai_detected" | "manual" | "market_template" | "serp" | "perplexity";
   externalId?: string; // source-specific ID for deduplication
+  sourceUrl?: string;  // direct link to event page / news article
+  attendeeCount?: number;
+  category?: string;
+  venue?: string;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -258,6 +263,50 @@ const DTCM_ANNUAL_EVENTS: Omit<NormalisedEvent, "source">[] = [
     description: "National holiday — domestic + GCC travel spike.",
     externalId: "dtcm:eid-alfitr-2026",
   },
+  {
+    name: "Eid Al Adha 2026",
+    startDate: "2026-06-06",
+    endDate: "2026-06-10",
+    location: "Dubai",
+    area: "Dubai",
+    impactLevel: "high",
+    upliftPct: 35,
+    description: "Eid Al Adha national holiday — major GCC family travel surge, staycations spike across Dubai.",
+    externalId: "dtcm:eid-aladha-2026",
+  },
+  {
+    name: "Dubai Summer Surprises 2026",
+    startDate: "2026-06-15",
+    endDate: "2026-09-05",
+    location: "Dubai",
+    area: "Dubai",
+    impactLevel: "medium",
+    upliftPct: 12,
+    description: "Annual summer retail and entertainment festival. Drives domestic and GCC staycation demand despite low tourist season.",
+    externalId: "dtcm:dss-2026",
+  },
+  {
+    name: "GITEX Global 2026",
+    startDate: "2026-10-13",
+    endDate: "2026-10-17",
+    location: "Dubai World Trade Centre",
+    area: "DWTC",
+    impactLevel: "high",
+    upliftPct: 40,
+    description: "GITEX Global 2026 — world's largest tech event, 100,000+ delegates. Drives demand across DIFC, Marina, and Business Bay.",
+    externalId: "dtcm:gitex-2026",
+  },
+  {
+    name: "UAE National Day 2026",
+    startDate: "2026-12-02",
+    endDate: "2026-12-03",
+    location: "Dubai",
+    area: "Dubai",
+    impactLevel: "high",
+    upliftPct: 30,
+    description: "UAE 55th National Day — public holiday with fireworks, events, and strong domestic travel demand.",
+    externalId: "dtcm:uae-national-day-2026",
+  },
 ];
 
 async function fetchDTCMEvents(): Promise<NormalisedEvent[]> {
@@ -334,18 +383,48 @@ function extractTagText(xml: string, tag: string): string {
   return match ? match[1].trim() : "";
 }
 
+// Fetches raw text from an RSS URL.
+// Falls back to Node's https module (SNI-lenient) when the server returns
+// ERR_SSL_TLSV1_UNRECOGNIZED_NAME — a server-side TLS misconfiguration that
+// causes Node's default fetch/undici to abort before getting any data.
+async function fetchRssText(feedUrl: string, timeoutMs: number): Promise<string> {
+  try {
+    const res = await fetch(feedUrl, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  } catch (err) {
+    const cause = (err as { cause?: { code?: string } })?.cause;
+    if (cause?.code !== "ERR_SSL_TLSV1_UNRECOGNIZED_NAME") throw err;
+
+    // Server has SNI misconfiguration — retry with lenient TLS (read-only, public data)
+    return new Promise<string>((resolve, reject) => {
+      const parsed = new URL(feedUrl);
+      const req = https.get(
+        {
+          hostname: parsed.hostname,
+          path: parsed.pathname + (parsed.search || ""),
+          headers: { "User-Agent": "Mozilla/5.0 PriceOS-EventSyncer/1.0" },
+          timeout: timeoutMs,
+          rejectUnauthorized: false,
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (c: Buffer) => chunks.push(c));
+          res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+        }
+      );
+      req.on("timeout", () => req.destroy(new Error("RSS fetch timed out")));
+      req.on("error", reject);
+    });
+  }
+}
+
 async function fetchRssFeed(
   feedUrl: string,
   sourceName: string
 ): Promise<NormalisedEvent[]> {
   try {
-    const res = await fetch(feedUrl, { signal: AbortSignal.timeout(8_000) });
-    if (!res.ok) {
-      console.warn(`[EventFeedSyncer] ${sourceName} RSS returned ${res.status}`);
-      return [];
-    }
-
-    const xml = await res.text();
+    const xml = await fetchRssText(feedUrl, 8_000);
     // Split on <item> elements
     const items = xml.split(/<item[\s>]/i).slice(1);
     const events: NormalisedEvent[] = [];
@@ -377,8 +456,8 @@ async function fetchRssFeed(
 
     console.log(`[EventFeedSyncer] ${sourceName} RSS: parsed ${events.length} events`);
     return events;
-  } catch (err) {
-    console.warn(`[EventFeedSyncer] ${sourceName} RSS error:`, err);
+  } catch {
+    // RSS feeds are supplementary — SERP is the primary source. Failures are non-fatal.
     return [];
   }
 }
@@ -479,6 +558,179 @@ async function fetchTicketmasterEvents(
   return events;
 }
 
+// ─────────────────────────────────────────────────────────
+// Source 5: SERP API — Google Events engine
+// ─────────────────────────────────────────────────────────
+// Docs: https://serpapi.com/google-events-api
+// Free plan: 250 searches/month (shared across all engines)
+// Required env: SERP_API_KEY
+// Budget allocation: ~30 calls/month for events (every ~30h)
+
+interface SerpEventResult {
+  title: string;
+  date?: { start_date?: string; when?: string };
+  address?: string[];
+  link?: string;
+  description?: string;
+  ticket_info?: Array<{ source?: string; link?: string }>;
+  venue?: { name?: string };
+}
+
+async function fetchSerpGoogleEvents(
+  query: string,
+  daysAhead = 90,
+): Promise<NormalisedEvent[]> {
+  const apiKey = process.env.SERP_API_KEY;
+  if (!apiKey) {
+    console.log("[EventFeedSyncer] SERP_API_KEY not set — skipping SERP Google Events");
+    return [];
+  }
+
+  const url = new URL("https://serpapi.com/search.json");
+  url.searchParams.set("engine", "google_events");
+  url.searchParams.set("q", query);
+  url.searchParams.set("gl", "ae");
+  url.searchParams.set("hl", "en");
+  url.searchParams.set("api_key", apiKey);
+
+  const events: NormalisedEvent[] = [];
+
+  try {
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(12_000) });
+    if (!res.ok) {
+      console.warn(`[EventFeedSyncer] SERP Google Events returned ${res.status}`);
+      return [];
+    }
+
+    const data = (await res.json()) as { events_results?: SerpEventResult[] };
+    const rawEvents = data.events_results ?? [];
+    const cutoff = format(addDays(new Date(), daysAhead), "yyyy-MM-dd");
+
+    for (const ev of rawEvents) {
+      if (!ev.title) continue;
+
+      // Parse date from "when" string like "Sat, May 17 – Sun, May 18"
+      let startDate = format(new Date(), "yyyy-MM-dd");
+      let endDate = startDate;
+
+      if (ev.date?.start_date) {
+        try {
+          startDate = format(new Date(ev.date.start_date), "yyyy-MM-dd");
+          endDate = startDate;
+        } catch { /* keep today */ }
+      } else if (ev.date?.when) {
+        // Try to extract first date from "when" string
+        const dateMatch = ev.date.when.match(/([A-Z][a-z]+,\s+[A-Z][a-z]+\s+\d+)/);
+        if (dateMatch) {
+          try {
+            startDate = format(new Date(`${dateMatch[1]}, ${new Date().getFullYear()}`), "yyyy-MM-dd");
+            endDate = startDate;
+          } catch { /* keep today */ }
+        }
+      }
+
+      // Skip events beyond our lookahead window
+      if (startDate > cutoff) continue;
+
+      const location = ev.address?.join(", ") ?? "Dubai";
+      const area = ev.address?.[0] ?? "Dubai";
+      const category = ev.venue?.name ?? "General";
+      const { impactLevel, upliftPct } = classifyImpact(ev.title + " " + category);
+
+      events.push({
+        name: ev.title.slice(0, 200),
+        startDate,
+        endDate,
+        location,
+        area,
+        impactLevel,
+        upliftPct,
+        description: ev.description?.slice(0, 500) ?? `${category} in Dubai`,
+        source: "serp",
+        sourceUrl: ev.link ?? ev.ticket_info?.[0]?.link,
+        externalId: `serp:events:${ev.title.slice(0, 50)}:${startDate}`,
+        category,
+        venue: ev.venue?.name,
+      });
+    }
+
+    console.log(`[EventFeedSyncer] SERP Google Events (${query}): fetched ${events.length} events`);
+  } catch (err) {
+    console.warn("[EventFeedSyncer] SERP Google Events error:", err);
+  }
+
+  return events;
+}
+
+// ─────────────────────────────────────────────────────────
+// Source 6: SERP API — Google News engine (demand signals)
+// ─────────────────────────────────────────────────────────
+// Budget allocation: ~30 calls/month (every ~30h)
+// Returns news articles relevant to Dubai tourism demand.
+// Results are stored as low-impact market events tagged source="serp".
+
+interface SerpNewsResult {
+  title: string;
+  link: string;
+  snippet?: string;
+  date?: string;
+  source?: { name?: string };
+}
+
+export async function fetchSerpDubaiNews(
+  query = "Dubai tourism demand events 2025",
+): Promise<NormalisedEvent[]> {
+  const apiKey = process.env.SERP_API_KEY;
+  if (!apiKey) return [];
+
+  const url = new URL("https://serpapi.com/search.json");
+  url.searchParams.set("engine", "google_news");
+  url.searchParams.set("q", query);
+  url.searchParams.set("gl", "ae");
+  url.searchParams.set("hl", "en");
+  url.searchParams.set("api_key", apiKey);
+
+  const events: NormalisedEvent[] = [];
+
+  try {
+    const res = await fetch(url.toString(), { signal: AbortSignal.timeout(12_000) });
+    if (!res.ok) return [];
+
+    const data = (await res.json()) as { news_results?: SerpNewsResult[] };
+    const today = format(new Date(), "yyyy-MM-dd");
+    // News signals are forward-looking demand indicators — use today as the relevance date
+    // so they always fall within the current analysis window (not the past article date).
+    const weekAhead = format(addDays(new Date(), 7), "yyyy-MM-dd");
+
+    for (const article of data.news_results ?? []) {
+      if (!article.title || !article.link) continue;
+
+      const { impactLevel, upliftPct } = classifyImpact(article.title);
+
+      events.push({
+        name: article.title.slice(0, 200),
+        startDate: today,
+        endDate: weekAhead,
+        location: "Dubai",
+        area: "Dubai",
+        impactLevel,
+        upliftPct: Math.max(5, upliftPct * 0.5), // news signals get half weight vs confirmed events
+        description: article.snippet?.slice(0, 500) ?? `News signal from ${article.source?.name ?? "Dubai"}`,
+        source: "serp",
+        sourceUrl: article.link,
+        externalId: `serp:news:${article.link.slice(-60)}`,
+        category: "News",
+      });
+    }
+
+    console.log(`[EventFeedSyncer] SERP Google News (${query}): fetched ${events.length} articles`);
+  } catch (err) {
+    console.warn("[EventFeedSyncer] SERP Google News error:", err);
+  }
+
+  return events;
+}
+
 /**
  * Fetches events from all configured sources and upserts into MarketEvent.
  *
@@ -504,33 +756,50 @@ export async function syncEventFeeds(
 
   const isDubai = marketCity.toLowerCase() === "dubai";
 
-  // Fetch from all sources in parallel.
-  // Dubai gets DTCM + local RSS feeds; all cities get Eventbrite + Ticketmaster.
-  const [eventbriteSettled, ticketmasterSettled, localFeedSettled] =
-    await Promise.allSettled([
-      fetchEventbriteEvents(daysAhead, marketCity),
-      fetchTicketmasterEvents(marketCity, daysAhead),
-      isDubai
-        ? Promise.all([
-            fetchDTCMEvents(),
-            fetchRssFeed(
-              process.env.DUBAI_CALENDAR_RSS || "https://www.dubaicalendar.ae/events/feed/",
-              "DubaiCalendar"
-            ),
-            fetchRssFeed(
-              process.env.TIMEOUT_DUBAI_RSS || "https://www.timeoutdubai.com/rss/things-to-do",
-              "TimeOutDubai"
-            ),
-          ]).then((arrs) => arrs.flat())
-        : Promise.resolve<NormalisedEvent[]>([]),
-    ]);
+  // SERP is the primary source for real-time market signals.
+  // DTCM static list provides curated annual anchors (GITEX, DSF, Eid, etc.).
+  // RSS feeds are supplementary — failures are silently ignored.
+  const [
+    localFeedSettled,
+    serpEventsSettled,
+    serpEvents2Settled,
+    serpNewsSettled,
+  ] = await Promise.allSettled([
+    // DTCM annual events + RSS feeds (best-effort — failures silently skipped)
+    isDubai
+      ? Promise.all([
+          fetchDTCMEvents(),
+          fetchRssFeed(
+            process.env.DUBAI_CALENDAR_RSS || "https://www.dubaicalendar.ae/events/feed/",
+            "DubaiCalendar"
+          ),
+          fetchRssFeed(
+            process.env.TIMEOUT_DUBAI_RSS || "https://www.timeoutdubai.com/rss/things-to-do",
+            "TimeOutDubai"
+          ),
+        ]).then((arrs) => arrs.flat())
+      : Promise.resolve<NormalisedEvent[]>([]),
+    // SERP Google Events — broad Dubai events query
+    isDubai
+      ? fetchSerpGoogleEvents(`events in ${marketCity}`, daysAhead)
+      : Promise.resolve<NormalisedEvent[]>([]),
+    // SERP Google Events — conferences, exhibitions, festivals (more specific)
+    isDubai
+      ? fetchSerpGoogleEvents(`${marketCity} conferences exhibitions festivals 2026`, daysAhead)
+      : Promise.resolve<NormalisedEvent[]>([]),
+    // SERP Google News — demand signals: tourism, travel advisories, hotel demand
+    isDubai
+      ? fetchSerpDubaiNews(`${marketCity} hotel demand tourism travel 2026`)
+      : Promise.resolve<NormalisedEvent[]>([]),
+  ]);
 
   const allEvents: NormalisedEvent[] = [];
 
   for (const [label, settled] of [
-    ["Eventbrite", eventbriteSettled],
-    ["Ticketmaster", ticketmasterSettled],
     ["LocalFeeds", localFeedSettled],
+    ["SERP_Events", serpEventsSettled],
+    ["SERP_Events2", serpEvents2Settled],
+    ["SERP_News", serpNewsSettled],
   ] as [string, PromiseSettledResult<NormalisedEvent[]>][]) {
     if (settled.status === "fulfilled") {
       result.sources[label] = settled.value.length;
@@ -541,6 +810,15 @@ export async function syncEventFeeds(
     }
   }
 
+  // Purge old orphan SERP docs that were stored without externalId (pre-fix duplicates)
+  // These have source=serp but no externalId field — they're unreachable by the dedup filter.
+  // Safe to remove: the current sync will re-insert them correctly with externalId.
+  await MarketEvent.deleteMany({
+    orgId,
+    source: "serp",
+    externalId: { $exists: false },
+  }).catch(() => { /* non-fatal */ });
+
   // Deduplicate by externalId within the batch
   const seen = new Set<string>();
   const dedupedEvents = allEvents.filter((ev) => {
@@ -550,11 +828,11 @@ export async function syncEventFeeds(
     return true;
   });
 
-  // Upsert into MongoDB
+  // Upsert into MongoDB — use externalId as the dedup key when available
   for (const ev of dedupedEvents) {
     try {
       const filter: Record<string, unknown> = ev.externalId
-        ? { orgId, "metadata.externalId": ev.externalId }
+        ? { orgId, externalId: ev.externalId }
         : { orgId, name: ev.name, startDate: ev.startDate };
 
       const existing = await MarketEvent.findOne(filter).lean();
@@ -567,6 +845,10 @@ export async function syncEventFeeds(
             impactLevel: ev.impactLevel,
             upliftPct: ev.upliftPct,
             description: ev.description,
+            ...(ev.sourceUrl && { sourceUrl: ev.sourceUrl }),
+            ...(ev.category && { category: ev.category }),
+            ...(ev.venue && { venue: ev.venue }),
+            ...(ev.attendeeCount && { attendeeCount: ev.attendeeCount }),
             isActive: true,
           },
         });
@@ -580,9 +862,14 @@ export async function syncEventFeeds(
           area: ev.area,
           areas: [ev.area],
           impactLevel: ev.impactLevel,
-          upliftPct: Math.max(0, ev.upliftPct), // don't store negative uplift
+          upliftPct: Math.max(0, ev.upliftPct),
           description: ev.description,
           source: ev.source,
+          sourceUrl: ev.sourceUrl,
+          externalId: ev.externalId,  // stored so re-syncs update not duplicate
+          category: ev.category,
+          venue: ev.venue,
+          attendeeCount: ev.attendeeCount,
           isActive: true,
         });
         result.inserted++;

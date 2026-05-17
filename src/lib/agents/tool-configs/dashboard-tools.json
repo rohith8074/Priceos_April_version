@@ -1,0 +1,252 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PriceOS Dashboard Agent Tools",
+    "version": "2.0.0",
+    "description": "Tools for the Dashboard Agent. Answers portfolio-level and property-level performance questions. Only call these tools when the session context does not already contain the requested data. All responses use the standard envelope: { status, data, metadata }."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/get-portfolio-overview": {
+      "get": {
+        "operationId": "get_portfolio_overview",
+        "summary": "Portfolio KPIs for a date range",
+        "description": "Returns total revenue, average occupancy, booking counts, cancellation rate, channel revenue breakdown, and per-property KPIs for the specified date range. Call only when the property manager asks about a date range different from what was injected at session start, or requests a fresh real-time snapshot.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the organization",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "description": "Start date (YYYY-MM-DD)",
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-06-01" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "description": "End date (YYYY-MM-DD)",
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-06-30" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Portfolio overview with per-property breakdown",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PortfolioOverviewResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/get-listing-metadata": {
+      "get": {
+        "operationId": "get_listing_metadata",
+        "summary": "All active property listings",
+        "description": "Fetches the complete list of all active properties in the organization — name, area, city, listingId, bedroom count, and current base price. Call when the manager asks which properties are in their portfolio, or when you need a listingId to answer a follow-up question.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the organization",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of all active property listings",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListingMetadataResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/get-agent-system-status": {
+      "get": {
+        "operationId": "get_agent_system_status",
+        "summary": "AI agent system health and last sync",
+        "description": "Returns the operational status of all AI agents: active/idle/warning/error, last run timestamp, pending proposals count, and whether data is stale (> 4 hours old). Call only when the manager asks about system health, last sync time, or when troubleshooting stale data.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the organization",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "System status with per-agent details",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AgentSystemStatusResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiMetadata": {
+        "type": "object",
+        "properties": {
+          "requestId": { "type": "string", "example": "req_a1b2c3d4e5f6" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PortfolioOverviewResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": { "$ref": "#/components/schemas/PortfolioOverviewData" },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "PortfolioOverviewData": {
+        "type": "object",
+        "properties": {
+          "totalProperties": { "type": "integer", "example": 8 },
+          "avgOccupancyPct": { "type": "number", "format": "double", "example": 69.0 },
+          "totalRevenue": { "type": "number", "format": "double", "description": "Total revenue in AED for the window", "example": 152598.50 },
+          "totalBookings": { "type": "integer", "example": 47 },
+          "cancellationRate": { "type": "number", "format": "double", "description": "Cancellation rate as a percentage (0–100)", "example": 8.5 },
+          "avgLengthOfStay": { "type": "number", "format": "double", "example": 3.4 },
+          "revenueByChannel": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ChannelRevenue" }
+          },
+          "properties": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PropertyKPI" }
+          },
+          "pendingProposals": { "type": "integer", "description": "Total pending pricing proposals across all properties", "example": 12 }
+        }
+      },
+      "ChannelRevenue": {
+        "type": "object",
+        "properties": {
+          "channel": { "type": "string", "example": "Airbnb" },
+          "revenue": { "type": "number", "format": "double", "example": 85000 },
+          "bookings": { "type": "integer", "example": 30 },
+          "pctOfTotal": { "type": "number", "format": "double", "description": "Share of total revenue (%)", "example": 55.7 }
+        }
+      },
+      "PropertyKPI": {
+        "type": "object",
+        "properties": {
+          "listingId": { "type": "string", "description": "MongoDB ObjectId (internal)" },
+          "name": { "type": "string", "example": "Palm Jumeirah Signature Villa" },
+          "area": { "type": "string", "example": "Palm Jumeirah" },
+          "occupancyPct": { "type": "number", "format": "double", "example": 75.0 },
+          "revenue": { "type": "number", "format": "double", "example": 50052.00 },
+          "avgNightlyRate": { "type": "number", "format": "double", "example": 4171 },
+          "pendingProposals": { "type": "integer", "example": 3 },
+          "status": { "type": "string", "enum": ["normal", "needs_attention"], "example": "normal" }
+        }
+      },
+      "ListingMetadataResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": { "$ref": "#/components/schemas/ListingMetadataData" },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "ListingMetadataData": {
+        "type": "object",
+        "properties": {
+          "totalListings": { "type": "integer", "example": 8 },
+          "listings": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ListingMeta" }
+          }
+        }
+      },
+      "ListingMeta": {
+        "type": "object",
+        "properties": {
+          "listingId": { "type": "string", "description": "MongoDB ObjectId (internal)", "example": "69d776a671c7b939aaf49053" },
+          "name": { "type": "string", "example": "Marina Heights 1BR" },
+          "area": { "type": "string", "example": "Dubai Marina" },
+          "city": { "type": "string", "example": "Dubai" },
+          "bedrooms": { "type": "integer", "example": 1 },
+          "basePrice": { "type": "number", "format": "double", "description": "Current default nightly rate in AED", "example": 620 },
+          "isActive": { "type": "boolean", "example": true }
+        }
+      },
+      "AgentSystemStatusResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": { "$ref": "#/components/schemas/AgentSystemStatusData" },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "AgentSystemStatusData": {
+        "type": "object",
+        "properties": {
+          "systemState": {
+            "type": "string",
+            "enum": ["active", "observing", "paused", "connected", "error"],
+            "description": "active = all good, observing = data stale, paused = proposals pending, connected = never run, error = last run failed",
+            "example": "active"
+          },
+          "lastRunAt": { "type": "string", "format": "date-time", "nullable": true },
+          "isStale": { "type": "boolean", "description": "True if pricing data is older than 4 hours", "example": false },
+          "pendingProposals": { "type": "integer", "example": 12 },
+          "criticalInsights": { "type": "integer", "example": 0 },
+          "agents": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/AgentStatus" }
+          }
+        }
+      },
+      "AgentStatus": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "enum": ["aria_cro", "property_analyst", "booking_intelligence", "market_research", "priceguard", "anomaly_detector", "guest_reply"], "example": "priceguard" },
+          "status": { "type": "string", "enum": ["active", "idle", "warning", "error"], "example": "active" },
+          "lastRunAt": { "type": "string", "format": "date-time", "nullable": true },
+          "lastRunStatus": { "type": "string", "example": "SUCCESS" },
+          "pendingProposals": { "type": "integer", "nullable": true, "example": 12 }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid or missing query parameters",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["error"] },
+                "error": { "type": "object", "properties": { "code": { "type": "string", "example": "VALIDATION_ERROR" }, "message": { "type": "string", "example": "orgId is required" } } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

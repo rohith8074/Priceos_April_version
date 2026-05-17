@@ -1,0 +1,490 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "PriceOS Aria Concierge Tools",
+    "version": "1.0.0",
+    "description": "Tools for Aria Concierge (Lyzr agent 6a09d9428e3a6bafa13d8284). Every tool is a sub-second MongoDB lookup against the AgentCache collection. There are no LLM calls or external APIs behind these tools — they serve pre-computed analyst outputs cached by the precompute orchestrator. All responses use the envelope { status, data, metadata }. Always call get_cache_status first to know which reports are warm."
+  },
+  "servers": [
+    {
+      "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1",
+      "description": "Local dev server tunnelled via ngrok"
+    }
+  ],
+  "paths": {
+    "/get-cache-status": {
+      "get": {
+        "summary": "Cache freshness across all 5 analyses",
+        "description": "Returns per-agent availability and age (in minutes) for the cached analyses for this listing + date window. ALWAYS call this first. If cache_state is 'cold' or any required report is missing, instruct the user to click Refresh Intelligence — do NOT call other tools.",
+        "operationId": "get_cache_status",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organization",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Start of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "End of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-agent cache freshness map",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data", "metadata"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": {
+                      "type": "object",
+                      "required": ["cache_state", "listing_id", "date_from", "date_to", "fresh_count", "agents"],
+                      "properties": {
+                        "cache_state": {
+                          "type": "string",
+                          "enum": ["warm", "partial", "cold"],
+                          "description": "warm = all 5 reports fresh; partial = some missing or stale; cold = nothing cached"
+                        },
+                        "listing_id": { "type": "string" },
+                        "date_from": { "type": "string", "format": "date" },
+                        "date_to": { "type": "string", "format": "date" },
+                        "fresh_count": { "type": "integer", "minimum": 0, "maximum": 5 },
+                        "agents": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["agent", "available", "status", "ageMinutes"],
+                            "properties": {
+                              "agent": {
+                                "type": "string",
+                                "enum": ["property", "booking", "market_research", "price_guard", "anomaly"]
+                              },
+                              "available": { "type": "boolean" },
+                              "status": {
+                                "type": "string",
+                                "enum": ["fresh", "stale", "failed", "missing"]
+                              },
+                              "ageMinutes": { "type": "integer", "nullable": true }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "requestId": { "type": "string" },
+                        "timestamp": { "type": "string", "format": "date-time" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "description": "Bad request" }
+        }
+      }
+    },
+    "/get-property-analysis": {
+      "get": {
+        "summary": "Cached PropertyAnalyst output",
+        "description": "Returns the cached PropertyAnalyst report: property profile (name, area, bedrooms, base/floor/ceiling), calendar summary (occupancy %, booked/blocked/available days), full daily inventory, active reservations, active pricing rules, and revenue for the window.",
+        "operationId": "get_property_analysis",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organization",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Start of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "End of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached PropertyAnalyst JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data", "metadata"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": {
+                      "type": "object",
+                      "description": "PropertyAnalyst report — see updated_prompts_2/02-property-analyst.md Precompute Mode schema",
+                      "properties": {
+                        "property_profile": { "type": "object" },
+                        "calendar_summary": { "type": "object" },
+                        "daily_calendar": { "type": "array", "items": { "type": "object" } },
+                        "active_reservations": { "type": "array", "items": { "type": "object" } },
+                        "pricing_rules_active": { "type": "array", "items": { "type": "object" } },
+                        "revenue_window": { "type": "object" }
+                      }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "requestId": { "type": "string" },
+                        "timestamp": { "type": "string", "format": "date-time" },
+                        "computed_at": { "type": "string", "format": "date-time" },
+                        "age_minutes": { "type": "integer" },
+                        "cache_state": { "type": "string", "enum": ["fresh", "stale"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Cache miss — user must click Refresh Intelligence" }
+        }
+      }
+    },
+    "/get-booking-intelligence": {
+      "get": {
+        "summary": "Cached BookingIntelligence output",
+        "description": "Returns the cached BookingIntelligence report: booking summary (totals, cancellation rate, avg LOS, revenue, lost revenue), channel breakdown with share %, pacing (7d / 30d), recent bookings and cancellations, detected behavioural patterns.",
+        "operationId": "get_booking_intelligence",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organization",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Start of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "End of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached BookingIntelligence JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data", "metadata"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": {
+                      "type": "object",
+                      "description": "BookingIntelligence report — see updated_prompts_2/03-booking-intelligence.md Precompute Mode schema",
+                      "properties": {
+                        "summary": { "type": "object" },
+                        "channel_breakdown": { "type": "array", "items": { "type": "object" } },
+                        "pacing": { "type": "object" },
+                        "recent_bookings": { "type": "array", "items": { "type": "object" } },
+                        "recent_cancellations": { "type": "array", "items": { "type": "object" } },
+                        "behavioral_patterns": { "type": "array", "items": { "type": "object" } },
+                        "data_warnings": { "type": "array", "items": { "type": "string" } }
+                      }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "requestId": { "type": "string" },
+                        "timestamp": { "type": "string", "format": "date-time" },
+                        "computed_at": { "type": "string", "format": "date-time" },
+                        "age_minutes": { "type": "integer" },
+                        "cache_state": { "type": "string", "enum": ["fresh", "stale"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Cache miss — user must click Refresh Intelligence" }
+        }
+      }
+    },
+    "/get-market-research": {
+      "get": {
+        "summary": "Cached MarketResearch output",
+        "description": "Returns the cached MarketResearch report: confirmed events (DTCM/manual/template) with premium %, news digest (article count, dominant signal, net adjustment), area trends, competitor summary (P25/P50/P75/P90, your percentile, verdict, top comps).",
+        "operationId": "get_market_research",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organization",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Start of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "End of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached MarketResearch JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data", "metadata"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": {
+                      "type": "object",
+                      "description": "MarketResearch report — see updated_prompts_2/04-market-research.md Precompute Mode schema",
+                      "properties": {
+                        "confirmed_events": { "type": "array", "items": { "type": "object" } },
+                        "news_digest": { "type": "object" },
+                        "area_trends": { "type": "object" },
+                        "competitor_summary": { "type": "object" },
+                        "data_warnings": { "type": "array", "items": { "type": "string" } }
+                      }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "requestId": { "type": "string" },
+                        "timestamp": { "type": "string", "format": "date-time" },
+                        "computed_at": { "type": "string", "format": "date-time" },
+                        "age_minutes": { "type": "integer" },
+                        "cache_state": { "type": "string", "enum": ["fresh", "stale"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Cache miss — user must click Refresh Intelligence" }
+        }
+      }
+    },
+    "/get-price-guard-report": {
+      "get": {
+        "summary": "Cached PriceGuard output (proposals + guardrails)",
+        "description": "Returns the cached PriceGuard report: per-date pricing proposals with APPROVED/FLAGGED/REJECTED verdicts, comparisons against P50/recommended/top comp, six-axis reasoning, expected uplift, guardrail violations. Pass the proposals array verbatim to the chat response — do not re-rank or modify.",
+        "operationId": "get_price_guard_report",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organization",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Start of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "End of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached PriceGuard JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data", "metadata"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": {
+                      "type": "object",
+                      "description": "PriceGuard report — see updated_prompts_2/05-price-guard.md Precompute Mode schema",
+                      "properties": {
+                        "summary": { "type": "object" },
+                        "proposals": { "type": "array", "items": { "type": "object" } },
+                        "guardrail_violations": { "type": "array", "items": { "type": "object" } },
+                        "data_warnings": { "type": "array", "items": { "type": "string" } }
+                      }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "requestId": { "type": "string" },
+                        "timestamp": { "type": "string", "format": "date-time" },
+                        "computed_at": { "type": "string", "format": "date-time" },
+                        "age_minutes": { "type": "integer" },
+                        "cache_state": { "type": "string", "enum": ["fresh", "stale"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Cache miss — user must click Refresh Intelligence" }
+        }
+      }
+    },
+    "/get-anomaly-report": {
+      "get": {
+        "summary": "Cached AnomalyDetector output",
+        "description": "Returns the cached AnomalyDetector report: has_anomalies flag, severity summary, pricing outliers (with deviation %), booking anomalies, calendar gaps with potential lost revenue, data quality issues. Audited the PriceGuard proposals from Phase 2.",
+        "operationId": "get_anomaly_report",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organization",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Start of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "End of analysis window (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached AnomalyDetector JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data", "metadata"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": {
+                      "type": "object",
+                      "description": "AnomalyDetector report — see updated_prompts_2/09-anomaly-detector.md Precompute Mode schema",
+                      "properties": {
+                        "has_anomalies": { "type": "boolean" },
+                        "summary": { "type": "object" },
+                        "pricing_outliers": { "type": "array", "items": { "type": "object" } },
+                        "booking_anomalies": { "type": "array", "items": { "type": "object" } },
+                        "calendar_gaps": { "type": "array", "items": { "type": "object" } },
+                        "data_quality_issues": { "type": "array", "items": { "type": "object" } },
+                        "data_warnings": { "type": "array", "items": { "type": "string" } }
+                      }
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "requestId": { "type": "string" },
+                        "timestamp": { "type": "string", "format": "date-time" },
+                        "computed_at": { "type": "string", "format": "date-time" },
+                        "age_minutes": { "type": "integer" },
+                        "cache_state": { "type": "string", "enum": ["fresh", "stale"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Cache miss — user must click Refresh Intelligence" }
+        }
+      }
+    }
+  }
+}

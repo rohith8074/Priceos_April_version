@@ -1,0 +1,315 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "PriceOS Market Research Agent Tools",
+    "version": "1.0.0",
+    "description": "Tools for the Market Research sub-agent. Fetches market events (SERP + DTCM), Airbtics ADR benchmarks, and nearby competitor listings. All responses use the standard envelope: { status, data, metadata }."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/get-property-market-events": {
+      "get": {
+        "operationId": "get_property_market_events",
+        "summary": "Market events overlapping the analysis window",
+        "description": "Fetches all events from the MarketEvent collection synced from SERP Google Events, SERP Google News, and DTCM/RSS feeds. Returns events whose date range overlaps the requested window. Each event includes impact level (high/medium/low), expected uplift percentage, and source. Use this to identify events that justify price increases or minimum stay changes.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the organization",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "description": "Start of the analysis window (YYYY-MM-DD)",
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-10-01" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "description": "End of the analysis window (YYYY-MM-DD)",
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-10-31" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Market events overlapping the date window",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MarketEventsResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/get-property-benchmark": {
+      "get": {
+        "operationId": "get_property_benchmark",
+        "summary": "Airbtics ADR percentile benchmarks",
+        "description": "Fetches real-time Airbtics market benchmark data for the property's bedroom count and market ID. Returns P25/P50/P75/P90 ADR percentiles, average market occupancy %, high-demand days (dates where market occupancy ≥ 65%), and a verdict comparing the property's current price to P50 (UNDERPRICED / FAIR / SLIGHTLY_ABOVE / OVERPRICED). This is the ground truth for pricing decisions — always use Airbtics data over estimates.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the organization",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "description": "MongoDB ObjectId of the listing (used to fetch the property's current base price for comparison)",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "description": "Start of the benchmark window (YYYY-MM-DD)",
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-10-01" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "description": "End of the benchmark window (YYYY-MM-DD)",
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-10-31" }
+          },
+          {
+            "name": "bedrooms",
+            "in": "query",
+            "required": true,
+            "description": "Bedroom count for comp-set filtering (must match subject property)",
+            "schema": { "type": "integer", "example": 1 }
+          },
+          {
+            "name": "marketId",
+            "in": "query",
+            "required": false,
+            "description": "Airbtics market ID. Default: 2286 (Dubai). Only override for non-Dubai markets.",
+            "schema": { "type": "string", "default": "2286", "example": "2286" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ADR percentile benchmarks and pricing verdict",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BenchmarkResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/nearby-comps": {
+      "get": {
+        "operationId": "nearby_comps",
+        "summary": "Nearby competitor STR listings",
+        "description": "Fetches competitor STR listings within a radius of the subject property's coordinates. Returns each comp's name, distance, current occupancy %, and average nightly rate. Use to understand local competitive pressure — particularly when the benchmark verdict is OVERPRICED or when the manager asks about competitors. Requires lat/lon from the property profile.",
+        "parameters": [
+          {
+            "name": "lat",
+            "in": "query",
+            "required": true,
+            "description": "Latitude of the subject property",
+            "schema": { "type": "number", "format": "double", "example": 25.2048 }
+          },
+          {
+            "name": "lon",
+            "in": "query",
+            "required": true,
+            "description": "Longitude of the subject property",
+            "schema": { "type": "number", "format": "double", "example": 55.2708 }
+          },
+          {
+            "name": "bedrooms",
+            "in": "query",
+            "required": true,
+            "description": "Filter comps to matching bedroom count",
+            "schema": { "type": "integer", "example": 1 }
+          },
+          {
+            "name": "radiusKm",
+            "in": "query",
+            "required": false,
+            "description": "Search radius in kilometres. Default: 1.5",
+            "schema": { "type": "number", "format": "double", "default": 1.5, "example": 1.5 }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "description": "Reference date for occupancy and rate data (YYYY-MM-DD)",
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "example": "2026-10-01" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Nearby competitor listings with occupancy and rate data",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/NearbyCompsResponse" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiMetadata": {
+        "type": "object",
+        "properties": {
+          "requestId": { "type": "string", "example": "req_a1b2c3d4e5f6" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "MarketEventsResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": { "$ref": "#/components/schemas/MarketEventsData" },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "MarketEventsData": {
+        "type": "object",
+        "properties": {
+          "totalEvents": { "type": "integer", "description": "Number of events overlapping the window", "example": 3 },
+          "events": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MarketEvent" }
+          }
+        }
+      },
+      "MarketEvent": {
+        "type": "object",
+        "properties": {
+          "eventId": { "type": "string", "example": "69d776a671c7b939aaf49070" },
+          "name": { "type": "string", "example": "GITEX Global 2026" },
+          "startDate": { "type": "string", "format": "date", "example": "2026-10-12" },
+          "endDate": { "type": "string", "format": "date", "example": "2026-10-16" },
+          "impactLevel": { "type": "string", "enum": ["high", "medium", "low"], "description": "high ≥ 25% uplift, medium 10–24%, low < 10%", "example": "high" },
+          "upliftPct": { "type": "number", "format": "double", "description": "Expected demand/price uplift as a percentage", "example": 30 },
+          "source": { "type": "string", "enum": ["serp", "dtcm", "manual", "ai_detected"], "example": "serp" },
+          "description": { "type": "string", "example": "GITEX Global: 100,000+ tech professionals. Major demand driver for DIFC, Marina, and JBR." },
+          "city": { "type": "string", "example": "Dubai" },
+          "venue": { "type": "string", "nullable": true, "example": "Dubai World Trade Centre (DWTC)" }
+        }
+      },
+      "BenchmarkResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": { "$ref": "#/components/schemas/BenchmarkData" },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "BenchmarkData": {
+        "type": "object",
+        "properties": {
+          "source": { "type": "string", "enum": ["airbtics", "benchmark_data", "synthetic"], "description": "airbtics = real-time, benchmark_data = AI-calibrated, synthetic = estimate only", "example": "airbtics" },
+          "marketId": { "type": "string", "example": "2286" },
+          "bedrooms": { "type": "integer", "example": 1 },
+          "p25": { "type": "number", "format": "double", "description": "25th percentile ADR in AED", "example": 420 },
+          "p50": { "type": "number", "format": "double", "description": "50th percentile (median) ADR in AED — primary reference point", "example": 580 },
+          "p75": { "type": "number", "format": "double", "description": "75th percentile ADR in AED", "example": 780 },
+          "p90": { "type": "number", "format": "double", "description": "90th percentile ADR in AED", "example": 1050 },
+          "avgOccupancyPct": { "type": "number", "format": "double", "example": 72.5 },
+          "currentPropertyPrice": { "type": "number", "format": "double", "description": "Subject property's current base price for comparison", "example": 620 },
+          "verdict": { "type": "string", "enum": ["UNDERPRICED", "FAIR", "SLIGHTLY_ABOVE", "OVERPRICED"], "example": "FAIR" },
+          "recommendedWeekday": { "type": "number", "format": "double", "description": "Recommended Mon–Thu price in AED", "example": 589 },
+          "recommendedWeekend": { "type": "number", "format": "double", "description": "Recommended Fri–Sat price in AED", "example": 713 },
+          "recommendedEvent": { "type": "number", "format": "double", "description": "Recommended price during high-impact events in AED", "example": 850 },
+          "highDemandDays": {
+            "type": "array",
+            "description": "Specific dates where market occupancy ≥ 65%",
+            "items": { "$ref": "#/components/schemas/HighDemandDay" }
+          }
+        }
+      },
+      "HighDemandDay": {
+        "type": "object",
+        "properties": {
+          "date": { "type": "string", "format": "date", "example": "2026-10-13" },
+          "marketOccupancyPct": { "type": "number", "format": "double", "example": 84.0 },
+          "signal": { "type": "string", "enum": ["surge", "elevated"], "description": "surge = occ ≥ 80%, elevated = 65–79%", "example": "surge" }
+        }
+      },
+      "NearbyCompsResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["success"] },
+          "data": { "$ref": "#/components/schemas/NearbyCompsData" },
+          "metadata": { "$ref": "#/components/schemas/ApiMetadata" }
+        }
+      },
+      "NearbyCompsData": {
+        "type": "object",
+        "properties": {
+          "totalComps": { "type": "integer", "example": 6 },
+          "searchRadiusKm": { "type": "number", "format": "double", "example": 1.5 },
+          "comps": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CompListing" }
+          }
+        }
+      },
+      "CompListing": {
+        "type": "object",
+        "properties": {
+          "listingName": { "type": "string", "example": "Luxury 1BR Dubai Marina View" },
+          "distanceKm": { "type": "number", "format": "double", "example": 0.3 },
+          "occupancyPct": { "type": "number", "format": "double", "example": 78 },
+          "avgNightlyRate": { "type": "number", "format": "double", "description": "Average nightly rate in AED", "example": 680 },
+          "bedrooms": { "type": "integer", "example": 1 },
+          "channel": { "type": "string", "example": "Airbnb" }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid or missing query parameters",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["error"] },
+                "error": { "type": "object", "properties": { "code": { "type": "string", "example": "VALIDATION_ERROR" }, "message": { "type": "string" } } }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Listing or organization not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": { "type": "string", "enum": ["error"] },
+                "error": { "type": "object", "properties": { "code": { "type": "string", "example": "NOT_FOUND" }, "message": { "type": "string" } } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

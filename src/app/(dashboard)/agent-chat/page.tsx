@@ -24,9 +24,11 @@ export default async function AgentChatPage() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split("T")[0];
-  const plus29 = new Date(today);
-  plus29.setDate(plus29.getDate() + 29);
-  const plus29Str = plus29.toISOString().split("T")[0];
+  // Use +30 days (31-day window) to match the date picker default (today → today+30 inclusive)
+  // and calendar-metrics which computes windowDays = 31 for the same range.
+  const plus30 = new Date(today);
+  plus30.setDate(plus30.getDate() + 30);
+  const plus29Str = plus30.toISOString().split("T")[0];
 
   let propertiesWithMetrics: PropertyWithMetrics[] = [];
   try {
@@ -79,19 +81,20 @@ export default async function AgentChatPage() {
       const invTotal = pInvs.length;
       const invOcc = invTotal > 0 ? Math.round((invBooked / invTotal) * 100) : 0;
 
-      // Method 2: Occupancy from Reservations
-      let resBookedDays = 0;
-      const WINDOW_DAYS = 30;
+      // Method 2: Occupancy from Reservations — Set-based to avoid double-counting overlaps
+      const WINDOW_DAYS = 31; // today → today+30 inclusive = 31 days, matches calendar-metrics
+      const bookedDateSet = new Set<string>();
       for (const r of pRes) {
         const checkIn = r.checkIn > todayStr ? r.checkIn : todayStr;
         const checkOut = r.checkOut < plus29Str ? r.checkOut : plus29Str;
-        if (checkOut > checkIn) {
-          resBookedDays += Math.ceil(
-            (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000
-          );
+        let cur = new Date(checkIn);
+        const end = new Date(checkOut);
+        while (cur < end) {
+          bookedDateSet.add(cur.toISOString().split("T")[0]);
+          cur.setDate(cur.getDate() + 1);
         }
       }
-      const resOcc = Math.min(100, Math.round((resBookedDays / WINDOW_DAYS) * 100));
+      const resOcc = Math.min(100, Math.round((bookedDateSet.size / WINDOW_DAYS) * 100));
 
       // Choose maximum calculated occupancy for safety
       const calculatedOccupancy = Math.max(invOcc, resOcc);

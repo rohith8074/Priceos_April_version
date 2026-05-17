@@ -95,17 +95,22 @@ export function MarketIntelligenceClient({ orgId, events, occupancyPct, avgNight
     setSyncing(true);
     setSyncMsg(null);
     try {
-      const res = await fetch("/api/v1/system/events/sync", {
+      const res = await fetch("/api/market-setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId, daysAhead: 90, marketCity: "Dubai" }),
+        body: JSON.stringify({
+          orgId,
+          context: { type: "portfolio", propertyId: listings[0]?.id },
+          dateRange: { from: new Date().toISOString().split("T")[0], to: new Date(Date.now() + 90 * 86400000).toISOString().split("T")[0] },
+        }),
       });
       const json = await res.json();
       if (!res.ok) {
-        setSyncMsg(json?.error?.message || "Sync failed");
+        setSyncMsg(json?.error || "Sync failed");
       } else {
-        const { inserted = 0, updated = 0, benchmarksRefreshed = 0 } = json.data ?? {};
-        setSyncMsg(`Synced — ${inserted} events, ${benchmarksRefreshed} benchmarks`);
+        const eventsCount = json.eventsCount ?? 0;
+        const cached = json.cached ? " (cached)" : "";
+        setSyncMsg(`Synced — ${eventsCount} events saved${cached}`);
         router.refresh();
       }
     } catch {

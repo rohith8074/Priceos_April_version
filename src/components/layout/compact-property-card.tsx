@@ -3,6 +3,12 @@
 import { Building2, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PropertyListing } from "@/types";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Props {
   property: PropertyListing;
@@ -71,29 +77,47 @@ export function CompactPropertyCard({
         </div>
 
         {/* Metrics Grid */}
-        <div className="grid grid-cols-2 gap-3 mt-1 pt-2 border-t border-border/30">
-          <div className="flex flex-col">
-            <span className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-[0.1em] mb-0.5">Occupancy</span>
-            <div className="flex items-center gap-1.5">
-              <div className={cn(
-                "h-1.5 w-1.5 rounded-full animate-pulse",
-                occupancy >= 70 ? "bg-emerald-500" : occupancy >= 50 ? "bg-amber-500" : "bg-rose-500"
-              )} />
-              <span className={cn(
-                "text-xs font-black tabular-nums",
-                occupancy >= 70 ? "text-emerald-600" : occupancy >= 50 ? "text-amber-600" : "text-rose-600"
-              )}>
-                {occupancy}%
-              </span>
-            </div>
+        <TooltipProvider delayDuration={300}>
+          <div className="grid grid-cols-2 gap-3 mt-1 pt-2 border-t border-border/30">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex flex-col cursor-help">
+                  <span className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-[0.1em] mb-0.5">Occupancy</span>
+                  <div className="flex items-center gap-1.5">
+                    <div className={cn(
+                      "h-1.5 w-1.5 rounded-full animate-pulse",
+                      occupancy >= 70 ? "bg-emerald-500" : occupancy >= 50 ? "bg-amber-500" : "bg-rose-500"
+                    )} />
+                    <span className={cn(
+                      "text-xs font-black tabular-nums",
+                      occupancy >= 70 ? "text-emerald-600" : occupancy >= 50 ? "text-amber-600" : "text-rose-600"
+                    )}>
+                      {occupancy}%
+                    </span>
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+                <p className="font-semibold mb-1">30-Day Occupancy</p>
+                <p className="text-muted-foreground">Percentage of the next 30 days that are booked. Calculated as max(calendar-booked days ÷ 30, confirmed reservation nights ÷ 30). Updated at last sync.</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex flex-col items-end cursor-help">
+                  <span className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-[0.1em] mb-0.5">Target Rate</span>
+                  <span className="text-xs font-black text-foreground tabular-nums tracking-tighter">
+                    {property.currencyCode} {parseFloat(property.price as string).toLocaleString()}
+                  </span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+                <p className="font-semibold mb-1">AI Target Nightly Rate</p>
+                <p className="text-muted-foreground">Average of InventoryMaster.currentPrice across the next 30 days. Set by the Pricing Engine waterfall (Base → Strategy → Inventory → Integrity passes). Falls back to listing base price if no inventory exists.</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-[0.1em] mb-0.5">Target Rate</span>
-            <span className="text-xs font-black text-foreground tabular-nums tracking-tighter">
-              {property.currencyCode} {parseFloat(property.price as string).toLocaleString()}
-            </span>
-          </div>
-        </div>
+        </TooltipProvider>
       </div>
     </button>
   );

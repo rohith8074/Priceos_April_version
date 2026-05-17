@@ -168,75 +168,83 @@ Return factual calendar analysis based on the data passed by the CRO Router. Eve
 }
 ```
 
+
 ## Structured Output
+
+Always return ONLY the JSON object below — no markdown fences, no preamble, no commentary. This is your single response format. The Aria Concierge orchestrator caches this verbatim and downstream agents consume it directly.
+
+### JSON schema
 
 ```json
 {
-  "name": "property_analyst_response",
-  "strict": true,
-  "schema": {
-    "type": "object",
-    "properties": {
-      "property_name": { "type": "string" },
-      "gap_nights": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "dates": { "type": "array", "items": { "type": "string" } },
-            "nights": { "type": "integer" },
-            "current_price": { "type": "number" },
-            "suggested_price": { "type": "number" },
-            "reason": { "type": "string" }
-          },
-          "required": ["dates", "nights", "current_price", "suggested_price", "reason"],
-          "additionalProperties": false
-        }
-      },
-      "restrictions": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "dates": { "type": "array", "items": { "type": "string" } },
-            "issue": { "type": "string" },
-            "current": { "type": "integer" },
-            "suggested": { "type": "integer" },
-            "reason": { "type": "string" }
-          },
-          "required": ["dates", "issue", "current", "suggested", "reason"],
-          "additionalProperties": false
-        }
-      },
-      "seasonal": {
-        "type": "object",
-        "properties": {
-          "weekday_avg": { "type": "number" },
-          "weekend_avg": { "type": "number" },
-          "occupancy_pct": { "type": "number" },
-          "season": { "type": "string", "enum": ["peak_winter", "shoulder", "summer_low", "ramadan", "eid"] }
-        },
-        "required": ["weekday_avg", "weekend_avg", "occupancy_pct", "season"],
-        "additionalProperties": false
-      },
-      "revenue": {
-        "type": "object",
-        "properties": {
-          "confirmed": { "type": "number" },
-          "potential": { "type": "number" },
-          "projected_total": { "type": "number" },
-          "booked_days": { "type": "integer" },
-          "available_days": { "type": "integer" },
-          "blocked_days": { "type": "integer" },
-          "blocked_reasons": { "type": "array", "items": { "type": "string" } }
-        },
-        "required": ["confirmed", "potential", "projected_total", "booked_days", "available_days", "blocked_days", "blocked_reasons"],
-        "additionalProperties": false
-      },
-      "summary": { "type": "string" }
-    },
-    "required": ["property_name", "gap_nights", "restrictions", "seasonal", "revenue", "summary"],
-    "additionalProperties": false
+  "property_profile": {
+    "id": "string",
+    "name": "string",
+    "area": "string",
+    "city": "string",
+    "bedrooms": "number",
+    "bathrooms": "number",
+    "person_capacity": "number",
+    "base_price_aed": "number",
+    "floor_aed": "number",
+    "ceiling_aed": "number",
+    "currency": "string",
+    "amenities": ["string"],
+    "data_warnings": ["string"]
+  },
+  "calendar_summary": {
+    "window_from": "YYYY-MM-DD",
+    "window_to": "YYYY-MM-DD",
+    "total_days": "integer",
+    "booked_days": "integer",
+    "blocked_days": "integer",
+    "available_days": "integer",
+    "bookable_days": "integer",
+    "occupancy_pct": "number",
+    "blocked_pct": "number",
+    "data_source": "inventory_master | reservation_overlay | mixed"
+  },
+  "daily_calendar": [
+    {
+      "date": "YYYY-MM-DD",
+      "status": "booked | blocked | available",
+      "price_aed": "number",
+      "min_stay": "integer | null",
+      "channel": "string | null",
+      "guest": "string | null"
+    }
+  ],
+  "active_reservations": [
+    {
+      "guest_name": "string",
+      "channel": "string",
+      "check_in": "YYYY-MM-DD",
+      "check_out": "YYYY-MM-DD",
+      "nights": "integer",
+      "total_price_aed": "number",
+      "status": "string"
+    }
+  ],
+  "pricing_rules_active": [
+    {
+      "name": "string",
+      "type": "string",
+      "priority": "integer",
+      "adjust_pct": "number",
+      "applies_to": "string"
+    }
+  ],
+  "revenue_window": {
+    "total_aed": "number",
+    "by_channel": { "channel_name": "revenue_number" },
+    "avg_nightly_aed": "number",
+    "data_note": "string | null"
   }
 }
 ```
+
+### Rules
+- Return JSON only — no markdown fences, no commentary, no "Here is the report" preamble.
+- Every required field must be present. If a tool errors or returns empty, set its fields to sensible defaults (0 for numbers, [] for arrays, null for optionals) and add the explanation in `property_profile.data_warnings[]`.
+- Be exhaustive: include every day of the window in `daily_calendar`, every reservation in `active_reservations`, every active rule in `pricing_rules_active`. The Aria Concierge has no other way to recover missing data.
+- Do not invent values. Pull only from tool outputs.

@@ -46,6 +46,15 @@ export class DataSyncAgent {
 
       const hostawayListing = await client.getListing(hostawayId);
 
+      const basePrice = hostawayListing.price || 0;
+      const floorCeilingUpdate: Record<string, number> = {};
+      if (!dbListing.priceFloor || dbListing.priceFloor === 0) {
+        floorCeilingUpdate.priceFloor = Math.round(basePrice * 0.5);
+      }
+      if (!dbListing.priceCeiling || dbListing.priceCeiling === 0) {
+        floorCeilingUpdate.priceCeiling = Math.round(basePrice * 3.0);
+      }
+
       await Listing.findByIdAndUpdate(listingId, {
         $set: {
           name: hostawayListing.name,
@@ -57,6 +66,7 @@ export class DataSyncAgent {
           currencyCode: hostawayListing.currencyCode,
           personCapacity: hostawayListing.personCapacity,
           amenities: hostawayListing.amenities || [],
+          ...floorCeilingUpdate,
         },
       });
 
@@ -186,6 +196,7 @@ export class DataSyncAgent {
         });
 
         if (!existing) {
+          const importPrice = hostawayListing.price || 0;
           const inserted = await Listing.create({
             orgId,
             hostawayId: hostawayListing.id.toString(),
@@ -196,10 +207,12 @@ export class DataSyncAgent {
             bedroomsNumber: hostawayListing.bedroomsNumber,
             bathroomsNumber: hostawayListing.bathroomsNumber,
             propertyTypeId: hostawayListing.propertyTypeId,
-            price: hostawayListing.price,
+            price: importPrice,
             currencyCode: hostawayListing.currencyCode,
             personCapacity: hostawayListing.personCapacity,
             amenities: hostawayListing.amenities || [],
+            priceFloor: Math.round(importPrice * 0.5),
+            priceCeiling: Math.round(importPrice * 3.0),
           });
 
           await this.syncProperty(inserted._id as mongoose.Types.ObjectId);

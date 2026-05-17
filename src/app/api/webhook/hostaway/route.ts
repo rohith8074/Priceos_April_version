@@ -3,7 +3,7 @@ import { connectToDatabase } from "@/lib/db/mongodb";
 import { Listing } from "@/lib/db/models/Listing";
 import { Organization } from "@/lib/db/models/Organization";
 import { HostawayConversation } from "@/lib/db/models/HostawayConversation";
-import { GuestThread, IGuestMessage } from "@/lib/db/models/guest_thread";
+import { GuestThread } from "@/lib/db/models/guest_thread";
 import { getOrgHostawayToken } from "@/lib/hostaway/token";
 import { callLyzrAgent } from "@/lib/services/lyzr";
 import { Types } from "mongoose";

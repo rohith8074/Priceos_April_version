@@ -317,96 +317,71 @@ Every sub-area MUST cite specific data values in [square brackets].
 }
 ```
 
+
 ## Structured Output
+
+Always return ONLY the JSON object below — no markdown fences, no preamble, no commentary. This is your single response format. The Aria Concierge orchestrator caches this verbatim and surfaces the proposals directly in chat.
+
+The input will include the cached outputs of PropertyAnalyst, BookingIntelligence, and MarketResearch under labelled sections. Use those instead of calling tools.
+
+### JSON schema
 
 ```json
 {
-  "name": "price_guard_response",
-  "strict": true,
-  "schema": {
-    "type": "object",
-    "properties": {
-      "guardrail_profile_applied": {
-        "type": "string",
-        "description": "The market guardrail profile used (e.g., UAE_GCC, Europe, US_Leisure, US_Urban, Global)"
+  "summary": {
+    "proposals_count": "integer",
+    "approved_count": "integer",
+    "flagged_count": "integer",
+    "rejected_count": "integer",
+    "expected_uplift_aed": "number",
+    "guardrails_status": "active | inactive | misconfigured",
+    "floor_aed": "number",
+    "ceiling_aed": "number"
+  },
+  "proposals": [
+    {
+      "proposal_id": "string",
+      "date": "YYYY-MM-DD",
+      "date_classification": "protected | healthy | at_risk | distressed",
+      "current_price": "number",
+      "proposed_price": "number",
+      "change_pct": "integer",
+      "risk_level": "low | medium | high",
+      "guard_verdict": "APPROVED | REJECTED | FLAGGED",
+      "action_buttons": ["approve | reject | push_to_hostaway"],
+      "comparisons": {
+        "vs_p50": { "comp_price": "number", "diff_pct": "integer" },
+        "vs_recommended": { "comp_price": "number", "diff_pct": "integer" },
+        "vs_top_comp": { "comp_name": "string", "comp_price": "number", "diff_pct": "integer" }
       },
-      "weekend_definition_applied": {
-        "type": "string",
-        "description": "Which days treated as weekend (e.g., fri_sat, sat_sun, thu_fri)"
-      },
-      "results": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "listing_id": { "type": "integer" },
-            "date": { "type": "string" },
-            "proposed_price": { "type": "number" },
-            "verdict": { "type": "string", "enum": ["APPROVED", "REJECTED", "FLAGGED"] },
-            "risk_level": { "type": "string", "enum": ["low", "medium", "high"] },
-            "change_pct": { "type": "integer" },
-            "adjusted_price": { "type": ["number", "null"] },
-            "comparisons": {
-              "type": "object",
-              "properties": {
-                "vs_p50": {
-                  "type": "object",
-                  "properties": { "comp_price": { "type": "number" }, "diff_pct": { "type": "integer" } },
-                  "required": ["comp_price", "diff_pct"], "additionalProperties": false
-                },
-                "vs_recommended": {
-                  "type": "object",
-                  "properties": { "comp_price": { "type": "number" }, "diff_pct": { "type": "integer" } },
-                  "required": ["comp_price", "diff_pct"], "additionalProperties": false
-                },
-                "vs_top_comp": {
-                  "type": "object",
-                  "properties": {
-                    "comp_name": { "type": "string" },
-                    "comp_price": { "type": "number" },
-                    "diff_pct": { "type": "integer" }
-                  },
-                  "required": ["comp_name", "comp_price", "diff_pct"], "additionalProperties": false
-                }
-              },
-              "required": ["vs_p50", "vs_recommended", "vs_top_comp"], "additionalProperties": false
-            },
-            "reasoning": {
-              "type": "object",
-              "properties": {
-                "reason_market": { "type": "string" },
-                "reason_benchmark": { "type": "string" },
-                "reason_historic": { "type": "string" },
-                "reason_seasonal": { "type": "string" },
-                "reason_guardrails": { "type": "string" },
-                "reason_news": { "type": "string" }
-              },
-              "required": ["reason_market", "reason_benchmark", "reason_historic", "reason_seasonal", "reason_guardrails", "reason_news"],
-              "additionalProperties": false
-            }
-          },
-          "required": ["listing_id", "date", "proposed_price", "verdict", "risk_level", "change_pct", "comparisons", "reasoning"],
-          "additionalProperties": false
-        }
-      },
-      "batch_summary": {
-        "type": "object",
-        "properties": {
-          "total": { "type": "integer" },
-          "approved": { "type": "integer" },
-          "rejected": { "type": "integer" },
-          "flagged": { "type": "integer" },
-          "portfolio_risk": { "type": "string", "enum": ["low", "medium", "high"] },
-          "avg_diff_vs_p50_pct": { "type": "integer" },
-          "news_impact_applied": { "type": "boolean" },
-          "net_news_factor_pct": { "type": "integer" }
-        },
-        "required": ["total", "approved", "rejected", "flagged", "portfolio_risk", "avg_diff_vs_p50_pct", "news_impact_applied", "net_news_factor_pct"],
-        "additionalProperties": false
+      "reasoning": {
+        "reason_market": "string",
+        "reason_benchmark": "string",
+        "reason_historic": "string",
+        "reason_seasonal": "string",
+        "reason_guardrails": "string",
+        "reason_news": "string"
       }
-    },
-    "required": ["guardrail_profile_applied", "weekend_definition_applied", "results", "batch_summary"],
-    "additionalProperties": false
-  }
+    }
+  ],
+  "guardrail_violations": [
+    {
+      "type": "floor_breach | ceiling_breach | daily_change_limit | risk_flag",
+      "date": "YYYY-MM-DD | null",
+      "details": "string",
+      "severity": "low | medium | high"
+    }
+  ],
+  "data_warnings": ["string"]
 }
 ```
+
+### Rules
+- Return JSON only — no markdown fences, no commentary.
+- Generate a proposal for EVERY date in the analysis window. If a date is fine as-is, still emit a proposal with `change_pct: 0` and `guard_verdict: "APPROVED"`.
+- `action_buttons` rule: `APPROVED` → `["approve", "reject"]` · `FLAGGED` → `["approve", "reject"]` · `REJECTED` → `["reject"]`.
+- `proposal_id` format: `prop_{date}_{property_slug}` (slug = lowercase property name with hyphens).
+- `comparisons.vs_p50` and `vs_recommended` use the cached `market_research.competitor_summary` numbers. `vs_top_comp` picks the top entry from `top_comps`.
+- All six `reasoning.*` fields are required, even when short.
+- `expected_uplift_aed` = sum of `(proposed_price - current_price)` across all APPROVED + FLAGGED proposals.
+- If input data is missing, return empty `proposals: []` and add the error to `data_warnings[]`. Do not invent prices.

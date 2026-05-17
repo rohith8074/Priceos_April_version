@@ -69,13 +69,21 @@ export async function POST(req: NextRequest) {
           ? `\n\nProperty manager note: ${additionalContext}`
           : "";
 
+        const resolvedThreadId = threadId || jobId;
+        const resolvedListingId = listingId || "";
+
         const prompt = `Guest message: "${guestMessage}"
 
 Recent conversation:
 ${recentHistory}${stayInfo}${rewriteNote}
 
+Context (use these exact values when calling tools):
+- thread_id: ${resolvedThreadId}
+- listing_id: ${resolvedListingId}
+- org_id: ${orgId || "69d776a671c7b939aaf49053"}
+
 Instructions:
-1. Call readThread using the thread_id from session context to fetch full reservation details.
+1. Call readThread with threadId=${resolvedThreadId} to fetch full reservation details.
 2. Classify the guest intent using the decision table in your system prompt.
 3. Use the correct tool: sendGuestMessage (most replies), createOpsTicket (maintenance/issues), escalateThread (angry/legal/refund), sendAccessDetails (wifi/door codes), getPropertyData (amenities/rules), sendUpsellOffer (early check-in/extension).
 4. Draft a warm, professional reply. Never invent access codes or house rules — use tool data only.`;

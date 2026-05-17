@@ -62,7 +62,7 @@ export async function callLyzrAgent(
   systemPromptVariables?: Record<string, any>,
   filterVariables?: Record<string, any>,
   features?: Record<string, any>[],
-  timeoutMs: number = 120000
+  timeoutMs: number = 420_000 // 7 min — above Lyzr's 5-min manager timeout so Lyzr errors first
 ): Promise<LyzrCallResult> {
   const { chatUrl, apiKey } = getLyzrConfig();
   if (!chatUrl) return { response: "", raw: null, ok: false, parsedJson: null, error: "LYZR_API_URL not configured" };

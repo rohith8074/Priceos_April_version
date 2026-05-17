@@ -1,114 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db/mongodb";
-import { Listing, MarketEvent, BenchmarkData, InventoryMaster } from "@/lib/db/models";
-import { callLyzrAgent, extractJson } from "@/lib/lyzr/client";
+import { Listing, BenchmarkData, InventoryMaster, DataSyncLog } from "@/lib/db/models";
+import { syncEventFeeds } from "@/lib/events/event-feed-syncer";
+import { fetchSerpCompsForProperty, upsertSerpComps } from "@/lib/services/serp-comps";
 import { Types } from "mongoose";
 
-const MARKETING_AGENT_ID = process.env.Marketing_Agent_ID || "699993adb8bd4d3aac102a81";
-const CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12 hours
+// Skip SERP sync if last sync was less than 4 hours ago (SERP budget guard)
+const SYNC_STALE_MS = 4 * 60 * 60 * 1000;
 
-function buildMarketingPrompt(
-  propertyName: string,
-  area: string,
-  bedrooms: number,
-  basePrice: number,
-  priceFloor: number,
-  priceCeiling: number,
-  from: string,
-  to: string
-): string {
-  return `You are a Dubai short-term rental market research agent. Provide market intelligence for the property below.
-
-PROPERTY:
-- Name: ${propertyName}
-- Area: ${area}, Dubai
-- Bedrooms: ${bedrooms}
-- Current Nightly Rate: AED ${basePrice}
-- Price Floor: AED ${priceFloor}
-- Price Ceiling: AED ${priceCeiling}
-- Analysis Window: ${from} to ${to}
-
-Return ONLY a valid JSON object — no markdown, no explanation, just raw JSON — with this exact structure:
-
-{
-  "events": [
-    {
-      "name": "Event name",
-      "startDate": "YYYY-MM-DD",
-      "endDate": "YYYY-MM-DD",
-      "impactLevel": "high",
-      "upliftPct": 20,
-      "description": "Why this affects demand",
-      "area": "${area}"
-    }
-  ],
-  "benchmark": {
-    "p25Rate": 0,
-    "p50Rate": 0,
-    "p75Rate": 0,
-    "p90Rate": 0,
-    "avgWeekday": 0,
-    "avgWeekend": 0,
-    "recommendedWeekday": 0,
-    "recommendedWeekend": 0,
-    "recommendedEvent": 0,
-    "rateTrend": "rising",
-    "trendPct": 0,
-    "verdict": "FAIR",
-    "percentile": 50,
-    "reasoning": "Brief market positioning note",
-    "comps": [
-      {
-        "name": "Comparable property name near ${area}",
-        "source": "Airbnb",
-        "rating": 4.8,
-        "reviews": 30,
-        "avgRate": 0
-      }
-    ]
-  }
-}
-
-Rules:
-1. Fill ALL numeric fields with real AED values for a ${bedrooms}BR in ${area} for ${from} to ${to}
-2. Provide 2-5 real upcoming Dubai events or holidays in the date range
-3. Provide 3 real comparable ${bedrooms}BR properties in ${area} or nearby
-4. verdict must be one of: UNDERPRICED, FAIR, SLIGHTLY_ABOVE, OVERPRICED
-5. rateTrend must be one of: rising, stable, falling
-6. impactLevel must be one of: high, medium, low`;
-}
-
-function syntheticBenchmark(
-  listingId: Types.ObjectId,
-  orgId: Types.ObjectId,
-  basePrice: number,
-  from: string,
-  to: string
-): any {
-  const p50 = Math.round(basePrice * 1.0);
-  return {
-    orgId,
-    listingId,
-    dateFrom: from,
-    dateTo: to,
-    p25Rate: Math.round(basePrice * 0.8),
-    p50Rate: p50,
-    p75Rate: Math.round(basePrice * 1.2),
-    p90Rate: Math.round(basePrice * 1.4),
-    avgWeekday: Math.round(basePrice * 0.95),
-    avgWeekend: Math.round(basePrice * 1.15),
-    yourPrice: basePrice,
-    percentile: 50,
-    verdict: "FAIR",
-    rateTrend: "rising",
-    trendPct: 4.2,
-    recommendedWeekday: Math.round(basePrice),
-    recommendedWeekend: Math.round(basePrice * 1.1),
-    recommendedEvent: Math.round(basePrice * 1.5),
-    reasoning: "Synthetic benchmark — run Aria to fetch live market data.",
-    comps: [],
-  };
-}
+const percentile = (sorted: number[], q: number): number => {
+  if (sorted.length === 0) return 0;
+  const idx = Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * (q / 100)));
+  return sorted[idx];
+};
 
 export async function POST(req: NextRequest) {
   const t0 = Date.now();
@@ -136,43 +40,49 @@ export async function POST(req: NextRequest) {
     const orgOid = new Types.ObjectId(orgId);
     const listingOid = new Types.ObjectId(propertyId);
 
-    // Load listing details
     const listing = await Listing.findOne({ _id: listingOid, orgId: orgOid }).lean() as any;
     if (!listing) {
       return NextResponse.json({ error: "Listing not found" }, { status: 404 });
     }
 
-    const area = listing.area || "Dubai Marina";
     const bedrooms = listing.bedroomsNumber ?? listing.bedrooms ?? 1;
     const basePrice = Number(listing.basePrice ?? listing.price ?? 500);
-    const priceFloor = Number(listing.priceFloor ?? Math.round(basePrice * 0.7));
-    const priceCeiling = Number(listing.priceCeiling ?? Math.round(basePrice * 2));
-    const propertyName = listing.name || context?.propertyName || "Property";
+    const area = listing.area || listing.city || "Dubai";
 
-    // ── Cache check: skip agent call if fresh BenchmarkData exists ───────────
-    const existing = await BenchmarkData.findOne({
-      listingId: listingOid,
-      dateFrom: { $lte: to },
-      dateTo: { $gte: from },
-    }).sort({ updatedAt: -1 }).lean() as any;
+    // ── Stale check: skip SERP sync if a recent complete sync exists ──────────
+    const lastSync = await DataSyncLog.findOne({
+      orgId: orgOid,
+      jobName: "sync-events",
+      status: "complete",
+    }).sort({ startedAt: -1 }).lean() as any;
 
-    if (existing && existing.updatedAt && Date.now() - new Date(existing.updatedAt).getTime() < CACHE_MAX_AGE_MS) {
-      const existingEvents = await MarketEvent.countDocuments({
-        orgId: orgOid,
-        isActive: true,
-        startDate: { $lte: to },
-        endDate: { $gte: from },
-      });
+    const isFresh = lastSync && (Date.now() - new Date(lastSync.startedAt).getTime() < SYNC_STALE_MS);
+
+    if (isFresh) {
+      console.log(`[market-setup] Sync is fresh (last: ${lastSync.startedAt}) — skipping SERP calls`);
       return NextResponse.json({
         ok: true,
-        eventsCount: existingEvents,
-        duration: "0.1s",
+        eventsCount: lastSync.recordsInserted + lastSync.recordsUpdated,
+        duration: "0.0s",
         cached: true,
-        guardrailsSetByAi: false,
+        syncSkipped: true,
       });
     }
 
-    // ── Get current avg price from InventoryMaster (for yourPrice) ──────────
+    // ── Create DataSyncLog entry ──────────────────────────────────────────────
+    const syncLog = await DataSyncLog.create({
+      orgId: orgOid,
+      jobName: "sync-events",
+      startedAt: new Date(),
+      status: "running",
+      recordsInserted: 0,
+      recordsUpdated: 0,
+      recordsSkipped: 0,
+      serpCallsUsed: 3, // SERP Events + SERP News + SERP Comps = 3 calls
+      sources: {},
+    });
+
+    // ── Get current avg price from InventoryMaster for yourPrice field ────────
     const invDocs = await InventoryMaster.find({
       listingId: listingOid,
       date: { $gte: from, $lte: to },
@@ -182,115 +92,123 @@ export async function POST(req: NextRequest) {
       ? Math.round(invPrices.reduce((a, b) => a + b, 0) / invPrices.length)
       : basePrice;
 
-    // ── Call Marketing Agent ─────────────────────────────────────────────────
-    console.log(`[market-setup] Calling Marketing Agent for ${propertyName} (${area}) ${from}→${to}`);
+    // ── Run SERP event sync + SERP comp sync in parallel ──────────────────────
+    const [syncResult, serpComps] = await Promise.allSettled([
+      syncEventFeeds(orgOid, 90, "Dubai"),
+      fetchSerpCompsForProperty(area, bedrooms),
+    ]);
 
-    const prompt = buildMarketingPrompt(propertyName, area, bedrooms, yourPrice, priceFloor, priceCeiling, from, to);
+    // ── Process event sync results ────────────────────────────────────────────
+    let eventsInserted = 0;
+    let eventsUpdated = 0;
+    let syncSources: Record<string, number> = {};
+    let syncError: string | undefined;
 
-    const agentResult = await callLyzrAgent({
-      agentId: MARKETING_AGENT_ID,
-      message: prompt,
-      sessionId: `mkt-${propertyId}-${from}-${to}`,
-      userId: orgId,
-      timeoutMs: 60_000,
-      maxRetries: 1,
-    });
-
-    let parsed: any = null;
-    if (agentResult.ok && agentResult.response) {
-      parsed = extractJson(agentResult.response) as any;
+    if (syncResult.status === "fulfilled") {
+      eventsInserted = syncResult.value.inserted;
+      eventsUpdated = syncResult.value.updated;
+      syncSources = syncResult.value.sources;
+      console.log(`[market-setup] Event sync: +${eventsInserted} inserted, ~${eventsUpdated} updated`);
+    } else {
+      syncError = String(syncResult.reason);
+      console.error(`[market-setup] Event sync failed:`, syncResult.reason);
     }
 
-    const duration = `${((Date.now() - t0) / 1000).toFixed(1)}s`;
+    // ── Persist SERP comps + build BenchmarkData (only when comps exist) ─────
+    let compsCount = 0;
+    let benchmarkSource: "serp" | "none" = "none";
 
-    // ── Upsert MarketEvent records ───────────────────────────────────────────
-    const events: any[] = Array.isArray(parsed?.events) ? parsed.events : [];
-    let savedEvents = 0;
+    if (serpComps.status === "fulfilled" && serpComps.value.length > 0) {
+      const comps = serpComps.value;
+      compsCount = comps.length;
 
-    for (const ev of events) {
-      if (!ev.name || !ev.startDate || !ev.endDate) continue;
-      await MarketEvent.findOneAndUpdate(
-        { orgId: orgOid, name: ev.name, startDate: ev.startDate, endDate: ev.endDate },
+      await upsertSerpComps(area, bedrooms, comps);
+
+      const rates = comps.map((c) => c.avgRate).sort((a, b) => a - b);
+      const p25 = percentile(rates, 25);
+      const p50 = percentile(rates, 50);
+      const p75 = percentile(rates, 75);
+      const p90 = percentile(rates, 90);
+
+      let verdict: string;
+      const ratio = yourPrice / p50;
+      if (ratio < 0.85) verdict = "UNDERPRICED";
+      else if (ratio < 1.05) verdict = "FAIR";
+      else if (ratio < 1.20) verdict = "SLIGHTLY_ABOVE";
+      else verdict = "OVERPRICED";
+
+      const benchmarkComps = comps.slice(0, 10).map((c) => ({
+        name: c.name.slice(0, 100),
+        source: c.source,
+        sourceUrl: c.sourceUrl,
+        avgRate: c.avgRate,
+      }));
+
+      await BenchmarkData.findOneAndUpdate(
+        { listingId: listingOid, dateFrom: from, dateTo: to },
         {
           $set: {
             orgId: orgOid,
-            name: String(ev.name),
-            startDate: String(ev.startDate),
-            endDate: String(ev.endDate),
-            impactLevel: ["high", "medium", "low"].includes(ev.impactLevel) ? ev.impactLevel : "medium",
-            upliftPct: Number(ev.upliftPct ?? 10),
-            description: String(ev.description ?? ""),
-            area: String(ev.area ?? area),
-            source: "ai_detected",
-            isActive: true,
+            listingId: listingOid,
+            dateFrom: from,
+            dateTo: to,
+            p25Rate: p25,
+            p50Rate: p50,
+            p75Rate: p75,
+            p90Rate: p90,
+            avgWeekday: p50,
+            avgWeekend: Math.round(p50 * 1.15),
+            yourPrice,
+            percentile: Math.round(ratio * 50),
+            verdict,
+            recommendedWeekday: p50,
+            recommendedWeekend: Math.round(p50 * 1.15),
+            recommendedEvent: Math.max(p75, Math.round(p50 * 1.4)),
+            reasoning: `Benchmark derived from ${rates.length} live SERP-sourced comparable listings in ${area} (${bedrooms}BR). Your price AED ${yourPrice} vs P50 AED ${p50}.`,
+            comps: benchmarkComps,
           },
         },
         { upsert: true, new: true }
       );
-      savedEvents++;
-    }
 
-    // ── Upsert BenchmarkData ─────────────────────────────────────────────────
-    const bm = parsed?.benchmark;
-    let benchmarkDoc: any;
-
-    if (bm && typeof bm === "object") {
-      const comps = Array.isArray(bm.comps) ? bm.comps.map((c: any) => ({
-        name: String(c.name ?? ""),
-        source: String(c.source ?? "Airbnb"),
-        sourceUrl: c.sourceUrl ?? null,
-        rating: c.rating != null ? Number(c.rating) : null,
-        reviews: c.reviews != null ? Number(c.reviews) : null,
-        avgRate: Number(c.avgRate ?? 0),
-        weekdayRate: c.weekdayRate ? Number(c.weekdayRate) : undefined,
-        weekendRate: c.weekendRate ? Number(c.weekendRate) : undefined,
-      })).filter((c: any) => c.name && c.avgRate > 0) : [];
-
-      const verdictMap: Record<string, string> = { UNDERPRICED: "UNDERPRICED", FAIR: "FAIR", SLIGHTLY_ABOVE: "SLIGHTLY_ABOVE", OVERPRICED: "OVERPRICED" };
-      const trendMap: Record<string, string> = { rising: "rising", stable: "stable", falling: "falling" };
-
-      benchmarkDoc = {
-        orgId: orgOid,
-        listingId: listingOid,
-        dateFrom: from,
-        dateTo: to,
-        p25Rate: Number(bm.p25Rate ?? 0) || Math.round(yourPrice * 0.8),
-        p50Rate: Number(bm.p50Rate ?? 0) || yourPrice,
-        p75Rate: Number(bm.p75Rate ?? 0) || Math.round(yourPrice * 1.2),
-        p90Rate: Number(bm.p90Rate ?? 0) || Math.round(yourPrice * 1.4),
-        avgWeekday: Number(bm.avgWeekday ?? 0) || Math.round(yourPrice * 0.95),
-        avgWeekend: Number(bm.avgWeekend ?? 0) || Math.round(yourPrice * 1.15),
-        yourPrice,
-        percentile: Number(bm.percentile ?? 50),
-        verdict: verdictMap[bm.verdict] ?? "FAIR",
-        rateTrend: trendMap[bm.rateTrend] ?? "stable",
-        trendPct: Number(bm.trendPct ?? 0),
-        recommendedWeekday: Number(bm.recommendedWeekday ?? 0) || yourPrice,
-        recommendedWeekend: Number(bm.recommendedWeekend ?? 0) || Math.round(yourPrice * 1.1),
-        recommendedEvent: Number(bm.recommendedEvent ?? 0) || Math.round(yourPrice * 1.5),
-        reasoning: String(bm.reasoning ?? ""),
-        comps,
-      };
+      benchmarkSource = "serp";
+      console.log(`[market-setup] SERP benchmark saved: ${rates.length} comps, P50=${p50}, verdict=${verdict}`);
     } else {
-      // Agent didn't return valid JSON — use synthetic fallback
-      console.warn("[market-setup] Agent returned no parseable JSON — using synthetic benchmark");
-      benchmarkDoc = syntheticBenchmark(listingOid, orgOid, yourPrice, from, to);
+      const reason = serpComps.status === "rejected"
+        ? String(serpComps.reason)
+        : "SERP returned no usable comp listings";
+      console.warn(`[market-setup] SERP comps unavailable: ${reason}`);
+      // Intentionally NOT persisting a synthetic benchmark — the widget will
+      // show its "No benchmark data yet" state until real SERP data is available.
     }
 
-    await BenchmarkData.findOneAndUpdate(
-      { listingId: listingOid, dateFrom: from, dateTo: to },
-      { $set: benchmarkDoc },
-      { upsert: true, new: true }
-    );
+    // ── Update DataSyncLog as complete ────────────────────────────────────────
+    const duration = Date.now() - t0;
+    await DataSyncLog.findByIdAndUpdate(syncLog._id, {
+      $set: {
+        status: syncError ? "error" : "complete",
+        completedAt: new Date(),
+        recordsInserted: eventsInserted,
+        recordsUpdated: eventsUpdated,
+        sources: { ...syncSources, SERP_Comps: compsCount },
+        durationMs: duration,
+        ...(syncError && { errorMessage: syncError }),
+      },
+    });
 
-    console.log(`[market-setup] Done: ${savedEvents} events, benchmark saved (${duration})`);
+    const durationStr = `${(duration / 1000).toFixed(1)}s`;
+    console.log(`[market-setup] Done: ${eventsInserted} events, ${compsCount} SERP comps (${durationStr})`);
 
     return NextResponse.json({
       ok: true,
-      eventsCount: savedEvents,
-      duration,
+      eventsCount: eventsInserted + eventsUpdated,
+      eventsInserted,
+      eventsUpdated,
+      compsCount,
+      duration: durationStr,
       cached: false,
-      guardrailsSetByAi: false,
+      syncSkipped: false,
+      benchmarkSource,
     });
   } catch (err: any) {
     console.error("[market-setup] Error:", err?.message ?? err);

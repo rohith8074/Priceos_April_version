@@ -8,6 +8,9 @@ import { GuestSummary } from "@/lib/db/models/GuestSummary";
 import { AirbticsCache } from "@/lib/db/models/airbtics_cache";
 import { CompetitorListing } from "@/lib/db/models/competitor_listing";
 import { CompetitorPerformance } from "@/lib/db/models/competitor_performance";
+import { GuestThread } from "@/lib/db/models/guest_thread";
+import { OpsTicket } from "@/lib/db/models/ops_ticket";
+import { AgentCache, type AgentName } from "@/lib/db/models/agent_cache";
 import { Types } from "mongoose";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -186,8 +189,6 @@ export async function GET(
     if (parts === "get-property-benchmark" || parts === "benchmark") {
       const orgId = sp.get("orgId") || "";
       const listingId = sp.get("listingId") || "";
-      const dateFrom = sp.get("dateFrom") || "";
-      const dateTo = sp.get("dateTo") || "";
       const bedrooms = parseInt(sp.get("bedrooms") || "1");
       const marketId = sp.get("marketId") || "2286";
 
@@ -477,6 +478,342 @@ export async function GET(
       return NextResponse.json({ totalProperties: properties.length, avgOccupancyPct: avgOcc, totalRevenue, avgNightlyRate: avgNightly, properties });
     }
 
+    // ── GET /get-property-data ────────────────────────────────────────────────
+    // Maya calls this when a guest asks about amenities, house rules, pool/gym/parking,
+    // pet policy, etc. The Listing model only stores `amenities` today; everything else
+    // is returned as null with a note so the agent knows not to invent answers.
+    if (parts === "get-property-data" || parts === "property-data") {
+      const listingId = sp.get("listingId") || "";
+      const field = sp.get("field") || "all";
+
+      if (!listingId || !Types.ObjectId.isValid(listingId)) {
+        return NextResponse.json({
+          status: "error",
+          error: { code: "VALIDATION_ERROR", message: "Valid listingId required" },
+        }, { status: 400 });
+      }
+
+      const listing = await Listing.findById(oid(listingId)).lean() as any;
+      if (!listing) {
+        return NextResponse.json({
+          status: "error",
+          error: { code: "NOT_FOUND", message: "Listing not found" },
+        }, { status: 404 });
+      }
+
+      const buildField = (f: string): { field: string; value: any; note?: string } => {
+        switch (f) {
+          case "amenities":
+            return { field: "amenities", value: listing.amenities || [] };
+          case "house_rules":
+          case "pool_info":
+          case "gym_info":
+          case "parking_info":
+          case "pet_policy":
+          case "noise_policy":
+          case "checkout_procedure":
+          case "wifi_info":
+            return {
+              field: f,
+              value: null,
+              note: `'${f}' is not configured on this listing. Ask the property manager to add it.`,
+            };
+          default:
+            return { field: f, value: null, note: `Unknown field '${f}'` };
+        }
+      };
+
+      if (field === "all") {
+        return NextResponse.json({
+          status: "success",
+          data: {
+            field: "all",
+            value: {
+              amenities: listing.amenities || [],
+              house_rules: null,
+              pool_info: null,
+              gym_info: null,
+              parking_info: null,
+              pet_policy: null,
+              noise_policy: null,
+              checkout_procedure: null,
+              wifi_info: null,
+            },
+            note: "Only 'amenities' is configured. Other fields are not yet stored on this listing.",
+          },
+          metadata: {
+            requestId: `req_${Date.now().toString(36)}`,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      const result = buildField(field);
+      return NextResponse.json({
+        status: "success",
+        data: result,
+        metadata: {
+          requestId: `req_${Date.now().toString(36)}`,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+
+    // ── GET /read-thread ──────────────────────────────────────────────────────
+    // Maya (Guest Reply Agent) calls this first to fetch full thread context.
+    // Joins GuestThread → Listing → Reservation and returns the envelope shape
+    // defined in guest-reply-tools.json (ReadThreadResponse / ThreadData).
+    if (parts === "read-thread") {
+      const threadId = sp.get("threadId") || "";
+
+      if (!threadId || threadId === "session_context" || threadId === "{{thread_id}}" || threadId === "string") {
+        return NextResponse.json({
+          status: "error",
+          error: "Missing or unresolved threadId. The agent must pass the literal thread_id value from the prompt, not the placeholder string.",
+        }, { status: 400 });
+      }
+
+      // Accept either a GuestThread ObjectId or a Hostaway conversationId.
+      // Webhook stores Hostaway conv ID in GuestThread.reservationId, so we
+      // fall back to that lookup when the value is not a valid ObjectId.
+      let thread: any = null;
+      if (Types.ObjectId.isValid(threadId)) {
+        thread = await GuestThread.findById(oid(threadId)).lean();
+      }
+      if (!thread) {
+        thread = await GuestThread.findOne({ reservationId: String(threadId) })
+          .sort({ lastActivityAt: -1 })
+          .lean();
+      }
+      if (!thread) {
+        return NextResponse.json({
+          status: "error",
+          error: `Thread not found for id '${threadId}'. Pass either the GuestThread _id or the Hostaway conversationId.`,
+        }, { status: 404 });
+      }
+
+      const [listing, reservation, conversation] = await Promise.all([
+        thread.listingId ? Listing.findById(thread.listingId).lean() as Promise<any> : Promise.resolve(null),
+        thread.reservationId
+          ? Reservation.findOne({
+              $or: [
+                { hostawayReservationId: thread.reservationId },
+                ...(Types.ObjectId.isValid(thread.reservationId) ? [{ _id: oid(thread.reservationId) }] : []),
+              ],
+            }).lean() as Promise<any>
+          : Promise.resolve(null),
+        thread.reservationId
+          ? HostawayConversation.findOne({ hostawayConversationId: thread.reservationId }).lean() as Promise<any>
+          : Promise.resolve(null),
+      ]);
+
+      // Channel-state mapping: GuestThread.commsState (active|paused|syncing|disabled)
+      // → ReadThread.commsState (active|paused|blocked).
+      const commsStateMap: Record<string, "active" | "paused" | "blocked"> = {
+        active: "active",
+        paused: "paused",
+        syncing: "paused",
+        disabled: "blocked",
+      };
+      const commsState = commsStateMap[thread.commsState] || "active";
+
+      // Merge messages from both GuestThread and HostawayConversation, sorted oldest → newest.
+      const threadMsgs = (thread.messages || []).map((m: any) => ({
+        direction: m.direction,
+        content: m.content,
+        sender: m.direction === "inbound" ? "guest" : "host",
+        handledBy: m.handledBy === "reservation_agent" ? "ai" : m.handledBy === "system" ? "ai" : m.handledBy,
+        createdAt: m.createdAt,
+      }));
+      const convMsgs = ((conversation?.messages as any[]) || []).map((m) => ({
+        direction: m.sender === "guest" ? "inbound" : "outbound",
+        content: m.text,
+        sender: m.sender,
+        handledBy: "human",
+        createdAt: m.timestamp,
+      }));
+      const allMsgs = [...threadMsgs, ...convMsgs]
+        .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())
+        .slice(-10);
+
+      return NextResponse.json({
+        status: "success",
+        data: {
+          threadId: String(thread._id),
+          commsState,
+          hostawayConversationId: thread.reservationId || null,
+          guestName: conversation?.guestName || reservation?.guestName || "Guest",
+          channel: thread.channel || conversation?.channelName || "hostaway",
+          reservation: reservation ? {
+            reservationId: String(reservation._id),
+            checkIn: reservation.checkIn,
+            checkOut: reservation.checkOut,
+            nights: reservation.nights,
+            totalPrice: Number(reservation.totalPrice || 0),
+            status: reservation.status,
+          } : null,
+          property: listing ? {
+            listingId: String(listing._id),
+            name: listing.name,
+            area: listing.area,
+            address: listing.address || null,
+          } : null,
+          // Access codes are not stored on the Listing model yet — return null so
+          // the agent knows it cannot send these and must ask the PM to configure them.
+          accessCodes: {
+            doorCode: null,
+            buildingCode: null,
+            wifiName: null,
+            wifiPassword: null,
+            parkingSpace: null,
+            additionalInstructions: null,
+          },
+          houseRules: null,
+          messages: allMsgs,
+        },
+        metadata: {
+          source: "guest_thread",
+          fetchedAt: new Date().toISOString(),
+        },
+      });
+    }
+
+    // ── Aria Concierge cached-data tools ──────────────────────────────────────
+    //
+    // These six endpoints serve pre-computed analyst outputs from the AgentCache
+    // collection. They are dumb DB lookups — no LLM calls, no external APIs. The
+    // Aria Concierge agent (Lyzr ID 6a09d9428e3a6bafa13d8284) calls these to
+    // answer property-manager questions without re-running the five worker agents.
+    //
+    // All six take: orgId, listingId, dateFrom, dateTo.
+    // Cache TTL: 4 hours (enforced via expiresAt TTL index on the collection).
+
+    const ARIA_AGENT_TOOLS: Record<string, AgentName> = {
+      "get-property-analysis": "property",
+      "get-booking-intelligence": "booking",
+      "get-market-research": "market_research",
+      "get-price-guard-report": "price_guard",
+      "get-anomaly-report": "anomaly",
+    };
+
+    // ── GET /get-cache-status ─────────────────────────────────────────────────
+    if (parts === "get-cache-status") {
+      const orgId = sp.get("orgId") || "";
+      const listingId = sp.get("listingId") || "";
+      const dateFrom = sp.get("dateFrom") || "";
+      const dateTo = sp.get("dateTo") || "";
+
+      if (!Types.ObjectId.isValid(orgId) || !Types.ObjectId.isValid(listingId)) {
+        return NextResponse.json({
+          status: "error",
+          error: { code: "VALIDATION_ERROR", message: "Valid orgId and listingId required" },
+        }, { status: 400 });
+      }
+
+      const rows = await AgentCache.find({
+        orgId: oid(orgId),
+        listingId: oid(listingId),
+        dateFrom,
+        dateTo,
+      }).lean() as any[];
+
+      const now = Date.now();
+      const fourHrsMs = 4 * 60 * 60 * 1000;
+      const allAgents: AgentName[] = ["property", "booking", "market_research", "price_guard", "anomaly"];
+
+      const perAgent = allAgents.map((a) => {
+        const row = rows.find((r: any) => r.agentName === a);
+        if (!row) return { agent: a, available: false, status: "missing", ageMinutes: null };
+        const ageMs = now - new Date(row.computedAt).getTime();
+        const ageMinutes = Math.round(ageMs / 60000);
+        const stale = ageMs > fourHrsMs;
+        return {
+          agent: a,
+          available: row.status === "complete",
+          status: row.status === "failed" ? "failed" : stale ? "stale" : "fresh",
+          ageMinutes,
+        };
+      });
+
+      const freshCount = perAgent.filter((p) => p.status === "fresh").length;
+      const cacheState = freshCount === 5 ? "warm" : freshCount === 0 ? "cold" : "partial";
+
+      return NextResponse.json({
+        status: "success",
+        data: {
+          cache_state: cacheState,
+          listing_id: listingId,
+          date_from: dateFrom,
+          date_to: dateTo,
+          agents: perAgent,
+          fresh_count: freshCount,
+        },
+        metadata: {
+          requestId: `req_${Date.now().toString(36)}`,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+
+    // ── GET /get-{agent}-{report} — five readers, identical shape ────────────
+    if (parts in ARIA_AGENT_TOOLS) {
+      const agentName = ARIA_AGENT_TOOLS[parts];
+      const orgId = sp.get("orgId") || "";
+      const listingId = sp.get("listingId") || "";
+      const dateFrom = sp.get("dateFrom") || "";
+      const dateTo = sp.get("dateTo") || "";
+
+      if (!Types.ObjectId.isValid(orgId) || !Types.ObjectId.isValid(listingId)) {
+        return NextResponse.json({
+          status: "error",
+          error: { code: "VALIDATION_ERROR", message: "Valid orgId and listingId required" },
+        }, { status: 400 });
+      }
+
+      const row = await AgentCache.findOne({
+        orgId: oid(orgId),
+        listingId: oid(listingId),
+        dateFrom,
+        dateTo,
+        agentName,
+      }).lean() as any;
+
+      if (!row) {
+        return NextResponse.json({
+          status: "error",
+          error: {
+            code: "CACHE_MISS",
+            message: `No cached '${agentName}' report for this listing/window. Click 'Refresh Intelligence' to warm the cache.`,
+          },
+        }, { status: 404 });
+      }
+
+      if (row.status === "failed") {
+        return NextResponse.json({
+          status: "error",
+          error: {
+            code: "AGENT_FAILED",
+            message: row.errorMessage || `'${agentName}' agent failed during precompute.`,
+          },
+        }, { status: 422 });
+      }
+
+      const ageMs = Date.now() - new Date(row.computedAt).getTime();
+      const ageMinutes = Math.round(ageMs / 60000);
+
+      return NextResponse.json({
+        status: "success",
+        data: row.output,
+        metadata: {
+          requestId: `req_${Date.now().toString(36)}`,
+          timestamp: new Date().toISOString(),
+          computed_at: row.computedAt,
+          age_minutes: ageMinutes,
+          cache_state: ageMs > 4 * 60 * 60 * 1000 ? "stale" : "fresh",
+        },
+      });
+    }
+
     // ── Fallback: 404 ─────────────────────────────────────────────────────────
     console.warn(`[agent-tools] Unknown path: /${parts}`);
     return NextResponse.json({ error: `Unknown tool endpoint: /${parts}` }, { status: 404 });
@@ -484,5 +821,279 @@ export async function GET(
   } catch (err: any) {
     console.error(`[agent-tools] /${parts} error:`, err);
     return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+// ── POST handlers for Guest Reply agent write operations ───────────────────────
+
+async function resolveThreadByAnyId(idOrConvId: string): Promise<any | null> {
+  if (!idOrConvId || idOrConvId === "session_context" || idOrConvId === "{{thread_id}}" || idOrConvId === "string") {
+    return null;
+  }
+  let thread: any = null;
+  if (Types.ObjectId.isValid(idOrConvId)) {
+    thread = await GuestThread.findById(oid(idOrConvId)).lean();
+  }
+  if (!thread) {
+    thread = await GuestThread.findOne({ reservationId: String(idOrConvId) })
+      .sort({ lastActivityAt: -1 })
+      .lean();
+  }
+  return thread;
+}
+
+function envelope(data: any) {
+  return {
+    status: "success",
+    data,
+    metadata: {
+      requestId: `req_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: new Date().toISOString(),
+    },
+  };
+}
+
+function errorEnvelope(code: string, message: string) {
+  return { status: "error", error: { code, message } };
+}
+
+export async function POST(
+  req: NextRequest,
+  props: { params: Promise<{ path: string[] }> }
+) {
+  const { path } = await props.params;
+  const parts = path.join("/").replace(/^v1\//, "");
+
+  console.log(`[agent-tools POST] /${parts}`);
+
+  let body: any = {};
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(errorEnvelope("VALIDATION_ERROR", "Request body must be JSON"), { status: 400 });
+  }
+
+  await connectToDatabase();
+
+  try {
+    // ── POST /send-guest-message ──────────────────────────────────────────────
+    if (parts === "send-guest-message") {
+      const { threadId, message } = body;
+      if (!threadId || !message) {
+        return NextResponse.json(errorEnvelope("VALIDATION_ERROR", "threadId and message are required"), { status: 400 });
+      }
+      const thread = await resolveThreadByAnyId(String(threadId));
+      if (!thread) {
+        return NextResponse.json(errorEnvelope("NOT_FOUND", `Thread '${threadId}' not found`), { status: 404 });
+      }
+      if (thread.commsState === "paused" || thread.commsState === "disabled") {
+        return NextResponse.json(errorEnvelope("COMMS_PAUSED", "Comms paused by manager — draft only, do not send."), { status: 422 });
+      }
+
+      const newMsg = {
+        messageId: `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        direction: "outbound" as const,
+        content: String(message),
+        handledBy: "reservation_agent" as const,
+        discloseAi: true,
+        status: "sent" as const,
+        createdAt: new Date(),
+        sentAt: new Date(),
+      };
+      await GuestThread.updateOne(
+        { _id: thread._id },
+        { $push: { messages: newMsg }, $set: { lastActivityAt: new Date() } }
+      );
+
+      return NextResponse.json(envelope({
+        sent: true,
+        hostawayMessageId: null,
+        deliveredAt: new Date().toISOString(),
+      }));
+    }
+
+    // ── POST /create-ops-ticket ───────────────────────────────────────────────
+    if (parts === "create-ops-ticket") {
+      const { listingId, category, description, priority, threadId } = body;
+      if (!listingId || !category || !description || !priority) {
+        return NextResponse.json(errorEnvelope("VALIDATION_ERROR", "listingId, category, description, priority are required"), { status: 400 });
+      }
+      if (!Types.ObjectId.isValid(listingId)) {
+        return NextResponse.json(errorEnvelope("VALIDATION_ERROR", "Invalid listingId format"), { status: 400 });
+      }
+      const listing = await Listing.findById(oid(listingId)).lean() as any;
+      if (!listing) {
+        return NextResponse.json(errorEnvelope("NOT_FOUND", "Listing not found"), { status: 404 });
+      }
+
+      // Map OpenAPI priority → schema severity (different enum names)
+      const severityMap: Record<string, "critical" | "high" | "medium" | "low"> = {
+        urgent: "critical",
+        high: "high",
+        medium: "medium",
+        low: "low",
+      };
+      const severity = severityMap[String(priority)] || "medium";
+      const slaHours = severity === "critical" ? 2 : severity === "high" ? 8 : severity === "medium" ? 24 : 72;
+
+      // Map OpenAPI category → schema category
+      const categoryMap: Record<string, "maintenance" | "housekeeping" | "access" | "noise" | "amenity_fault" | "other"> = {
+        maintenance: "maintenance",
+        cleaning: "housekeeping",
+        appliance: "amenity_fault",
+        plumbing: "maintenance",
+        electrical: "maintenance",
+        other: "other",
+      };
+      const mappedCategory = categoryMap[String(category)] || "other";
+
+      const ticket = await OpsTicket.create({
+        orgId: listing.orgId,
+        listingId: listing._id,
+        threadId: threadId ? String(threadId) : undefined,
+        category: mappedCategory,
+        description: String(description),
+        severity,
+        slaHours,
+        status: "open",
+        createdBy: "reservation_agent",
+      });
+
+      // Link back to thread if provided
+      if (threadId) {
+        const thread = await resolveThreadByAnyId(String(threadId));
+        if (thread) {
+          await GuestThread.updateOne(
+            { _id: thread._id },
+            { $push: { linkedTicketIds: String(ticket._id) }, $set: { lastActivityAt: new Date() } }
+          );
+        }
+      }
+
+      return NextResponse.json(envelope({
+        ticketId: String(ticket._id),
+        priority,
+        estimatedResponseMinutes: slaHours * 60,
+      }));
+    }
+
+    // ── POST /escalate-thread ─────────────────────────────────────────────────
+    if (parts === "escalate-thread") {
+      const { threadId, reason, notes } = body;
+      if (!threadId || !reason) {
+        return NextResponse.json(errorEnvelope("VALIDATION_ERROR", "threadId and reason are required"), { status: 400 });
+      }
+      const thread = await resolveThreadByAnyId(String(threadId));
+      if (!thread) {
+        return NextResponse.json(errorEnvelope("NOT_FOUND", `Thread '${threadId}' not found`), { status: 404 });
+      }
+
+      const holdingMsg = {
+        messageId: `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        direction: "outbound" as const,
+        content: "Thank you for reaching out. A member of our team will follow up with you personally as soon as possible.",
+        handledBy: "reservation_agent" as const,
+        discloseAi: true,
+        status: "sent" as const,
+        createdAt: new Date(),
+        sentAt: new Date(),
+      };
+
+      await GuestThread.updateOne(
+        { _id: thread._id },
+        {
+          $set: {
+            status: "urgent",
+            commsState: "paused",
+            assignedTo: "manager_queue",
+            lastActivityAt: new Date(),
+            closureReason: notes ? `${reason}: ${notes}` : reason,
+          },
+          $push: { messages: holdingMsg },
+        }
+      );
+
+      return NextResponse.json(envelope({
+        escalated: true,
+        managerNotified: true,
+        holdingMessageSent: true,
+      }));
+    }
+
+    // ── POST /send-access-details ─────────────────────────────────────────────
+    if (parts === "send-access-details") {
+      const { threadId } = body;
+      if (!threadId) {
+        return NextResponse.json(errorEnvelope("VALIDATION_ERROR", "threadId is required"), { status: 400 });
+      }
+      const thread = await resolveThreadByAnyId(String(threadId));
+      if (!thread) {
+        return NextResponse.json(errorEnvelope("NOT_FOUND", `Thread '${threadId}' not found`), { status: 404 });
+      }
+      if (thread.commsState === "paused" || thread.commsState === "disabled") {
+        return NextResponse.json(errorEnvelope("COMMS_PAUSED", "Comms paused — cannot send access details"), { status: 422 });
+      }
+
+      // Access codes aren't stored on the Listing model yet — surface that gap
+      // explicitly rather than inventing values.
+      return NextResponse.json(envelope({
+        sent: false,
+        fieldsIncluded: [],
+        note: "Access codes are not configured for this listing. Ask the property manager to add doorCode/wifiName/wifiPassword to the listing record.",
+      }));
+    }
+
+    // ── POST /send-upsell-offer ───────────────────────────────────────────────
+    if (parts === "send-upsell-offer") {
+      const { threadId, offerType } = body;
+      if (!threadId || !offerType) {
+        return NextResponse.json(errorEnvelope("VALIDATION_ERROR", "threadId and offerType are required"), { status: 400 });
+      }
+      const thread = await resolveThreadByAnyId(String(threadId));
+      if (!thread) {
+        return NextResponse.json(errorEnvelope("NOT_FOUND", `Thread '${threadId}' not found`), { status: 404 });
+      }
+      if (thread.commsState === "paused" || thread.commsState === "disabled") {
+        return NextResponse.json(errorEnvelope("COMMS_PAUSED", "Comms paused — cannot send upsell"), { status: 422 });
+      }
+
+      const offers: Record<string, { text: string; price: number }> = {
+        early_check_in: { text: "We can offer early check-in at 1:30 PM for AED 150. Would you like to confirm?", price: 150 },
+        late_check_out: { text: "Late check-out until 2 PM is available for AED 200. Want me to book it?", price: 200 },
+        extension: { text: "I'd be happy to check availability for extending your stay. Which dates were you thinking?", price: 0 },
+      };
+      const offer = offers[String(offerType)];
+      if (!offer) {
+        return NextResponse.json(errorEnvelope("VALIDATION_ERROR", `Unknown offerType '${offerType}'`), { status: 400 });
+      }
+
+      const newMsg = {
+        messageId: `msg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        direction: "outbound" as const,
+        content: offer.text,
+        handledBy: "reservation_agent" as const,
+        discloseAi: true,
+        status: "sent" as const,
+        createdAt: new Date(),
+        sentAt: new Date(),
+      };
+      await GuestThread.updateOne(
+        { _id: thread._id },
+        { $push: { messages: newMsg }, $set: { lastActivityAt: new Date() } }
+      );
+
+      return NextResponse.json(envelope({
+        offerSent: true,
+        offerType: String(offerType),
+        priceQuoted: offer.price || null,
+        availability: true,
+      }));
+    }
+
+    console.warn(`[agent-tools POST] Unknown path: /${parts}`);
+    return NextResponse.json(errorEnvelope("NOT_FOUND", `Unknown tool endpoint: /${parts}`), { status: 404 });
+  } catch (err: any) {
+    console.error(`[agent-tools POST] /${parts} error:`, err);
+    return NextResponse.json(errorEnvelope("INTERNAL_ERROR", err.message || "Server error"), { status: 500 });
   }
 }

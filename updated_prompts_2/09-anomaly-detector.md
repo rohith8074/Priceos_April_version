@@ -235,41 +235,67 @@ Thresholds:
 }
 ```
 
-## Structured Output (returned to CRO Router)
+
+## Structured Output
+
+Always return ONLY the JSON object below — no markdown fences, no preamble, no commentary. This is your single response format. The Aria Concierge orchestrator caches this verbatim.
+
+The input will include the cached outputs of PropertyAnalyst, BookingIntelligence, MarketResearch, **and PriceGuard** under labelled sections. Audit the PriceGuard proposals for anomalies — that's the primary job.
+
+### JSON schema
+
 ```json
 {
-  "name": "anomaly_detector_result",
-  "schema": {
-    "type": "object",
-    "properties": {
-      "property_name": { "type": "string" },
-      "checked_at": { "type": "string" },
-      "anomaly_score": { "type": "number" },
-      "severity": { "type": "string", "enum": ["NORMAL", "WARNING", "ALERT", "CRITICAL"] },
-      "anomalies_detected": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "rule": { "type": "string" },
-            "description": { "type": "string" },
-            "score_contribution": { "type": "number" }
-          },
-          "required": ["rule", "description", "score_contribution"],
-          "additionalProperties": false
-        }
-      },
-      "actions_recommended": {
-        "type": "array",
-        "items": { "type": "string" }
-      },
-      "rollback_recommended": { "type": "boolean" },
-      "rollback_dates": { "type": "array", "items": { "type": "string" } },
-      "autopilot_pause_recommended": { "type": "boolean" },
-      "cro_alert_message": { "type": ["string", "null"] }
-    },
-    "required": ["property_name", "checked_at", "anomaly_score", "severity", "anomalies_detected", "actions_recommended", "rollback_recommended", "rollback_dates", "autopilot_pause_recommended"],
-    "additionalProperties": false
-  }
+  "has_anomalies": "boolean",
+  "summary": {
+    "outlier_count": "integer",
+    "booking_anomaly_count": "integer",
+    "calendar_gap_count": "integer",
+    "data_quality_issue_count": "integer",
+    "overall_severity": "none | low | medium | high"
+  },
+  "pricing_outliers": [
+    {
+      "date": "YYYY-MM-DD",
+      "current_price_aed": "number",
+      "proposed_price_aed": "number",
+      "expected_range_aed": ["number", "number"],
+      "deviation_pct": "number",
+      "severity": "low | medium | high",
+      "suggested_action": "string"
+    }
+  ],
+  "booking_anomalies": [
+    {
+      "pattern": "string",
+      "evidence": "string",
+      "affected_dates": ["YYYY-MM-DD"],
+      "risk_level": "low | medium | high"
+    }
+  ],
+  "calendar_gaps": [
+    {
+      "from_date": "YYYY-MM-DD",
+      "to_date": "YYYY-MM-DD",
+      "gap_days": "integer",
+      "potential_lost_revenue_aed": "number"
+    }
+  ],
+  "data_quality_issues": [
+    {
+      "issue": "string",
+      "impact": "string"
+    }
+  ],
+  "data_warnings": ["string"]
 }
 ```
+
+### Rules
+- Return JSON only — no markdown fences, no commentary.
+- `has_anomalies` is true if any of `pricing_outliers`, `booking_anomalies`, `calendar_gaps`, or `data_quality_issues` are non-empty.
+- `summary.overall_severity` aggregates the worst severity across all detected items (`none` if all arrays empty).
+- For each `pricing_outlier`, `expected_range_aed` should bracket what the price ought to be based on market_research + property_profile (e.g. P25→P75 from competitor_summary).
+- Flag any PriceGuard proposal where `change_pct` is extreme (>40% up, >30% down) as an outlier even if PriceGuard approved it.
+- Be conservative: do not flag a price as anomalous just because it differs from average — only flag genuine outliers (>2 std dev, or outside floor/ceiling, or contradicting event signals).
+- If input data is missing, return all arrays empty with `has_anomalies: false`, and add the error to `data_warnings[]`. Do not invent anomalies.

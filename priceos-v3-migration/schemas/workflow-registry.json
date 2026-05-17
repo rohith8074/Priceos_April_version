@@ -1,0 +1,139 @@
+{
+  "$schema": "https://priceos.io/schemas/workflow-registry-v1.json",
+  "version": "v3.0",
+  "description": "Aria's intent-to-workflow lookup. Aria does not invent workflows.",
+  "intents": {
+    "occupancy_check": {
+      "agents": ["property_analyst"],
+      "mode": "solo",
+      "description": "Calendar, gaps, forward state for a single property"
+    },
+    "velocity_check": {
+      "agents": ["booking_intelligence"],
+      "mode": "solo",
+      "description": "Booking pace, LOS, channel mix, revenue"
+    },
+    "market_check": {
+      "agents": ["market_research"],
+      "mode": "solo",
+      "description": "Competitors, regime, events"
+    },
+    "pricing_decision": {
+      "agents": ["property_analyst", "booking_intelligence", "market_research"],
+      "mode": "parallel",
+      "then": ["priceguard", "anomaly_detector"],
+      "description": "What should I price for this property/window"
+    },
+    "full_analysis": {
+      "agents": ["property_analyst", "booking_intelligence", "market_research"],
+      "mode": "parallel",
+      "then": ["priceguard", "anomaly_detector"],
+      "description": "Everything for a property or window"
+    },
+    "anomaly_check": {
+      "agents": ["anomaly_detector"],
+      "mode": "solo",
+      "description": "Anything weird right now"
+    },
+    "portfolio_question": {
+      "agents": ["atlas"],
+      "mode": "solo",
+      "description": "Cross-property questions, route to Atlas"
+    },
+    "guest_question": {
+      "agents": ["maya"],
+      "mode": "handoff",
+      "description": "Route to Maya, do not handle in Aria"
+    },
+    "meta": {
+      "agents": [],
+      "mode": "self",
+      "description": "How does this work, what does X mean. Aria handles directly."
+    }
+  },
+  "agent_tools": {
+    "aria": [
+      "audit_log_decision"
+    ],
+    "property_analyst": [
+      "get_property_profile",
+      "get_property_calendar_metrics",
+      "get_property_reservations",
+      "audit_log_decision"
+    ],
+    "booking_intelligence": [
+      "get_property_reservations",
+      "get_property_benchmark",
+      "audit_log_decision"
+    ],
+    "market_research": [
+      "regime_classify",
+      "comps_get_state",
+      "events_get_validated",
+      "source_market_get_modifier",
+      "guest_signals_get_summary",
+      "audit_log_decision"
+    ],
+    "priceguard": [
+      "elasticity_predict",
+      "exploration_select",
+      "audit_log_decision"
+    ],
+    "anomaly_detector": [
+      "get_property_calendar_metrics",
+      "get_property_reservations",
+      "comps_get_state",
+      "regime_classify",
+      "audit_log_decision"
+    ],
+    "atlas": [
+      "get_portfolio_overview",
+      "get_portfolio_revenue_snapshot",
+      "get_property_calendar_metrics",
+      "audit_log_decision"
+    ],
+    "event_intelligence": [
+      "internet_search",
+      "audit_log_decision"
+    ],
+    "maya": [
+      "readThread",
+      "getPropertyData",
+      "sendGuestMessage",
+      "createOpsTicket",
+      "escalateThread",
+      "sendAccessDetails",
+      "sendUpsellOffer",
+      "closeThread",
+      "audit_log_decision"
+    ],
+    "conversation_summary": [
+      "get_guest_conversations",
+      "audit_log_decision"
+    ]
+  },
+  "model_assignments": {
+    "aria":               "claude-haiku-4",
+    "property_analyst":   "claude-haiku-4",
+    "booking_intelligence": "claude-haiku-4",
+    "market_research":    "claude-sonnet-4.6",
+    "priceguard":         "claude-sonnet-4.6",
+    "anomaly_detector":   "claude-haiku-4",
+    "atlas":              "claude-sonnet-4.6",
+    "event_intelligence": "perplexity-sonar-pro",
+    "maya":               "claude-haiku-4",
+    "conversation_summary": "claude-haiku-4"
+  },
+  "temperature_assignments": {
+    "aria":               0.2,
+    "property_analyst":   0.1,
+    "booking_intelligence": 0.1,
+    "market_research":    0.1,
+    "priceguard":         0.0,
+    "anomaly_detector":   0.0,
+    "atlas":              0.3,
+    "event_intelligence": 0.2,
+    "maya":               0.0,
+    "conversation_summary": 0.2
+  }
+}
