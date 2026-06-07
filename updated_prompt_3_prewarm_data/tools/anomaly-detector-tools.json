@@ -1,0 +1,140 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "PriceOS Anomaly Detector Tools",
+    "version": "1.0.0",
+    "description": "Tools used by the Anomaly Detector agent (Step 5/5). Reads all four upstream cached outputs (Property, Booking, Market, Price Guard) and audits Price Guard's proposals for outliers, gaps, and data-quality issues."
+  },
+  "servers": [
+    {
+      "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1",
+      "description": "Local dev server tunnelled via ngrok"
+    }
+  ],
+  "paths": {
+    "/get-property-analysis": {
+      "get": {
+        "summary": "Property Analyst's cached output",
+        "description": "Cached Property Analyst JSON — used to audit pricing outliers against floor/ceiling and to detect calendar gaps.",
+        "operationId": "get_property_analysis",
+        "parameters": [
+          { "name": "orgId",     "in": "query", "description": "MongoDB ObjectId of the organisation", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "description": "MongoDB ObjectId of the listing", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom",  "in": "query", "description": "Window start (YYYY-MM-DD)", "required": true, "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" } },
+          { "name": "dateTo",    "in": "query", "description": "Window end (YYYY-MM-DD)",   "required": true, "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached Property Analyst JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": { "type": "object" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "No cached Property Analyst output" }
+        }
+      }
+    },
+    "/get-booking-intelligence": {
+      "get": {
+        "summary": "Booking Intelligence's cached output",
+        "description": "Cached Booking Intelligence JSON — used to detect booking pattern anomalies (e.g. unusual cancellation clusters, channel-mix shifts).",
+        "operationId": "get_booking_intelligence",
+        "parameters": [
+          { "name": "orgId",     "in": "query", "description": "MongoDB ObjectId of the organisation", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "description": "MongoDB ObjectId of the listing", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom",  "in": "query", "description": "Window start (YYYY-MM-DD)", "required": true, "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" } },
+          { "name": "dateTo",    "in": "query", "description": "Window end (YYYY-MM-DD)",   "required": true, "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached Booking Intelligence JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": { "type": "object" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "No cached Booking Intelligence output" }
+        }
+      }
+    },
+    "/get-market-research": {
+      "get": {
+        "summary": "Market Research's cached output",
+        "description": "Cached Market Research JSON — used to validate pricing outliers against the P25-P75 band and to cross-reference event signals.",
+        "operationId": "get_market_research",
+        "parameters": [
+          { "name": "orgId",     "in": "query", "description": "MongoDB ObjectId of the organisation", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "description": "MongoDB ObjectId of the listing", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom",  "in": "query", "description": "Window start (YYYY-MM-DD)", "required": true, "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" } },
+          { "name": "dateTo",    "in": "query", "description": "Window end (YYYY-MM-DD)",   "required": true, "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached Market Research JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": { "type": "object" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "No cached Market Research output" }
+        }
+      }
+    },
+    "/get-price-guard-report": {
+      "get": {
+        "summary": "Price Guard's cached output (primary audit target)",
+        "description": "Cached Price Guard JSON containing per-date proposals. This is the PRIMARY input for anomaly detection — audit each proposal's proposed_price against the floor, ceiling, P25-P75 band, and event signals from Market Research.",
+        "operationId": "get_price_guard_report",
+        "parameters": [
+          { "name": "orgId",     "in": "query", "description": "MongoDB ObjectId of the organisation", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "description": "MongoDB ObjectId of the listing", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom",  "in": "query", "description": "Window start (YYYY-MM-DD)", "required": true, "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" } },
+          { "name": "dateTo",    "in": "query", "description": "Window end (YYYY-MM-DD)",   "required": true, "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached Price Guard JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": { "type": "object" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "No cached Price Guard output" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "market-research-tools",
+    "version": "1.0.0",
+    "description": "Market Research tools: regime, comps, events, source-market, guest signals, audit. All GET, verified live (HTTP 200). comps_get_state + events_get_validated + guest_signals_get_summary return REAL data; regime_classify + source_market_get_modifier are neutral stubs until the ML service is deployed."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/regime_classify": {
+      "get": {
+        "operationId": "regime_classify",
+        "summary": "Daily market regime score (0-1) for a city. STUB (neutral) until ML service deployed.",
+        "parameters": [
+          { "name": "city", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "date", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "{regime_score, regime_label, trend, confidence}" } }
+      }
+    },
+    "/comps_get_state": {
+      "get": {
+        "operationId": "comps_get_state",
+        "summary": "Live comp-set state (median/p25/p75, WoW change, movers). REAL (airbtics cache).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "bedrooms", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "marketId", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{median, p25, p75, wow_change_pct, movers, comps}" } }
+      }
+    },
+    "/events_get_validated": {
+      "get": {
+        "operationId": "events_get_validated",
+        "summary": "Verified demand events in the window with confidence. REAL.",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "min_confidence", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{count, events[]}" } }
+      }
+    },
+    "/source_market_get_modifier": {
+      "get": {
+        "operationId": "source_market_get_modifier",
+        "summary": "Property source-market demand modifier. STUB (neutral 1.0) until deployed.",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{modifier, breakdown}" } }
+      }
+    },
+    "/guest_signals_get_summary": {
+      "get": {
+        "operationId": "guest_signals_get_summary",
+        "summary": "Trailing guest sentiment summary for a property. REAL (null when no reviews).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{sentiment_score, complaint_categories, recurring_themes}" } }
+      }
+    },
+    "/audit_log_decision": {
+      "get": {
+        "operationId": "audit_log_decision",
+        "summary": "Persist this agent's decision; returns audit_decision_id.",
+        "parameters": [
+          { "name": "agent_name", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{status, audit_decision_id}" } }
+      }
+    }
+  }
+}

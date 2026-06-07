@@ -1,0 +1,164 @@
+{
+  "name": "PriceOS v3 - Market Research",
+  "description": "No more news_factor. Reads regime classifier + source-market + guest signals.",
+  "agent_role": "Market Research",
+  "agent_goal": "No more news_factor. Reads regime classifier + source-market + guest signals.",
+  "agent_instructions": "You surface the market context cleanly for downstream agents and explain\nwhat is happening in plain language. You do NOT estimate market state from\nnews headlines anymore. The regime classifier and the elasticity model\nown that.\n\nTools you may call:\n  regime_classify\n  comps_get_state\n  events_get_validated\n  source_market_get_modifier\n  guest_signals_get_summary\n  audit_log_decision\n\nFor every analysis run:\n\n1. Call regime_classify(city, as_of) - read regime_score, label, trend,\n   per_source_market modifiers, top feature_contributions.\n\n2. Call comps_get_state(property_id, target_window) - read by_target_date,\n   wow_change_pct, movers.\n\n3. Call events_get_validated(city, target_window, min_confidence=0.6) -\n   include only verified events.\n\n4. Call source_market_get_modifier(property_id, target_date) - read the\n   property-specific demand modifier and the per-segment breakdown.\n\n5. Call guest_signals_get_summary(property_id, window_days=30) - read\n   sentiment_score, complaint_categories, recurring_themes.\n\n6. Compose market context as structured output.\n\nYou never compute a \"news factor\". The regime classifier already encoded\nnews, advisories, mobility, macro. Reproducing it would double-count.\n\nYou explain in plain language:\n- What the regime is and why (cite the top 3 feature contributions)\n- Which source markets are softer or stronger\n- What the comp set has done in the last 7 days\n- Which events in the window matter\n- Whether guest sentiment is helping or hurting positioning\n\nNever speak in raw numbers without context.\nBad:  \"Comp median is AED 1240\"\nGood: \"Comp median is AED 1240, down 8% week-over-week, driven by three\n       Marina comps repricing after a quiet week\"\n\nAlways log via audit_log_decision before returning.\n\n## REQUIRED OUTPUT FORMAT\nRespond ONLY with a single JSON object matching this schema exactly. No prose outside the JSON.\n\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"audit_decision_id\": { \"type\": \"string\" },\n    \"regime\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"score\":       { \"type\": \"number\" },\n        \"label\":       { \"type\": \"string\" },\n        \"trend\":       { \"type\": \"string\" },\n        \"top_drivers\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } }\n      },\n      \"required\": [\"score\", \"label\", \"trend\", \"top_drivers\"],\n      \"additionalProperties\": false\n    },\n    \"comp_set\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"median\":         { \"type\": \"number\" },\n        \"p25\":            { \"type\": \"number\" },\n        \"p75\":            { \"type\": \"number\" },\n        \"wow_change_pct\": { \"type\": \"number\" },\n        \"movers\":         { \"type\": \"array\", \"items\": { \"type\": \"string\" } }\n      },\n      \"required\": [\"median\", \"p25\", \"p75\", \"wow_change_pct\"],\n      \"additionalProperties\": false\n    },\n    \"events\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"name\":                  { \"type\": \"string\" },\n          \"date\":                  { \"type\": \"string\" },\n          \"confidence\":            { \"type\": \"number\" },\n          \"expected_premium_band\": { \"type\": \"string\" }\n        },\n        \"required\": [\"name\", \"date\", \"confidence\"],\n        \"additionalProperties\": false\n      }\n    },\n    \"source_market_mix\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"country\":         { \"type\": \"string\" },\n          \"share\":           { \"type\": \"number\" },\n          \"regime_modifier\": { \"type\": \"number\" }\n        },\n        \"required\": [\"country\", \"share\", \"regime_modifier\"],\n        \"additionalProperties\": false\n      }\n    },\n    \"guest_signal\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"sentiment_score\":         { \"type\": \"number\" },\n        \"top_concerns\":            { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n        \"positioning_implication\": { \"type\": \"string\" }\n      },\n      \"required\": [\"sentiment_score\", \"positioning_implication\"],\n      \"additionalProperties\": false\n    },\n    \"narrative\": { \"type\": \"string\" }\n  },\n  \"required\": [\"audit_decision_id\", \"regime\", \"comp_set\", \"narrative\"],\n  \"additionalProperties\": false\n}\n```",
+  "features": [],
+  "tools": [],
+  "tool_usage_description": "Tools to attach post-deploy: regime_classify, comps_get_state, events_get_validated, source_market_get_modifier, guest_signals_get_summary, audit_log_decision",
+  "provider_id": "Anthropic",
+  "model": "claude-sonnet-4.6",
+  "llm_credential_id": "lyzr_anthropic",
+  "temperature": 0.1,
+  "top_p": 0.9,
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "audit_decision_id": {
+          "type": "string"
+        },
+        "regime": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "number"
+            },
+            "label": {
+              "type": "string"
+            },
+            "trend": {
+              "type": "string"
+            },
+            "top_drivers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "score",
+            "label",
+            "trend",
+            "top_drivers"
+          ],
+          "additionalProperties": false
+        },
+        "comp_set": {
+          "type": "object",
+          "properties": {
+            "median": {
+              "type": "number"
+            },
+            "p25": {
+              "type": "number"
+            },
+            "p75": {
+              "type": "number"
+            },
+            "wow_change_pct": {
+              "type": "number"
+            },
+            "movers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "median",
+            "p25",
+            "p75",
+            "wow_change_pct"
+          ],
+          "additionalProperties": false
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string"
+              },
+              "confidence": {
+                "type": "number"
+              },
+              "expected_premium_band": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "date",
+              "confidence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "source_market_mix": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "country": {
+                "type": "string"
+              },
+              "share": {
+                "type": "number"
+              },
+              "regime_modifier": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "country",
+              "share",
+              "regime_modifier"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "guest_signal": {
+          "type": "object",
+          "properties": {
+            "sentiment_score": {
+              "type": "number"
+            },
+            "top_concerns": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "positioning_implication": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "sentiment_score",
+            "positioning_implication"
+          ],
+          "additionalProperties": false
+        },
+        "narrative": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "audit_decision_id",
+        "regime",
+        "comp_set",
+        "narrative"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "priceos-cache",
+    "version": "1.0.0",
+    "description": "PriceOS precompute cache readers — return the precomputed worker analyses from AgentCache for a listing+window. Aria (CRO Router) calls these FIRST to answer from the precomputed pipeline instead of re-deriving. All GET. Returns 200 with data when the cache is warm, 404 CACHE_MISS when cold (run Refresh Intelligence)."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/get-cache-status": {
+      "get": {
+        "operationId": "get_cache_status",
+        "summary": "Which precomputed analyses are fresh/stale/missing for this listing+window.",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Per-agent cache freshness (cache_state warm/cold + per-agent ageMinutes)." } }
+      }
+    },
+    "/get-property-analysis": {
+      "get": {
+        "operationId": "get_property_analysis",
+        "summary": "Cached PropertyAnalyst output (occupancy, gap nights, revenue forecast). AUTHORITATIVE occupancy source.",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Cached PropertyAnalyst JSON." }, "404": { "description": "CACHE_MISS — run Refresh Intelligence." } }
+      }
+    },
+    "/get-booking-intelligence": {
+      "get": {
+        "operationId": "get_booking_intelligence",
+        "summary": "Cached BookingIntelligence output (velocity, LOS distribution, channel mix, ADR vs benchmark).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Cached BookingIntelligence JSON." }, "404": { "description": "CACHE_MISS." } }
+      }
+    },
+    "/get-market-research": {
+      "get": {
+        "operationId": "get_market_research",
+        "summary": "Cached MarketResearch output (regime, comp-set, validated events, source-market mix, guest sentiment).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Cached MarketResearch JSON." }, "404": { "description": "CACHE_MISS." } }
+      }
+    },
+    "/get-price-guard-report": {
+      "get": {
+        "operationId": "get_price_guard_report",
+        "summary": "Cached PriceGuard pricing decision (chosen price, verdict, guardrails, floor/ceiling reasoning).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Cached PriceGuard JSON." }, "404": { "description": "CACHE_MISS." } }
+      }
+    },
+    "/get-anomaly-report": {
+      "get": {
+        "operationId": "get_anomaly_report",
+        "summary": "Cached AnomalyDetector report (anomaly_score, severity, rules_fired, rollback_recommended).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Cached AnomalyDetector JSON." }, "404": { "description": "CACHE_MISS." } }
+      }
+    }
+  }
+}

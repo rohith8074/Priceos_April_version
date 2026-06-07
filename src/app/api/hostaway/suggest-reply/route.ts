@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { Job } from "@/lib/db/models/Job";
 import { callLyzrAgent } from "@/lib/services/lyzr";
+import { newTraceId, logChatInput, logChatResponse } from "@/lib/utils/agent-logger";
 
 export async function POST(req: NextRequest) {
+  const traceId = newTraceId();
+  const startedAt = Date.now();
   try {
     const body = await req.json();
     const {
@@ -98,6 +101,15 @@ Instructions:
           today: new Date().toISOString().slice(0, 10),
         };
 
+        logChatInput({
+          traceId,
+          route: "/api/hostaway/suggest-reply",
+          orgId,
+          listingId,
+          userMessage: guestMessage,
+          context: { prompt, systemVars, threadId: resolvedThreadId, jobId, agentId },
+        });
+
         const result = await callLyzrAgent(
           agentId,
           prompt,
@@ -105,6 +117,15 @@ Instructions:
           lyzrSessionId,
           systemVars
         );
+
+        logChatResponse({
+          traceId,
+          route: "/api/hostaway/suggest-reply",
+          status: result.ok ? 200 : 502,
+          durationMs: Date.now() - startedAt,
+          response: result.ok ? { message: result.response, parsedJson: result.parsedJson } : undefined,
+          error: result.ok ? undefined : (result.error || "Lyzr call failed"),
+        });
 
         await connectToDatabase();
         const job = await Job.findOne({ jobId });
@@ -135,6 +156,13 @@ Instructions:
         }
       } catch (bgErr: any) {
         console.error(`[Background Job ${jobId}] Lyzr Direct Error:`, bgErr);
+        logChatResponse({
+          traceId,
+          route: "/api/hostaway/suggest-reply",
+          status: 500,
+          durationMs: Date.now() - startedAt,
+          error: bgErr,
+        });
         try {
           await connectToDatabase();
           const job = await Job.findOne({ jobId });
@@ -150,6 +178,13 @@ Instructions:
     return NextResponse.json({ jobId });
   } catch (err: any) {
     console.error("[POST /api/hostaway/suggest-reply]", err);
+    logChatResponse({
+      traceId,
+      route: "/api/hostaway/suggest-reply",
+      status: 500,
+      durationMs: Date.now() - startedAt,
+      error: err,
+    });
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

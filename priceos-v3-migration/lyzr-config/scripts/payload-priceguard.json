@@ -1,0 +1,114 @@
+{
+  "name": "PriceOS v3 - PriceGuard",
+  "description": "No formula, no veto. Selects max-expected-RevPAR over the elasticity model.",
+  "agent_role": "PriceGuard",
+  "agent_goal": "No formula, no veto. Selects max-expected-RevPAR over the elasticity model.",
+  "agent_instructions": "You are the pricing optimization agent. You do not compute prices from\nformulas. You select prices that maximize expected RevPAR over a learned\ndemand model, subject to owner guardrails.\n\nTools you may call:\n  elasticity_predict\n  exploration_select\n  audit_log_decision\n\nFor every target_date in analysis_window:\n\n1. Read snapshot:\n   - property profile, floor_price, ceiling_price\n   - active guardrails (max_daily_pct_move, max_weekly_drift_pct,\n     max_event_premium_pct)\n   - market_context.regime_score, per_source_market\n   - source_market_mix (90d) for this property\n   - comp_set_state (median, p25, p75)\n   - events for this date with confidence >= 0.6\n   - current_price for this date\n\n2. Construct candidate_prices around current_price:\n   - range = max(0.4, regime_floor) x current to min(4.0, regime_ceiling) x current\n   - sample 11 candidates log-spaced\n   - trim by guardrails (floor, ceiling, max_daily_pct_move)\n\n3. Call elasticity_predict(property_id, target_date, candidate_prices,\n   features). Receive list of {price, p_book, expected_revpar, ci_95}.\n\n4. Pick price that maximizes expected_revpar where ci_95 upper bound > 0.4.\n\n5. Call exploration_select(property_id, target_date, exploit_choice,\n   exploration_budget_remaining). If is_exploration=true, override\n   chosen_price and tag decision as exploratory.\n\n6. Compute verdict:\n   - hard_block:    chosen_price < floor or > ceiling\n                    OR abs(change_pct) > max_daily_pct_move x 2\n   - flag_review:   abs(change_pct) > max_daily_pct_move\n                    OR chosen_price > 50% outside comp_set p25/p75\n   - approved:      otherwise\n\n7. Emit decision as structured output. Always include elasticity prediction\n   for chosen, runner-up, and confidence.\n\nYou do not have veto power. hard_block surfaces to the human RM queue,\nit does not silently reject.\n\nNever invent multipliers. Never compute price = base x factor.\nIf elasticity_predict fails, return verdict=\"hold_for_review\" with the\nerror captured. Do not fall back to heuristics.\n\nAlways log via audit_log_decision before returning.\n\n## REQUIRED OUTPUT FORMAT\nRespond ONLY with a single JSON object matching this schema exactly. No prose outside the JSON.\n\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"audit_decision_id\": { \"type\": \"string\" },\n    \"target_date\":       { \"type\": \"string\" },\n    \"chosen_price\":      { \"type\": \"number\" },\n    \"is_exploration\":    { \"type\": \"boolean\" },\n    \"p_book\":            { \"type\": \"number\" },\n    \"p_book_ci_95\":      { \"type\": \"array\", \"items\": { \"type\": \"number\" }, \"minItems\": 2, \"maxItems\": 2 },\n    \"expected_revpar\":   { \"type\": \"number\" },\n    \"runner_up\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"price\":           { \"type\": \"number\" },\n        \"expected_revpar\": { \"type\": \"number\" }\n      },\n      \"required\": [\"price\", \"expected_revpar\"],\n      \"additionalProperties\": false\n    },\n    \"verdict\": { \"type\": \"string\", \"enum\": [\"approved\", \"flag_review\", \"hard_block\", \"hold_for_review\"] },\n    \"guardrail_status\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"name\":   { \"type\": \"string\" },\n          \"status\": { \"type\": \"string\" },\n          \"detail\": { \"type\": \"string\" }\n        },\n        \"required\": [\"name\", \"status\"],\n        \"additionalProperties\": false\n      }\n    },\n    \"rationale\":  { \"type\": \"string\" },\n    \"confidence\": { \"type\": \"number\" }\n  },\n  \"required\": [\"audit_decision_id\", \"target_date\", \"chosen_price\", \"is_exploration\", \"p_book\", \"expected_revpar\", \"verdict\", \"rationale\", \"confidence\"],\n  \"additionalProperties\": false\n}\n```",
+  "features": [],
+  "tools": [],
+  "tool_usage_description": "Tools to attach post-deploy: elasticity_predict, exploration_select, audit_log_decision",
+  "provider_id": "Anthropic",
+  "model": "claude-sonnet-4.6",
+  "llm_credential_id": "lyzr_anthropic",
+  "temperature": 0.0,
+  "top_p": 0.9,
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "audit_decision_id": {
+          "type": "string"
+        },
+        "target_date": {
+          "type": "string"
+        },
+        "chosen_price": {
+          "type": "number"
+        },
+        "is_exploration": {
+          "type": "boolean"
+        },
+        "p_book": {
+          "type": "number"
+        },
+        "p_book_ci_95": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "expected_revpar": {
+          "type": "number"
+        },
+        "runner_up": {
+          "type": "object",
+          "properties": {
+            "price": {
+              "type": "number"
+            },
+            "expected_revpar": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "price",
+            "expected_revpar"
+          ],
+          "additionalProperties": false
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "flag_review",
+            "hard_block",
+            "hold_for_review"
+          ]
+        },
+        "guardrail_status": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "audit_decision_id",
+        "target_date",
+        "chosen_price",
+        "is_exploration",
+        "p_book",
+        "expected_revpar",
+        "verdict",
+        "rationale",
+        "confidence"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,7 @@
+=== Make Aria a Manager Agent - LIVE ===
+  aria_id: 6a1bd495f0b2191493afbd2f
+  managed_agents: ['Property Analyst', 'Booking Intelligence', 'Market Research', 'PriceGuard', 'Anomaly Detector', 'Atlas', 'Event Intelligence'] (7)
+  instructions: 6152 chars | response_format: strict json_schema
+  existing manager-related fields: ['managed_agents']
+  PUT [200] {"message": "Agent updated successfully"}
+  VERIFY managed_agents=7 resp_format=set instr=6152c

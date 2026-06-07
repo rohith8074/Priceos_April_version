@@ -1,0 +1,194 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "PriceOS Property Analyst Tools",
+    "version": "1.0.0",
+    "description": "Live-data tools used by the Property Analyst agent (Step 1/5 of the pre-warm pipeline). Each call MUST happen at most once per agent invocation. Returns raw property + calendar + reservation data from MongoDB. No external APIs."
+  },
+  "servers": [
+    {
+      "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1",
+      "description": "Local dev server tunnelled via ngrok"
+    }
+  ],
+  "paths": {
+    "/get-property-profile": {
+      "get": {
+        "summary": "Fetch static property profile",
+        "description": "Returns the listing record: name, area, city, bedroom/bathroom count, base price, floor, ceiling, currency, amenities. Use this to read the property's guardrails [priceFloor, priceCeiling] before computing any pricing logic.",
+        "operationId": "get_property_profile",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organisation",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Property profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["listingId", "name", "area", "city", "bedrooms", "basePrice", "priceFloor", "priceCeiling"],
+                  "properties": {
+                    "listingId": { "type": "string" },
+                    "name": { "type": "string" },
+                    "area": { "type": "string" },
+                    "city": { "type": "string" },
+                    "bedrooms": { "type": "integer" },
+                    "basePrice": { "type": "number" },
+                    "priceFloor": { "type": "number" },
+                    "priceCeiling": { "type": "number" },
+                    "hostawayId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Listing not found" }
+        }
+      }
+    },
+    "/get-property-calendar-metrics": {
+      "get": {
+        "summary": "Day-by-day calendar inventory + aggregate metrics",
+        "description": "Returns the per-day calendar (status, price, min_stay) plus aggregate occupancy %, booked/available/blocked day counts, average nightly rate, and total revenue for the analysis window.",
+        "operationId": "get_property_calendar_metrics",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organisation",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Window start (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "Window end (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Aggregate calendar metrics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["totalDays", "bookedDays", "blockedDays", "bookableDays", "occupancyPct", "avgNightlyRate", "totalRevenue"],
+                  "properties": {
+                    "totalDays": { "type": "integer" },
+                    "bookedDays": { "type": "integer" },
+                    "blockedDays": { "type": "integer" },
+                    "bookableDays": { "type": "integer" },
+                    "occupancyPct": { "type": "number" },
+                    "avgNightlyRate": { "type": "number" },
+                    "totalRevenue": { "type": "number" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Listing not found" }
+        }
+      }
+    },
+    "/get-property-reservations": {
+      "get": {
+        "summary": "Reservations overlapping the window",
+        "description": "Returns active (non-cancelled) reservations whose check-in / check-out overlaps the analysis window. Each reservation includes guest name, channel, dates, nights, total price, status.",
+        "operationId": "get_property_reservations",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organisation",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Window start (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "Window end (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of reservations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["count", "reservations"],
+                  "properties": {
+                    "count": { "type": "integer" },
+                    "reservations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["guestName", "channel", "checkIn", "checkOut", "nights", "totalPrice", "status"],
+                        "properties": {
+                          "guestName": { "type": "string" },
+                          "channel": { "type": "string" },
+                          "checkIn": { "type": "string" },
+                          "checkOut": { "type": "string" },
+                          "nights": { "type": "integer" },
+                          "totalPrice": { "type": "number" },
+                          "status": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Listing not found" }
+        }
+      }
+    }
+  }
+}

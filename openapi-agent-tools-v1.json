@@ -7,7 +7,8 @@
   },
   "servers": [
     {
-      "url": "https://YOUR_DOMAIN/api/agent-tools/v1"
+      "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1",
+      "description": "ngrok tunnel (testing)"
     }
   ],
   "security": [
@@ -27,10 +28,29 @@
           }
         ],
         "parameters": [
-          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
-          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          }
         ],
-        "responses": { "200": { "description": "OK" } }
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Cross-property portfolio summary for an org."
       }
     },
     "/get-agent-system-status": {
@@ -42,7 +62,12 @@
             "ToolOrgId": []
           }
         ],
-        "responses": { "200": { "description": "OK" } }
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Get the system status of the Lyzr agent backend."
       }
     },
     "/get-portfolio-revenue-snapshot": {
@@ -55,11 +80,43 @@
           }
         ],
         "parameters": [
-          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
-          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
-          { "name": "groupBy", "in": "query", "required": false, "schema": { "type": "string", "enum": ["day", "week", "property"], "default": "day" } }
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week",
+                "property"
+              ],
+              "default": "day"
+            }
+          }
         ],
-        "responses": { "200": { "description": "OK" } }
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Get a revenue snapshot for the portfolio over a time window."
       }
     },
     "/get-property-profile": {
@@ -72,9 +129,21 @@
           }
         ],
         "parameters": [
-          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } }
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ObjectIdString"
+            }
+          }
         ],
-        "responses": { "200": { "description": "OK" } }
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Get a property's identity and pricing limits."
       }
     },
     "/get-property-calendar-metrics": {
@@ -87,11 +156,37 @@
           }
         ],
         "parameters": [
-          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
-          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
-          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ObjectIdString"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          }
         ],
-        "responses": { "200": { "description": "OK" } }
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Occupancy, booked/blocked/bookable nights, average nightly rate and total revenue."
       }
     },
     "/get-property-reservations": {
@@ -104,12 +199,48 @@
           }
         ],
         "parameters": [
-          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
-          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
-          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
-          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 100 } }
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ObjectIdString"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
+          }
         ],
-        "responses": { "200": { "description": "OK" } }
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "List a property's reservations in a window."
       }
     },
     "/get-property-market-events": {
@@ -122,11 +253,37 @@
           }
         ],
         "parameters": [
-          { "name": "listingId", "in": "query", "required": false, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
-          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
-          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ObjectIdString"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          }
         ],
-        "responses": { "200": { "description": "OK" } }
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Get market events for a property."
       }
     },
     "/get-property-benchmark": {
@@ -139,11 +296,37 @@
           }
         ],
         "parameters": [
-          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
-          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
-          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ObjectIdString"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          }
         ],
-        "responses": { "200": { "description": "OK" } }
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Competitor rate percentiles and positioning for a property."
       }
     },
     "/list-guest-conversations": {
@@ -156,11 +339,37 @@
           }
         ],
         "parameters": [
-          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
-          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
-          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ObjectIdString"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          }
         ],
-        "responses": { "200": { "description": "OK" } }
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "List guest conversations for a listing."
       }
     },
     "/get-guest-summary": {
@@ -173,11 +382,37 @@
           }
         ],
         "parameters": [
-          { "name": "listingId", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/ObjectIdString" } },
-          { "name": "dateFrom", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } },
-          { "name": "dateTo", "in": "query", "required": true, "schema": { "$ref": "#/components/schemas/DateString" } }
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ObjectIdString"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DateString"
+            }
+          }
         ],
-        "responses": { "200": { "description": "OK" } }
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "description": "Get a summary of guest sentiment for a listing."
       }
     }
   },

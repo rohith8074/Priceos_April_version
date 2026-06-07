@@ -18,10 +18,50 @@ export function ContextPanel({ properties }: Props) {
     propertyId,
     setPortfolioContext,
     setPropertyContext,
+    dateRange,
   } = useContextStore();
   const { switchContext } = useChatStore();
   const pathname = usePathname();
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  // Per-property occupancy for the SELECTED date range, so the cards match what
+  // the chat/agent sees (the static `property.occupancy` is a fixed next-30-day
+  // figure computed server-side). Keyed by property id.
+  const [rangeOcc, setRangeOcc] = useState<Record<string, number>>({});
+
+  // Recompute card occupancy whenever the selected date range changes, using the
+  // same /api/calendar-metrics endpoint the chat uses — keeps card & agent aligned.
+  useEffect(() => {
+    const from = dateRange?.from;
+    const to = dateRange?.to;
+    if (!from || !to || properties.length === 0) return;
+    const fromStr = new Date(from).toISOString().split("T")[0];
+    const toStr = new Date(to).toISOString().split("T")[0];
+    let disposed = false;
+
+    (async () => {
+      const results = await Promise.all(
+        properties.map(async (p) => {
+          try {
+            const res = await fetch(
+              `/api/calendar-metrics?listingId=${p.id}&from=${fromStr}&to=${toStr}`
+            );
+            if (!res.ok) return [String(p.id), null] as const;
+            const data = await res.json();
+            const occ = typeof data.occupancy === "number" ? data.occupancy : null;
+            return [String(p.id), occ] as const;
+          } catch {
+            return [String(p.id), null] as const;
+          }
+        })
+      );
+      if (disposed) return;
+      const map: Record<string, number> = {};
+      for (const [id, occ] of results) if (occ != null) map[id] = occ;
+      setRangeOcc(map);
+    })();
+
+    return () => { disposed = true; };
+  }, [dateRange?.from, dateRange?.to, properties]);
 
   // Fetch per-property unread message counts on the guest-chat page
   useEffect(() => {
@@ -94,7 +134,7 @@ export function ContextPanel({ properties }: Props) {
                 contextType === "property" && propertyId === property.id
               }
               onClick={() => handlePropertyClick(property)}
-              occupancy={property.occupancy || 0}
+              occupancy={rangeOcc[String(property.id)] ?? property.occupancy ?? 0}
               unreadCount={unreadCounts[property.id] ?? 0}
             />
           ))}

@@ -12,6 +12,7 @@ import { GuestThread } from "@/lib/db/models/guest_thread";
 import { OpsTicket } from "@/lib/db/models/ops_ticket";
 import { AgentCache, type AgentName } from "@/lib/db/models/agent_cache";
 import { Types } from "mongoose";
+import { newTraceId, logToolCall, logToolResponse } from "@/lib/utils/agent-logger";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -70,8 +71,43 @@ export async function GET(
 
   console.log(`[agent-tools] /${parts} status=...`);
 
+  // ── Observability: correlate this tool call ────────────────────────────────
+  const traceId = req.headers.get("x-trace-id") || newTraceId();
+  const toolStartedAt = Date.now();
+  try {
+    logToolCall({
+      traceId,
+      tool: parts,
+      method: "GET",
+      path: `/api/agent-tools/v1/${parts}`,
+      query: Object.fromEntries(sp.entries()),
+    });
+  } catch {
+    /* logging must never break the request */
+  }
+
+  // Observe the response (status + body) without changing it, then return it.
+  const observe = async (res: NextResponse): Promise<NextResponse> => {
+    try {
+      const data = await res.clone().json().catch(() => undefined);
+      logToolResponse({
+        traceId,
+        tool: parts,
+        status: res.status,
+        durationMs: Date.now() - toolStartedAt,
+        data,
+      });
+    } catch {
+      /* swallow */
+    }
+    return res;
+  };
+
   await connectToDatabase();
 
+  // Original handler body preserved verbatim inside handleGet(); we only observe
+  // its returned response so logging stays additive.
+  const handleGet = async (): Promise<NextResponse> => {
   try {
     // ── GET /get-property-profile ─────────────────────────────────────────────
     if (parts === "get-property-profile" || parts === "property-profile") {
@@ -107,19 +143,84 @@ export async function GET(
         date: { $gte: dateFrom, $lte: dateTo },
       }).lean() as any[];
 
-      const total = docs.length;
-      const booked = docs.filter((d) => d.status === "booked").length;
+      const invTotal = docs.length;
+      const invBooked = docs.filter((d) => d.status === "booked").length;
       const blocked = docs.filter((d) => d.status === "blocked").length;
-      const bookable = Math.max(total - blocked, 0);
       const prices = docs.filter((d) => d.currentPrice).map((d) => Number(d.currentPrice));
+
+      // InventoryMaster (the Hostaway calendar mirror) is frequently un-synced for a
+      // listing, leaving 0 rows or 0 booked days even when reservations exist. Mirror
+      // the UI endpoint (/api/calendar-metrics): derive booked nights from the
+      // Reservation collection so the agent sees the SAME occupancy the dashboard
+      // shows. We take max(inventory, reservation-derived) so a partially-synced
+      // calendar still wins when it has more data.
+      const windowStart = new Date(dateFrom);
+      const windowEnd = new Date(dateTo);
+      const windowDays = Math.max(
+        1,
+        Math.round((windowEnd.getTime() - windowStart.getTime()) / 86400000) + 1
+      );
+
+      const resv = await Reservation.find({
+        orgId: oid(orgId),
+        listingId: listing._id,
+        status: { $ne: "cancelled" },
+        checkIn: { $lte: dateTo },
+        checkOut: { $gte: dateFrom },
+      }).lean() as any[];
+
+      // Unique booked nights within [dateFrom, dateTo] (checkOut is exclusive).
+      const bookedNights = new Set<string>();
+      let resRevenue = 0;
+      for (const r of resv) {
+        const ci = r.checkIn > dateFrom ? r.checkIn : dateFrom;
+        const co = r.checkOut < dateTo ? r.checkOut : dateTo;
+        let cur = new Date(ci);
+        const end = new Date(co);
+        let nightsInWindow = 0;
+        while (cur < end) {
+          bookedNights.add(cur.toISOString().split("T")[0]);
+          nightsInWindow++;
+          cur = new Date(cur.getTime() + 86400000);
+        }
+        // Pro-rate reservation revenue to the nights that fall inside the window.
+        const totalNights = Number(r.nights) || 0;
+        const price = Number(r.totalPrice ?? r.price ?? 0);
+        if (totalNights > 0 && nightsInWindow > 0) {
+          resRevenue += (price / totalNights) * nightsInWindow;
+        } else if (nightsInWindow > 0) {
+          resRevenue += price;
+        }
+      }
+
+      const resBooked = bookedNights.size;
+      const total = invTotal > 0 ? invTotal : windowDays;
+      const booked = Math.max(invBooked, resBooked);
+      const bookable = Math.max(total - blocked, 0);
+
+      const invRevenue = docs
+        .filter((d) => d.status === "booked")
+        .reduce((s, d) => s + Number(d.currentPrice || 0), 0);
+      const totalRevenue = Math.max(invRevenue, resRevenue);
+
+      // ADR: prefer inventory prices; fall back to reservation-derived ADR.
+      const invAdr = prices.length
+        ? prices.reduce((a, b) => a + b, 0) / prices.length
+        : 0;
+      const resAdr = resBooked > 0 ? resRevenue / resBooked : 0;
+      const avgNightlyRate = invAdr > 0 ? invAdr : resAdr;
+
       return NextResponse.json({
         totalDays: total,
         bookedDays: booked,
         blockedDays: blocked,
         bookableDays: bookable,
         occupancyPct: bookable > 0 ? Math.round((booked / bookable) * 1000) / 10 : 0,
-        avgNightlyRate: prices.length ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length * 100) / 100 : 0,
-        totalRevenue: Math.round(docs.filter((d) => d.status === "booked").reduce((s, d) => s + Number(d.currentPrice || 0), 0) * 100) / 100,
+        avgNightlyRate: Math.round(avgNightlyRate * 100) / 100,
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        // Transparency for the agent + debugging: where each number came from.
+        source: invBooked > 0 ? "inventory" : (resBooked > 0 ? "reservations" : "empty"),
+        reservationsConsidered: resv.length,
       });
     }
 
@@ -814,6 +915,95 @@ export async function GET(
       });
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    // v3 service tools — served from existing Mongo data (real) or safe stubs.
+    // Market Research + Anomaly Detector call these. Params come from session
+    // context (orgId, listingId, dateFrom, dateTo) exactly like the PMS tools.
+    // ════════════════════════════════════════════════════════════════════════
+
+    // ── comps_get_state → reuse comp benchmark data (AirbticsCache → BenchmarkData)
+    if (parts === "comps_get_state") {
+      const orgId = sp.get("orgId") || "";
+      const listingId = sp.get("listingId") || "";
+      const bedrooms = parseInt(sp.get("bedrooms") || "1");
+      const marketId = sp.get("marketId") || "2286";
+      const listing = await resolveListing(orgId, listingId);
+      const cacheKey = `comp_listings:${marketId}:${bedrooms}br`;
+      const cache = await AirbticsCache.findOne({ cacheKey, expiresAt: { $gt: new Date() } }).lean() as any;
+      if (cache?.data) {
+        const d = cache.data;
+        return NextResponse.json({
+          source: "airbtics_cache", comp_set_size: d.compCount || (d.comps?.length ?? 0),
+          median: d.p50Adr, p25: d.p25Adr, p75: d.p75Adr,
+          wow_change_pct: 0, movers: [], by_target_date: [], comps: (d.comps || []).slice(0, 15),
+        });
+      }
+      const b = listing ? await BenchmarkData.findOne({ orgId: oid(orgId), listingId: listing._id }).sort({ updatedAt: -1 }).lean() as any : null;
+      if (b) return NextResponse.json({ source: "benchmark_data", median: b.p50Rate, p25: b.p25Rate, p75: b.p75Rate, wow_change_pct: 0, movers: [], by_target_date: [], comps: [] });
+      return NextResponse.json({ source: "none", median: null, p25: null, p75: null, wow_change_pct: 0, movers: [], by_target_date: [], comps: [], note: "No comp data cached. Run 'Run Aria' / comp sync to populate." });
+    }
+
+    // ── events_get_validated → reuse MarketEvent data
+    if (parts === "events_get_validated") {
+      const orgId = sp.get("orgId") || "";
+      const dateFrom = sp.get("dateFrom") || "";
+      const dateTo = sp.get("dateTo") || "";
+      const minConfidence = parseFloat(sp.get("min_confidence") || "0.6");
+      const docs = await MarketEvent.find({ orgId: oid(orgId), isActive: true, endDate: { $gte: dateFrom }, startDate: { $lte: dateTo } }).sort({ startDate: 1 }).lean() as any[];
+      const events = docs.map((e) => ({
+        name: e.name, date: e.startDate, end_date: e.endDate,
+        confidence: typeof e.confidence === "number" ? e.confidence : 0.7,
+        expected_premium_band: e.upliftPct ? `${Math.round(Number(e.upliftPct))}%` : null,
+        impact: e.impactLevel, source: e.source,
+      })).filter((e) => e.confidence >= minConfidence);
+      return NextResponse.json({ count: events.length, min_confidence: minConfidence, events });
+    }
+
+    // ── guest_signals_get_summary → reuse GuestSummary data
+    if (parts === "guest_signals_get_summary") {
+      const orgId = sp.get("orgId") || "";
+      const listingId = sp.get("listingId") || "";
+      const listing = await resolveListing(orgId, listingId);
+      const summary = listing ? await GuestSummary.findOne({ orgId: oid(orgId), listingId: listing._id }).sort({ updatedAt: -1 }).lean() as any : null;
+      if (!summary) return NextResponse.json({ sentiment_score: null, complaint_categories: {}, recurring_themes: [], positive_themes: [], thread_count: 0, source: "none" });
+      return NextResponse.json({
+        sentiment_score: summary.sentiment ?? null,
+        complaint_categories: {},
+        recurring_themes: summary.themes || [],
+        positive_themes: [],
+        thread_count: summary.totalConversations || 0,
+        source: "guest_summary",
+      });
+    }
+
+    // ── regime_classify → neutral stub (no regime model deployed yet)
+    if (parts === "regime_classify") {
+      return NextResponse.json({
+        city: sp.get("city") || "dubai", regime_score: 0.0, regime_label: "calm",
+        trend: "stable", confidence: 0.5, per_source_market: {}, feature_contributions: [],
+        note: "stub: no regime classifier deployed — neutral default so pricing is not distorted",
+      });
+    }
+
+    // ── source_market_get_modifier → neutral stub (no segment model deployed yet)
+    if (parts === "source_market_get_modifier") {
+      return NextResponse.json({ modifier: 1.0, breakdown: [], note: "stub: no source-market model deployed — neutral 1.0 modifier" });
+    }
+
+    // ── elasticity_predict / exploration_select → stub (PriceGuard runs on v2 for now)
+    if (parts === "elasticity_predict") {
+      return NextResponse.json({ predictions: [], model_version: "none", note: "stub: elasticity model not deployed. PriceGuard runs on the v2 guardrail agent for now." });
+    }
+    if (parts === "exploration_select") {
+      return NextResponse.json({ is_exploration: false, chosen_price: null, note: "stub: no exploration policy deployed" });
+    }
+
+    // ── audit_log_decision → lightweight stub: accept and return an id
+    if (parts === "audit_log_decision") {
+      const id = `dec_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+      return NextResponse.json({ status: "logged", audit_decision_id: id });
+    }
+
     // ── Fallback: 404 ─────────────────────────────────────────────────────────
     console.warn(`[agent-tools] Unknown path: /${parts}`);
     return NextResponse.json({ error: `Unknown tool endpoint: /${parts}` }, { status: 404 });
@@ -822,6 +1012,9 @@ export async function GET(
     console.error(`[agent-tools] /${parts} error:`, err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
+  };
+
+  return observe(await handleGet());
 }
 
 // ── POST handlers for Guest Reply agent write operations ───────────────────────
@@ -866,15 +1059,50 @@ export async function POST(
 
   console.log(`[agent-tools POST] /${parts}`);
 
+  // ── Observability: correlate this tool call ────────────────────────────────
+  const traceId = req.headers.get("x-trace-id") || newTraceId();
+  const toolStartedAt = Date.now();
+
+  const observe = async (res: NextResponse): Promise<NextResponse> => {
+    try {
+      const data = await res.clone().json().catch(() => undefined);
+      logToolResponse({
+        traceId,
+        tool: parts,
+        status: res.status,
+        durationMs: Date.now() - toolStartedAt,
+        data,
+      });
+    } catch {
+      /* swallow */
+    }
+    return res;
+  };
+
   let body: any = {};
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(errorEnvelope("VALIDATION_ERROR", "Request body must be JSON"), { status: 400 });
+    return observe(NextResponse.json(errorEnvelope("VALIDATION_ERROR", "Request body must be JSON"), { status: 400 }));
+  }
+
+  try {
+    logToolCall({
+      traceId,
+      tool: parts,
+      method: "POST",
+      path: `/api/agent-tools/v1/${parts}`,
+      body,
+    });
+  } catch {
+    /* logging must never break the request */
   }
 
   await connectToDatabase();
 
+  // Original handler body preserved verbatim inside handlePost(); we only observe
+  // its returned response so logging stays additive.
+  const handlePost = async (): Promise<NextResponse> => {
   try {
     // ── POST /send-guest-message ──────────────────────────────────────────────
     if (parts === "send-guest-message") {
@@ -1096,4 +1324,7 @@ export async function POST(
     console.error(`[agent-tools POST] /${parts} error:`, err);
     return NextResponse.json(errorEnvelope("INTERNAL_ERROR", err.message || "Server error"), { status: 500 });
   }
+  };
+
+  return observe(await handlePost());
 }

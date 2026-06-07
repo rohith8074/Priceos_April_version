@@ -3,6 +3,7 @@ import { Types } from "mongoose";
 import { connectToDatabase } from "@/lib/db/mongodb";
 import { PrecomputeJob } from "@/lib/db/models/precompute_job";
 import { runPrecompute, isFullyCached } from "@/lib/services/precompute-orchestrator";
+import { runAllIntelligence } from "@/lib/events/run-intelligence-events";
 
 /**
  * POST /api/precompute-property
@@ -40,6 +41,20 @@ export async function POST(req: NextRequest) {
     await connectToDatabase();
 
     const input = { orgId, listingId, dateFrom, dateTo };
+
+    // "Run Intelligence" refreshes ALL external data sources (events via SERP with
+    // Lyzr fallback, comps via SERP, guest sentiment) before/alongside the agent
+    // precompute. Fire-and-forget so it never blocks the response. Runs even on a
+    // cache hit so MarketEvent / CompetitorListing / GuestSummary stay fresh for
+    // the agent tools (events_get_validated, comps_get_state, guest_signals_get_summary).
+    (async () => {
+      try {
+        const r = await runAllIntelligence(orgId, listingId, dateFrom, dateTo);
+        console.log(`[precompute] intelligence refresh → events(${r.events.source}): ${r.events.detail} | ${r.comps} | ${r.guest}`);
+      } catch (err) {
+        console.error("[precompute] intelligence refresh failed:", err);
+      }
+    })();
 
     // Short-circuit: cache hit for this exact scope
     const cached = await isFullyCached(input);

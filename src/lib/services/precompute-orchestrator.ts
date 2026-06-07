@@ -69,6 +69,83 @@ interface RawData {
   inventory: any[];
   reservations: any[];
   market_events: any[];
+  derived_metrics: DerivedMetrics;
+}
+
+interface DerivedMetrics {
+  totalDays: number;
+  bookedDays: number;
+  blockedDays: number;
+  bookableDays: number;
+  occupancyPct: number;
+  avgNightlyRate: number;
+  totalRevenue: number;
+  source: "inventory" | "reservations" | "empty";
+}
+
+/**
+ * Single source of truth for occupancy/revenue, mirroring the UI's
+ * /api/calendar-metrics. InventoryMaster (the Hostaway calendar mirror) is often
+ * un-synced, so we derive booked nights from reservations and take the max of the
+ * two — otherwise agents see 0% occupancy while the dashboard shows ~52%.
+ */
+function deriveMetrics(
+  inventory: any[],
+  reservations: any[],
+  dateFrom: string,
+  dateTo: string,
+  listing: any
+): DerivedMetrics {
+  const invTotal = inventory.length;
+  const invBooked = inventory.filter((d) => d.status === "booked").length;
+  const blocked = inventory.filter((d) => d.status === "blocked").length;
+  const prices = inventory.filter((d) => d.currentPrice).map((d) => Number(d.currentPrice));
+
+  const start = new Date(dateFrom);
+  const end = new Date(dateTo);
+  const windowDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+
+  const bookedNights = new Set<string>();
+  let resRevenue = 0;
+  for (const r of reservations) {
+    const ci = r.checkIn > dateFrom ? r.checkIn : dateFrom;
+    const co = r.checkOut < dateTo ? r.checkOut : dateTo;
+    let cur = new Date(ci);
+    const e = new Date(co);
+    let nightsInWindow = 0;
+    while (cur < e) {
+      bookedNights.add(cur.toISOString().split("T")[0]);
+      nightsInWindow++;
+      cur = new Date(cur.getTime() + 86400000);
+    }
+    const totalNights = Number(r.nights) || 0;
+    const price = Number(r.totalPrice ?? r.price ?? 0);
+    if (totalNights > 0 && nightsInWindow > 0) resRevenue += (price / totalNights) * nightsInWindow;
+    else if (nightsInWindow > 0) resRevenue += price;
+  }
+
+  const resBooked = bookedNights.size;
+  const total = invTotal > 0 ? invTotal : windowDays;
+  const booked = Math.max(invBooked, resBooked);
+  const bookable = Math.max(total - blocked, 0);
+  const invRevenue = inventory
+    .filter((d) => d.status === "booked")
+    .reduce((s, d) => s + Number(d.currentPrice || 0), 0);
+  const totalRevenue = Math.max(invRevenue, resRevenue);
+  const invAdr = prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
+  const resAdr = resBooked > 0 ? resRevenue / resBooked : 0;
+  const avgNightlyRate = invAdr > 0 ? invAdr : (resAdr > 0 ? resAdr : Number(listing?.price || 0));
+
+  return {
+    totalDays: total,
+    bookedDays: booked,
+    blockedDays: blocked,
+    bookableDays: bookable,
+    occupancyPct: bookable > 0 ? Math.round((booked / bookable) * 1000) / 10 : 0,
+    avgNightlyRate: Math.round(avgNightlyRate * 100) / 100,
+    totalRevenue: Math.round(totalRevenue * 100) / 100,
+    source: invBooked > 0 ? "inventory" : (resBooked > 0 ? "reservations" : "empty"),
+  };
 }
 
 /**
@@ -101,7 +178,15 @@ async function fetchRawData(input: PrecomputeInput): Promise<RawData> {
     }).sort({ startDate: 1 }).lean() as any,
   ]);
 
-  return { listing, inventory, reservations, market_events };
+  const derived_metrics = deriveMetrics(
+    inventory ?? [],
+    reservations ?? [],
+    input.dateFrom,
+    input.dateTo,
+    listing
+  );
+
+  return { listing, inventory, reservations, market_events, derived_metrics };
 }
 
 function makePrompt(
@@ -135,6 +220,12 @@ function makePrompt(
     "[RAW_MARKET_EVENTS]",
     JSON.stringify(rawData.market_events ?? []),
     "",
+    "[DERIVED_METRICS]  ← AUTHORITATIVE. Use these exact occupancy/revenue numbers.",
+    "These are computed from reservations when the calendar (RAW_CALENDAR_INVENTORY)",
+    "is empty/un-synced, and they match the dashboard the user sees. Do NOT recompute",
+    "occupancy as 0 from an empty calendar — trust these values.",
+    JSON.stringify(rawData.derived_metrics ?? {}),
+    "",
   ];
 
   // Inject every prior agent's output in sequence. Empty objects mean that
@@ -154,9 +245,9 @@ function makePrompt(
   head.push(
     "INSTRUCTION:",
     "All data you need to produce your structured-output JSON is provided above in the [RAW_*] and [UPSTREAM_*] blocks.",
-    "DO NOT CALL ANY TOOLS — every field can be derived from the data above.",
-    "If a field has no source data, return empty arrays [], zero numbers 0, or null as appropriate, and add a brief note to data_warnings[].",
-    "Return JSON only — no markdown fences, no preamble, no commentary."
+    "CRITICAL: DO NOT CALL ANY TOOLS. Do not explain your actions. Do not write phrases like 'No tools necessary' or 'Proceeding with...'.",
+    "If a field has no source data, return empty arrays [], zero numbers 0, or null as appropriate.",
+    "Your entire response MUST be a single, raw JSON object starting with `{` and ending with `}`. No markdown fences, no preamble, no commentary."
   );
 
   return head.join("\n");

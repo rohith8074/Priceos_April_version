@@ -1,0 +1,59 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "priceguard-tools",
+    "version": "1.0.0",
+    "description": "PriceGuard tools: elasticity, exploration, benchmark, audit. All GET, verified live (HTTP 200). elasticity_predict + exploration_select are stubs until the ML model is deployed; get_property_benchmark returns REAL comp percentiles for a price anchor."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/elasticity_predict": {
+      "get": {
+        "operationId": "elasticity_predict",
+        "summary": "P(book) & expected RevPAR per candidate price. THE pricing tool. STUB until model deployed.",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "target_date", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "{predictions[], model_version}" } }
+      }
+    },
+    "/exploration_select": {
+      "get": {
+        "operationId": "exploration_select",
+        "summary": "Bandit decision to probe a non-greedy price. STUB (no policy deployed).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{is_exploration, chosen_price}" } }
+      }
+    },
+    "/get-property-benchmark": {
+      "get": {
+        "operationId": "get_property_benchmark",
+        "summary": "Competitor rate percentiles (P25/P50/P75/P90) + recommended rate. REAL comp anchor.",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "bedrooms", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "marketId", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Benchmark percentiles." } }
+      }
+    },
+    "/audit_log_decision": {
+      "get": {
+        "operationId": "audit_log_decision",
+        "summary": "Persist this agent's decision; returns audit_decision_id.",
+        "parameters": [
+          { "name": "agent_name", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{status, audit_decision_id}" } }
+      }
+    }
+  }
+}

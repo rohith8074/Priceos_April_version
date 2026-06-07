@@ -1,0 +1,48 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "atlas-tools",
+    "version": "1.0.0",
+    "description": "Atlas (portfolio) tools: portfolio overview, per-property calendar metrics, audit. All GET, verified live (HTTP 200; portfolio overview returned 21 properties)."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/get-portfolio-overview": {
+      "get": {
+        "operationId": "get_portfolio_overview",
+        "summary": "Cross-property portfolio summary (per-property occupancy/revenue/ADR + totals).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "{totalProperties, avgOccupancyPct, totalRevenue, avgNightlyRate, properties[]}" } }
+      }
+    },
+    "/get-property-calendar-metrics": {
+      "get": {
+        "operationId": "get_property_calendar_metrics",
+        "summary": "Drill into a single property's occupancy/revenue for a window.",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Calendar metrics." } }
+      }
+    },
+    "/audit_log_decision": {
+      "get": {
+        "operationId": "audit_log_decision",
+        "summary": "Persist this agent's decision; returns audit_decision_id.",
+        "parameters": [
+          { "name": "agent_name", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{status, audit_decision_id}" } }
+      }
+    }
+  }
+}

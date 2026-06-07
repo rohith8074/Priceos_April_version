@@ -3,8 +3,11 @@ import { connectToDatabase } from "@/lib/db/mongodb";
 import { Job, ChatMessage } from "@/lib/db/models";
 import { callLyzrAgent } from "@/lib/services/lyzr";
 import { buildAgentContext } from "@/lib/agents/db-context-builder";
+import { newTraceId, logChatInput, logChatResponse } from "@/lib/utils/agent-logger";
 
 export async function POST(req: NextRequest) {
+  const traceId = newTraceId();
+  const startedAt = Date.now();
   try {
     const body = await req.json();
     const { message, sessionId, orgId, listingId } = body;
@@ -71,12 +74,30 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        logChatInput({
+          traceId,
+          route: "/api/chat/global",
+          orgId,
+          listingId,
+          userMessage: message,
+          context: { messageToSend, sessionId, jobId, agentId },
+        });
+
         const result = await callLyzrAgent(
           agentId,
           messageToSend,
           orgId || "priceos-user",
           sessionId || jobId
         );
+
+        logChatResponse({
+          traceId,
+          route: "/api/chat/global",
+          status: result.ok ? 200 : 502,
+          durationMs: Date.now() - startedAt,
+          response: result.ok ? { message: result.response } : undefined,
+          error: result.ok ? undefined : (result.error || "Lyzr call failed"),
+        });
 
         const job = await Job.findOne({ jobId });
         if (job) {
@@ -91,6 +112,13 @@ export async function POST(req: NextRequest) {
         }
       } catch (bgErr: any) {
         console.error(`[Background Job ${jobId}] Dashboard agent error:`, bgErr);
+        logChatResponse({
+          traceId,
+          route: "/api/chat/global",
+          status: 500,
+          durationMs: Date.now() - startedAt,
+          error: bgErr,
+        });
         try {
           const job = await Job.findOne({ jobId });
           if (job) {
@@ -105,6 +133,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ jobId });
   } catch (err: any) {
     console.error("[POST /api/chat/global]", err);
+    logChatResponse({
+      traceId,
+      route: "/api/chat/global",
+      status: 500,
+      durationMs: Date.now() - startedAt,
+      error: err,
+    });
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

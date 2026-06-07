@@ -8,8 +8,21 @@ import mongoose, { Types } from "mongoose";
 import { Listing } from "@/lib/db/models/Listing";
 import { Reservation } from "@/lib/db/models/Reservation";
 import { HostawayConversation } from "@/lib/db/models/HostawayConversation";
+import { InventoryMaster } from "@/lib/db/models/inventory_master";
 import { HostawayClient } from "@/lib/pms/hostaway-client";
 import { format } from "date-fns";
+
+/**
+ * Normalize a Hostaway calendar day's status into the InventoryMaster enum.
+ * Hostaway uses status="available"|"booked"|"unavailable"/blocked + isAvailable flag.
+ */
+function toInventoryStatus(day: any): "available" | "booked" | "blocked" | "pending" {
+  const s = String(day?.status || "").toLowerCase();
+  if (s === "booked" || s === "reserved") return "booked";
+  if (s === "blocked" || s === "unavailable") return "blocked";
+  if (day?.isAvailable === false) return "blocked";
+  return "available";
+}
 
 const BULK_CHUNK = 200; // max ops per bulkWrite call
 
@@ -115,8 +128,15 @@ export async function syncCalendarToDb(
   const listing = await Listing.findOne({ hostawayId: String(hostawayListingId) });
   if (!listing || calendarDays.length === 0) return;
 
-  // Build the entire $set payload for all days in one pass, then write once
+  // Build the entire $set payload for all days in one pass, then write once.
+  // (1) Listing.priceOverrides — consumed by the UI calendar.
   const setPayload: Record<string, any> = {};
+  // (2) InventoryMaster rows — the CANONICAL per-night store the agents + precompute
+  //     read (get-property-calendar-metrics, deriveMetrics). Without this, a successful
+  //     Hostaway sync never reaches the agents and they see 0% occupancy.
+  const invOps: any[] = [];
+  const basePrice = Number(listing.price || 0);
+
   for (const day of calendarDays) {
     if (!day.date) continue;
     setPayload[`priceOverrides.${day.date}`] = {
@@ -125,10 +145,35 @@ export async function syncCalendarToDb(
       isAvailable: day.isAvailable !== false,
       minimumStay: day.minimumStay,
     };
+
+    invOps.push({
+      updateOne: {
+        filter: { listingId: listing._id, date: day.date },
+        update: {
+          $set: {
+            orgId: listing.orgId,
+            listingId: listing._id,
+            date: day.date,
+            currentPrice: Number(day.price ?? basePrice) || basePrice,
+            basePrice,
+            status: toInventoryStatus(day),
+            minStay: day.minimumStay || 1,
+            maxStay: day.maximumStay || 30,
+            hostawayStatus: day.status,
+            lastSyncedAt: new Date(),
+          },
+        },
+        upsert: true,
+      },
+    });
   }
 
   if (Object.keys(setPayload).length > 0) {
     await Listing.findByIdAndUpdate(listing._id, { $set: setPayload });
+  }
+  // Chunked upsert into the canonical inventory_masters collection.
+  for (let i = 0; i < invOps.length; i += BULK_CHUNK) {
+    await InventoryMaster.bulkWrite(invOps.slice(i, i + BULK_CHUNK), { ordered: false });
   }
 }
 

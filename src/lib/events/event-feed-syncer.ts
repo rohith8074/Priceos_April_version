@@ -472,6 +472,8 @@ export interface SyncResult {
   skipped: number;
   sources: Record<string, number>;
   errors: string[];
+  /** True when SERP returned a rate-limit/quota error — caller should fall back. */
+  serpRateLimited?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -599,10 +601,16 @@ async function fetchSerpGoogleEvents(
     const res = await fetch(url.toString(), { signal: AbortSignal.timeout(12_000) });
     if (!res.ok) {
       console.warn(`[EventFeedSyncer] SERP Google Events returned ${res.status}`);
+      // 429 (rate limit) / 401 (quota/key) must surface so the caller can fall
+      // back to the Lyzr Event Intelligence agent. Throw the sentinel string
+      // SERP_RATE_LIMIT so syncEventFeeds records it in result.errors[].
+      if (res.status === 429 || res.status === 401) throw new Error("SERP_RATE_LIMIT");
       return [];
     }
 
-    const data = (await res.json()) as { events_results?: SerpEventResult[] };
+    const data = (await res.json()) as { events_results?: SerpEventResult[]; error?: string };
+    // SERP returns 200 with an "error" body when out of searches this month.
+    if (data.error && /run out|limit|exceeded/i.test(data.error)) throw new Error("SERP_RATE_LIMIT");
     const rawEvents = data.events_results ?? [];
     const cutoff = format(addDays(new Date(), daysAhead), "yyyy-MM-dd");
 
@@ -657,6 +665,8 @@ async function fetchSerpGoogleEvents(
     console.log(`[EventFeedSyncer] SERP Google Events (${query}): fetched ${events.length} events`);
   } catch (err) {
     console.warn("[EventFeedSyncer] SERP Google Events error:", err);
+    // Re-throw rate-limit so syncEventFeeds → caller can trigger the Lyzr fallback.
+    if (err instanceof Error && err.message === "SERP_RATE_LIMIT") throw err;
   }
 
   return events;
@@ -739,6 +749,39 @@ export async function fetchSerpDubaiNews(
  * @param marketCity - City name from MarketTemplate.eventApiConfig.eventbriteCity
  *                     Defaults to "Dubai" if not provided (backwards-compatible)
  */
+// Known UAE anchor events with authoritative dates. Any incoming event whose name
+// matches one of these has its dates OVERWRITTEN with the verified dates — this is
+// how we fix SERP/news scraping that reports wrong festival dates (e.g. Eid).
+// Dates are approximate-official; update annually. Eid/Ramadan are astronomical and
+// may shift ±1 day on official moon sighting.
+const VERIFIED_ANCHORS: { match: RegExp; startDate: string; endDate: string; canonicalName?: string }[] = [
+  { match: /eid\s*al\s*adha/i,           startDate: "2026-05-26", endDate: "2026-05-29", canonicalName: "Eid Al Adha 2026" },
+  { match: /eid\s*al\s*fitr/i,           startDate: "2026-03-20", endDate: "2026-03-23", canonicalName: "Eid Al Fitr 2026" },
+  { match: /ramadan/i,                   startDate: "2026-02-18", endDate: "2026-03-19", canonicalName: "Ramadan 2026" },
+  { match: /dubai summer surprises|dss/i, startDate: "2026-06-27", endDate: "2026-08-31", canonicalName: "Dubai Summer Surprises 2026" },
+  { match: /dubai shopping festival|dsf/i, startDate: "2026-12-26", endDate: "2027-01-31", canonicalName: "Dubai Shopping Festival" },
+  { match: /\bgitex\b/i,                 startDate: "2026-10-12", endDate: "2026-10-16", canonicalName: "GITEX Global 2026" },
+  { match: /national day|uae.*national/i, startDate: "2026-12-02", endDate: "2026-12-03", canonicalName: "UAE National Day" },
+];
+
+function verifyEventDates(ev: NormalisedEvent): NormalisedEvent | null {
+  for (const a of VERIFIED_ANCHORS) {
+    if (a.match.test(ev.name)) {
+      return {
+        ...ev,
+        name: a.canonicalName ?? ev.name,
+        startDate: a.startDate,
+        endDate: a.endDate,
+        externalId: ev.externalId ?? `verified:${(a.canonicalName ?? ev.name).toLowerCase().replace(/\s+/g, "-")}`,
+        description: ev.description ? `${ev.description} (dates verified)` : "Date-verified anchor event",
+      };
+    }
+  }
+  // Non-anchor events: drop ones with an obviously invalid/empty start date.
+  if (!ev.startDate || !/^\d{4}-\d{2}-\d{2}$/.test(ev.startDate)) return null;
+  return ev;
+}
+
 export async function syncEventFeeds(
   orgId: mongoose.Types.ObjectId,
   daysAhead = 90,
@@ -764,6 +807,8 @@ export async function syncEventFeeds(
     serpEventsSettled,
     serpEvents2Settled,
     serpNewsSettled,
+    serpRiskSettled,
+    ticketmasterSettled,
   ] = await Promise.allSettled([
     // DTCM annual events + RSS feeds (best-effort — failures silently skipped)
     isDubai
@@ -791,6 +836,13 @@ export async function syncEventFeeds(
     isDubai
       ? fetchSerpDubaiNews(`${marketCity} hotel demand tourism travel 2026`)
       : Promise.resolve<NormalisedEvent[]>([]),
+    // SERP Google News — RISK signals: wars, flight cancellations, advisories, closures
+    // (these depress demand; captured as negative-impact MarketEvents)
+    isDubai
+      ? fetchSerpDubaiNews(`${marketCity} flight cancellation travel advisory airport closure conflict warning`)
+      : Promise.resolve<NormalisedEvent[]>([]),
+    // Ticketmaster Discovery — verified concert/show/event dates (accurate dates)
+    fetchTicketmasterEvents(marketCity, daysAhead),
   ]);
 
   const allEvents: NormalisedEvent[] = [];
@@ -800,6 +852,8 @@ export async function syncEventFeeds(
     ["SERP_Events", serpEventsSettled],
     ["SERP_Events2", serpEvents2Settled],
     ["SERP_News", serpNewsSettled],
+    ["SERP_Risk", serpRiskSettled],
+    ["Ticketmaster", ticketmasterSettled],
   ] as [string, PromiseSettledResult<NormalisedEvent[]>][]) {
     if (settled.status === "fulfilled") {
       result.sources[label] = settled.value.length;
@@ -807,6 +861,7 @@ export async function syncEventFeeds(
     } else {
       result.errors.push(`${label}: ${settled.reason}`);
       result.sources[label] = 0;
+      if (String(settled.reason).includes("SERP_RATE_LIMIT")) result.serpRateLimited = true;
     }
   }
 
@@ -819,9 +874,11 @@ export async function syncEventFeeds(
     externalId: { $exists: false },
   }).catch(() => { /* non-fatal */ });
 
-  // Deduplicate by externalId within the batch
+  // Verify/normalise dates against known UAE anchors (fixes wrong festival dates
+  // e.g. Eid, DSS, Ramadan that SERP/news scraping often gets wrong), then dedup.
+  const verifiedEvents = allEvents.map(verifyEventDates).filter((e): e is NormalisedEvent => e !== null);
   const seen = new Set<string>();
-  const dedupedEvents = allEvents.filter((ev) => {
+  const dedupedEvents = verifiedEvents.filter((ev) => {
     const key = ev.externalId ?? `${ev.name}:${ev.startDate}`;
     if (seen.has(key)) return false;
     seen.add(key);

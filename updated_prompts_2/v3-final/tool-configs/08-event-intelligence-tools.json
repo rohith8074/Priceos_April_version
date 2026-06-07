@@ -1,0 +1,23 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "event-intelligence-tools",
+    "version": "1.0.0",
+    "description": "Event Intelligence tools: audit log. All GET, verified live (HTTP 200). NOTE: web search is NOT an OpenAPI tool — enable Lyzr's built-in Web Search feature (or composio_search) on this agent separately in Studio."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/audit_log_decision": {
+      "get": {
+        "operationId": "audit_log_decision",
+        "summary": "Persist one row per intelligence sweep; returns audit_decision_id.",
+        "parameters": [
+          { "name": "agent_name", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{status, audit_decision_id}" } }
+      }
+    }
+  }
+}

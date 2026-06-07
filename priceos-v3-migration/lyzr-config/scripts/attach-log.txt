@@ -1,0 +1,97 @@
+=== Attach v3 tools - LIVE ===
+
+--- Register tool sets ---
+  [200] register 'priceos-pms'
+     -> ['openapi-priceos-pms-get_portfolio_overview', 'openapi-priceos-pms-get_agent_system_status', 'openapi-priceos-pms-get_portfolio_revenue_snapshot', 'openapi-priceos-pms-get_property_profile', 'openapi-priceos-pms-get_property_calendar_metrics', 'openapi-priceos-pms-get_property_reservations', 'openapi-priceos-pms-get_property_market_events', 'openapi-priceos-pms-get_property_benchmark', 'openapi-priceos-pms-list_guest_conversations', 'openapi-priceos-pms-get_guest_summary']
+  [200] register 'priceos-v3-svc'
+     -> ['openapi-priceos-v3-svc-comps_get_state', 'openapi-priceos-v3-svc-events_get_validated', 'openapi-priceos-v3-svc-guest_signals_get_summary', 'openapi-priceos-v3-svc-regime_classify', 'openapi-priceos-v3-svc-source_market_get_modifier', 'openapi-priceos-v3-svc-elasticity_predict', 'openapi-priceos-v3-svc-exploration_select', 'openapi-priceos-v3-svc-audit_log_decision']
+  catalog ops: ['audit_log_decision', 'comps_get_state', 'elasticity_predict', 'events_get_validated', 'exploration_select', 'get_agent_system_status', 'get_guest_summary', 'get_portfolio_overview', 'get_portfolio_revenue_snapshot', 'get_property_benchmark', 'get_property_calendar_metrics', 'get_property_market_events', 'get_property_profile', 'get_property_reservations', 'guest_signals_get_summary', 'list_guest_conversations', 'regime_classify', 'source_market_get_modifier']
+
+--- Attach to each v3 agent ---
+
+  [aria] 6a244404c8c1c80cc7abe76e
+    want: ['audit_log_decision']
+    matched: ['openapi-priceos-v3-svc-audit_log_decision']
+    PUT [200] {"message": "Agent updated successfully"}
+
+  [property_analyst] 6a24440570f13701f00e8c3a
+    want: ['get_property_profile', 'get_property_calendar_metrics', 'get_property_reservations', 'audit_log_decision']
+    matched: ['openapi-priceos-pms-get_property_profile', 'openapi-priceos-pms-get_property_calendar_metrics', 'openapi-priceos-pms-get_property_reservations', 'openapi-priceos-v3-svc-audit_log_decision']
+    PUT [200] {"message": "Agent updated successfully"}
+
+  [booking_intelligence] 6a24440765faad0d13919068
+    want: ['get_property_reservations', 'get_property_benchmark', 'audit_log_decision']
+    matched: ['openapi-priceos-pms-get_property_reservations', 'openapi-priceos-pms-get_property_benchmark', 'openapi-priceos-v3-svc-audit_log_decision']
+    PUT [200] {"message": "Agent updated successfully"}
+
+  [market_research] 6a24440970f13701f00e8c3c
+    want: ['regime_classify', 'comps_get_state', 'events_get_validated', 'source_market_get_modifier', 'guest_signals_get_summary', 'audit_log_decision']
+    matched: ['openapi-priceos-v3-svc-regime_classify', 'openapi-priceos-v3-svc-comps_get_state', 'openapi-priceos-v3-svc-events_get_validated', 'openapi-priceos-v3-svc-source_market_get_modifier', 'openapi-priceos-v3-svc-guest_signals_get_summary', 'openapi-priceos-v3-svc-audit_log_decision']
+    PUT [200] {"message": "Agent updated successfully"}
+
+  [priceguard] 6a24440a2347b0f48792015c
+    want: ['elasticity_predict', 'exploration_select', 'audit_log_decision']
+    matched: ['openapi-priceos-v3-svc-elasticity_predict', 'openapi-priceos-v3-svc-exploration_select', 'openapi-priceos-v3-svc-audit_log_decision']
+    PUT [200] {"message": "Agent updated successfully"}
+
+  [anomaly_detector] 6a24440cc8c1c80cc7abe774
+    want: ['get_property_calendar_metrics', 'get_property_reservations', 'comps_get_state', 'regime_classify', 'audit_log_decision']
+    matched: ['openapi-priceos-pms-get_property_calendar_metrics', 'openapi-priceos-pms-get_property_reservations', 'openapi-priceos-v3-svc-comps_get_state', 'openapi-priceos-v3-svc-regime_classify', 'openapi-priceos-v3-svc-audit_log_decision']
+    PUT [200] {"message": "Agent updated successfully"}
+
+  [atlas] 6a24440d2395ced85cffb0e0
+    want: ['get_portfolio_overview', 'get_portfolio_revenue_snapshot', 'get_property_calendar_metrics', 'audit_log_decision']
+    matched: ['openapi-priceos-pms-get_portfolio_overview', 'openapi-priceos-pms-get_portfolio_revenue_snapshot', 'openapi-priceos-pms-get_property_calendar_metrics', 'openapi-priceos-v3-svc-audit_log_decision']
+    PUT [200] {"message": "Agent updated successfully"}
+
+  [event_intelligence] 6a24440f2698d09f438b9690
+    want: ['internet_search', 'audit_log_decision']
+    matched: ['openapi-priceos-v3-svc-audit_log_decision']
+    MISSING: ['internet_search']
+    PUT [200] {"message": "Agent updated successfully"}
+
+=== SUMMARY ===
+{
+  "aria": {
+    "put": 200,
+    "attached": 1,
+    "missing": []
+  },
+  "property_analyst": {
+    "put": 200,
+    "attached": 4,
+    "missing": []
+  },
+  "booking_intelligence": {
+    "put": 200,
+    "attached": 3,
+    "missing": []
+  },
+  "market_research": {
+    "put": 200,
+    "attached": 6,
+    "missing": []
+  },
+  "priceguard": {
+    "put": 200,
+    "attached": 3,
+    "missing": []
+  },
+  "anomaly_detector": {
+    "put": 200,
+    "attached": 5,
+    "missing": []
+  },
+  "atlas": {
+    "put": 200,
+    "attached": 4,
+    "missing": []
+  },
+  "event_intelligence": {
+    "put": 200,
+    "attached": 1,
+    "missing": [
+      "internet_search"
+    ]
+  }
+}

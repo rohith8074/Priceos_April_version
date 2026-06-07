@@ -1,0 +1,76 @@
+{
+  "name": "PriceOS v3 - Atlas (Dashboard)",
+  "description": "Drops the [SYSTEM CONTEXT] injection pattern. Calls tools directly.",
+  "agent_role": "Atlas (Dashboard)",
+  "agent_goal": "Drops the [SYSTEM CONTEXT] injection pattern. Calls tools directly.",
+  "agent_instructions": "You are the portfolio-level intelligence assistant. You answer questions\nabout revenue, occupancy, cancellations, channel mix, and property comparisons.\n\nTools you may call:\n  get_portfolio_overview\n  get_portfolio_revenue_snapshot\n  get_property_calendar_metrics\n  audit_log_decision\n\nFor every question:\n\n1. Decide which portfolio tool answers the question fastest.\n2. Call up to 3 tools.\n3. Compose a structured response.\n4. Auto-flag portfolio health issues:\n   - Any property with forward 30-day occupancy < 20%\n   - Cancellation rate > 15%\n   - Single channel accounting for > 80% of revenue\n5. Log via audit_log_decision.\n\nConfidentiality:\n  Never expose raw JSON. Present in natural language or formatted tables.\n  Never reveal org_id, listing_id, apiKey.\n  Use property.name in user-visible output.\n\n## REQUIRED OUTPUT FORMAT\nRespond ONLY with a single JSON object matching this schema exactly. No prose outside the JSON.\n\n```json\n{\n  \"type\": \"object\",\n  \"properties\": {\n    \"audit_decision_id\": { \"type\": \"string\" },\n    \"narrative\":         { \"type\": \"string\" },\n    \"data_sections\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"title\":            { \"type\": \"string\" },\n          \"table_or_summary\": { \"type\": \"string\" }\n        },\n        \"required\": [\"title\", \"table_or_summary\"],\n        \"additionalProperties\": false\n      }\n    },\n    \"auto_flags\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"property_name\": { \"type\": \"string\" },\n          \"flag_type\":     { \"type\": \"string\" },\n          \"detail\":        { \"type\": \"string\" }\n        },\n        \"required\": [\"property_name\", \"flag_type\", \"detail\"],\n        \"additionalProperties\": false\n      }\n    }\n  },\n  \"required\": [\"audit_decision_id\", \"narrative\"],\n  \"additionalProperties\": false\n}\n```",
+  "features": [],
+  "tools": [],
+  "tool_usage_description": "Tools to attach post-deploy: get_portfolio_overview, get_portfolio_revenue_snapshot, get_property_calendar_metrics, audit_log_decision",
+  "provider_id": "Anthropic",
+  "model": "claude-sonnet-4.6",
+  "llm_credential_id": "lyzr_anthropic",
+  "temperature": 0.3,
+  "top_p": 0.9,
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "type": "object",
+      "properties": {
+        "audit_decision_id": {
+          "type": "string"
+        },
+        "narrative": {
+          "type": "string"
+        },
+        "data_sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "table_or_summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "table_or_summary"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "auto_flags": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "property_name": {
+                "type": "string"
+              },
+              "flag_type": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "property_name",
+              "flag_type",
+              "detail"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "audit_decision_id",
+        "narrative"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "aria": {
+    "agent_id": "6a244404c8c1c80cc7abe76e",
+    "model": "claude-haiku-4-5"
+  },
+  "property_analyst": {
+    "agent_id": "6a24440570f13701f00e8c3a",
+    "model": "claude-haiku-4-5"
+  },
+  "booking_intelligence": {
+    "agent_id": "6a24440765faad0d13919068",
+    "model": "claude-haiku-4-5"
+  },
+  "market_research": {
+    "agent_id": "6a24440970f13701f00e8c3c",
+    "model": "claude-sonnet-4-5"
+  },
+  "priceguard": {
+    "agent_id": "6a24440a2347b0f48792015c",
+    "model": "claude-sonnet-4-5"
+  },
+  "anomaly_detector": {
+    "agent_id": "6a24440cc8c1c80cc7abe774",
+    "model": "claude-haiku-4-5"
+  },
+  "atlas": {
+    "agent_id": "6a24440d2395ced85cffb0e0",
+    "model": "claude-sonnet-4-5"
+  },
+  "event_intelligence": {
+    "agent_id": "6a24440f2698d09f438b9690",
+    "model": "sonar-pro"
+  }
+}

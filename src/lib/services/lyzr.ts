@@ -105,6 +105,11 @@ export async function callLyzrAgent(
     const data = await res.json();
     const msg = extractLyzrMessage(data);
 
+    console.log(`\n================= AGENT CALL: ${agentId} =================`);
+    console.log(`[User Message]: ${message.substring(0, 200)}${message.length > 200 ? '...' : ''}`);
+    console.log(`[Agent Output]:\n${msg}`);
+    console.log(`=================================================================\n`);
+
     return {
       response: msg,
       raw: data,

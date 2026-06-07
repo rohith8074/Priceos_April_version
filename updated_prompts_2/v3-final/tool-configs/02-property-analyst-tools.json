@@ -1,0 +1,61 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "property-analyst-tools",
+    "version": "1.0.0",
+    "description": "Property Analyst tools: profile, calendar metrics, reservations, audit. All GET, verified live (HTTP 200, real data)."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/get-property-profile": {
+      "get": {
+        "operationId": "get_property_profile",
+        "summary": "Property identity + pricing limits (name, area, city, bedrooms, basePrice, priceFloor, priceCeiling).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Property profile." }, "404": { "description": "Not found." } }
+      }
+    },
+    "/get-property-calendar-metrics": {
+      "get": {
+        "operationId": "get_property_calendar_metrics",
+        "summary": "Occupancy, booked/blocked/bookable nights, ADR, revenue for a window (reservation-fallback aware).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Calendar metrics." }, "404": { "description": "Not found." } }
+      }
+    },
+    "/get-property-reservations": {
+      "get": {
+        "operationId": "get_property_reservations",
+        "summary": "Reservations overlapping a window (guest, channel, dates, nights, totalPrice, status).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Reservations list." }, "404": { "description": "Not found." } }
+      }
+    },
+    "/audit_log_decision": {
+      "get": {
+        "operationId": "audit_log_decision",
+        "summary": "Persist this agent's decision; returns audit_decision_id.",
+        "parameters": [
+          { "name": "agent_name", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{status, audit_decision_id}" } }
+      }
+    }
+  }
+}

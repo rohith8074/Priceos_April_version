@@ -1,0 +1,20 @@
+{
+  "get_portfolio_overview": "openapi-priceos-pms-get_portfolio_overview",
+  "get_agent_system_status": "openapi-priceos-pms-get_agent_system_status",
+  "get_portfolio_revenue_snapshot": "openapi-priceos-pms-get_portfolio_revenue_snapshot",
+  "get_property_profile": "openapi-priceos-pms-get_property_profile",
+  "get_property_calendar_metrics": "openapi-priceos-pms-get_property_calendar_metrics",
+  "get_property_reservations": "openapi-priceos-pms-get_property_reservations",
+  "get_property_market_events": "openapi-priceos-pms-get_property_market_events",
+  "get_property_benchmark": "openapi-priceos-pms-get_property_benchmark",
+  "list_guest_conversations": "openapi-priceos-pms-list_guest_conversations",
+  "get_guest_summary": "openapi-priceos-pms-get_guest_summary",
+  "comps_get_state": "openapi-priceos-v3-svc-comps_get_state",
+  "events_get_validated": "openapi-priceos-v3-svc-events_get_validated",
+  "guest_signals_get_summary": "openapi-priceos-v3-svc-guest_signals_get_summary",
+  "regime_classify": "openapi-priceos-v3-svc-regime_classify",
+  "source_market_get_modifier": "openapi-priceos-v3-svc-source_market_get_modifier",
+  "elasticity_predict": "openapi-priceos-v3-svc-elasticity_predict",
+  "exploration_select": "openapi-priceos-v3-svc-exploration_select",
+  "audit_log_decision": "openapi-priceos-v3-svc-audit_log_decision"
+}

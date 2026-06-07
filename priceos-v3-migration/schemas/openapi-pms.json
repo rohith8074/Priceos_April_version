@@ -1,0 +1,317 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "PriceOS PMS Tools (served via Next /api/agent-tools/v1)",
+    "version": "1.0.0",
+    "description": "Property-management read tools backed by real MongoDB data through the Next app. Used by PropertyAnalyst, BookingIntelligence, Atlas and AnomalyDetector. All operations are GET and resolve under the ngrok-served /api/agent-tools/v1 base. Paths use the canonical get-* route names (the handlers also accept the short aliases)."
+  },
+  "servers": [
+    {
+      "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1",
+      "description": "ngrok -> Next agent-tools"
+    }
+  ],
+  "paths": {
+    "/get-property-profile": {
+      "get": {
+        "operationId": "get_property_profile",
+        "summary": "Get a property's identity and pricing limits.",
+        "description": "Returns name, area, city, bedrooms, base price and floor/ceiling for a single listing.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "Organization id.",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "Property/listing id.",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Property profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "listingId": { "type": "string" },
+                    "name": { "type": "string" },
+                    "area": { "type": "string" },
+                    "city": { "type": "string" },
+                    "bedrooms": { "type": "integer" },
+                    "basePrice": { "type": "number" },
+                    "priceFloor": { "type": "number" },
+                    "priceCeiling": { "type": "number" },
+                    "hostawayId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Listing not found" }
+        }
+      }
+    },
+    "/get-property-calendar-metrics": {
+      "get": {
+        "operationId": "get_property_calendar_metrics",
+        "summary": "Forward calendar metrics for a property over a window.",
+        "description": "Occupancy, booked/blocked/bookable nights, average nightly rate and total revenue. Derives booked nights from reservations when the calendar mirror is empty, so occupancy matches the dashboard.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "Organization id.",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "Property/listing id.",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Window start (YYYY-MM-DD).",
+            "required": true,
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "Window end (YYYY-MM-DD).",
+            "required": true,
+            "schema": { "type": "string", "format": "date" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Calendar metrics.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "totalDays": { "type": "integer" },
+                    "bookedDays": { "type": "integer" },
+                    "blockedDays": { "type": "integer" },
+                    "bookableDays": { "type": "integer" },
+                    "occupancyPct": { "type": "number" },
+                    "avgNightlyRate": { "type": "number" },
+                    "totalRevenue": { "type": "number" },
+                    "source": { "type": "string", "enum": ["inventory", "reservations", "empty"] },
+                    "reservationsConsidered": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Listing not found" }
+        }
+      }
+    },
+    "/get-property-reservations": {
+      "get": {
+        "operationId": "get_property_reservations",
+        "summary": "List a property's reservations in a window.",
+        "description": "Returns reservations overlapping the window: guest, channel, check-in/out, nights, total price, status.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "Organization id.",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "Property/listing id.",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Window start (YYYY-MM-DD).",
+            "required": true,
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "Window end (YYYY-MM-DD).",
+            "required": true,
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max reservations to return (default 50).",
+            "required": false,
+            "schema": { "type": "integer", "format": "int32" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reservations list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": { "type": "integer" },
+                    "reservations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "guestName": { "type": "string" },
+                          "channel": { "type": "string" },
+                          "checkIn": { "type": "string", "format": "date" },
+                          "checkOut": { "type": "string", "format": "date" },
+                          "nights": { "type": "integer" },
+                          "totalPrice": { "type": "number" },
+                          "status": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Listing not found" }
+        }
+      }
+    },
+    "/get-property-benchmark": {
+      "get": {
+        "operationId": "get_property_benchmark",
+        "summary": "Competitor rate percentiles and positioning for a property.",
+        "description": "Returns P25/P50/P75/P90 comp rates, a recommended rate and a positioning verdict from the benchmark cache.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "Organization id.",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "Property/listing id.",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "bedrooms",
+            "in": "query",
+            "description": "Bedroom count to scope the comp set (optional).",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "marketId",
+            "in": "query",
+            "description": "Market id to scope the comp set (optional).",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Benchmark percentiles.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "p25": { "type": "number" },
+                    "p50": { "type": "number" },
+                    "p75": { "type": "number" },
+                    "p90": { "type": "number" },
+                    "recommendedRate": { "type": "number" },
+                    "positioning": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-portfolio-overview": {
+      "get": {
+        "operationId": "get_portfolio_overview",
+        "summary": "Cross-property portfolio summary for an org.",
+        "description": "Per-property occupancy, revenue, ADR and portfolio totals over a window. Used by Atlas for portfolio-level questions.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "Organization id.",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Window start (YYYY-MM-DD).",
+            "required": false,
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "Window end (YYYY-MM-DD).",
+            "required": false,
+            "schema": { "type": "string", "format": "date" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Portfolio overview.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "totalProperties": { "type": "integer" },
+                    "avgOccupancyPct": { "type": "number" },
+                    "totalRevenue": { "type": "number" },
+                    "avgNightlyRate": { "type": "number" },
+                    "properties": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "listingId": { "type": "string" },
+                          "name": { "type": "string" },
+                          "occupancyPct": { "type": "number" },
+                          "revenue": { "type": "number" },
+                          "avgNightlyRate": { "type": "number" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

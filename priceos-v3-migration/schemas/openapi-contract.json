@@ -1,0 +1,272 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "PriceOS v3 Service Tools (served via Next /api/agent-tools/v1)",
+    "version": "1.1.0",
+    "description": "v3 tool operations. comps_get_state, events_get_validated and guest_signals_get_summary return REAL data from MongoDB via the Next app. regime_classify, source_market_get_modifier, elasticity_predict, exploration_select and audit_log_decision are safe stubs until the Python ML service is deployed. All are GET and resolve under the ngrok-served /api/agent-tools/v1 base."
+  },
+  "servers": [
+    {
+      "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1",
+      "description": "ngrok -> Next agent-tools"
+    }
+  ],
+  "paths": {
+    "/comps_get_state": {
+      "get": {
+        "operationId": "comps_get_state",
+        "summary": "Live comp-set state (median/p25/p75, comps) for a property.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bedrooms",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "marketId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{median,p25,p75,wow_change_pct,movers,comps}"
+          }
+        },
+        "description": "Live comp-set state (median/p25/p75, comps) for a property."
+      }
+    },
+    "/events_get_validated": {
+      "get": {
+        "operationId": "events_get_validated",
+        "summary": "Verified demand events in the window with confidence.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "min_confidence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{count,events[]}"
+          }
+        },
+        "description": "Verified demand events in the window with confidence."
+      }
+    },
+    "/guest_signals_get_summary": {
+      "get": {
+        "operationId": "guest_signals_get_summary",
+        "summary": "Trailing guest sentiment summary for a property.",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{sentiment_score,recurring_themes,...}"
+          }
+        },
+        "description": "Trailing guest sentiment summary for a property."
+      }
+    },
+    "/regime_classify": {
+      "get": {
+        "operationId": "regime_classify",
+        "summary": "Daily market regime score for a city (neutral stub for now).",
+        "parameters": [
+          {
+            "name": "city",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{regime_score,regime_label,per_source_market}"
+          }
+        },
+        "description": "Daily market regime score for a city (neutral stub for now)."
+      }
+    },
+    "/source_market_get_modifier": {
+      "get": {
+        "operationId": "source_market_get_modifier",
+        "summary": "Property source-market demand modifier (neutral stub for now).",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{modifier,breakdown}"
+          }
+        },
+        "description": "Property source-market demand modifier (neutral stub for now)."
+      }
+    },
+    "/elasticity_predict": {
+      "get": {
+        "operationId": "elasticity_predict",
+        "summary": "P(book)/RevPAR per candidate price (stub \u2014 model not deployed).",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{predictions[]}"
+          }
+        },
+        "description": "P(book)/RevPAR per candidate price (stub \u2014 model not deployed)."
+      }
+    },
+    "/exploration_select": {
+      "get": {
+        "operationId": "exploration_select",
+        "summary": "Bandit arm selection (stub \u2014 no exploration policy deployed).",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{is_exploration}"
+          }
+        },
+        "description": "Bandit arm selection (stub \u2014 no exploration policy deployed)."
+      }
+    },
+    "/audit_log_decision": {
+      "get": {
+        "operationId": "audit_log_decision",
+        "summary": "Persist an agent decision (lightweight stub: returns an id).",
+        "parameters": [
+          {
+            "name": "agent_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{status,audit_decision_id}"
+          }
+        },
+        "description": "Persist an agent decision (lightweight stub: returns an id)."
+      }
+    }
+  }
+}

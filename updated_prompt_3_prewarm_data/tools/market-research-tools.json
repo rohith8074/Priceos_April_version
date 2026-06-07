@@ -1,0 +1,222 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "PriceOS Market Research Tools",
+    "version": "1.0.0",
+    "description": "Tools used by the Market Research agent (Step 3/5). Reads the Property Analyst cached output (for area/bedrooms/current price) plus live market event + benchmark data."
+  },
+  "servers": [
+    {
+      "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1",
+      "description": "Local dev server tunnelled via ngrok"
+    }
+  ],
+  "paths": {
+    "/get-property-analysis": {
+      "get": {
+        "summary": "Property Analyst's cached output",
+        "description": "Returns the cached strict JSON output produced by the Property Analyst agent. Used to look up the property's area, bedroom count, and current price — required by /get-property-benchmark and event-uplift calculations.",
+        "operationId": "get_property_analysis",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organisation",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Window start (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "Window end (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached Property Analyst JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": {
+                      "type": "object",
+                      "description": "Property Analyst strict JSON — see 02-property-analyst.md"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "No cached Property Analyst output for this scope" }
+        }
+      }
+    },
+    "/get-property-market-events": {
+      "get": {
+        "summary": "Confirmed events + news digest",
+        "description": "Returns confirmed events from the MarketEvent collection — synced from DTCM static list, manual entries, and market_template seeds. Filtered to events overlapping the analysis window. NOTE: 'ai_detected' and SERP news items are surfaced separately via news_digest in your output; this endpoint returns only confirmed events.",
+        "operationId": "get_property_market_events",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organisation",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Window start (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "Window end (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Confirmed events list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["count", "events"],
+                  "properties": {
+                    "count": { "type": "integer" },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["name", "startDate", "endDate", "impactLevel", "upliftPct", "source"],
+                        "properties": {
+                          "name": { "type": "string" },
+                          "startDate": { "type": "string" },
+                          "endDate": { "type": "string" },
+                          "impactLevel": { "type": "string", "enum": ["low", "medium", "high", "extreme"] },
+                          "upliftPct": { "type": "number" },
+                          "description": { "type": "string" },
+                          "source": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-property-benchmark": {
+      "get": {
+        "summary": "Competitor P25/P50/P75/P90 benchmark",
+        "description": "Returns competitor percentile rates derived from SERP-cached comparable listings filtered by area + bedroom count. Includes top comps with names + nightly rates + source URLs (Airbnb/Booking/Expedia). Verdict compares the property's current price to P50.",
+        "operationId": "get_property_benchmark",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organisation",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Window start (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "Window end (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "bedrooms",
+            "in": "query",
+            "description": "Bedroom count to filter comps",
+            "required": true,
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "marketId",
+            "in": "query",
+            "description": "Airbtics market identifier (legacy — optional; defaults internally)",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Percentile rates + verdict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["p25", "p50", "p75", "p90"],
+                  "properties": {
+                    "source": { "type": "string", "enum": ["cache", "benchmark_data", "none"] },
+                    "compCount": { "type": "integer" },
+                    "p25": { "type": "number" },
+                    "p50": { "type": "number" },
+                    "p75": { "type": "number" },
+                    "p90": { "type": "number" },
+                    "avgAdr": { "type": "number" },
+                    "verdict": { "type": "string", "enum": ["UNDERPRICED", "FAIR", "SLIGHTLY_ABOVE", "OVERPRICED"] },
+                    "comps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": { "type": "string" },
+                          "source": { "type": "string" },
+                          "rate_aed": { "type": "number" },
+                          "url": { "type": ["string", "null"] }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

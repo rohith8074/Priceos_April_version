@@ -1,0 +1,152 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "PriceOS Booking Intelligence Tools",
+    "version": "1.0.0",
+    "description": "Tools used by the Booking Intelligence agent (Step 2/5). Reads Property Analyst's cached output for context, optionally falls back to raw reservation data when the cached upstream is empty."
+  },
+  "servers": [
+    {
+      "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1",
+      "description": "Local dev server tunnelled via ngrok"
+    }
+  ],
+  "paths": {
+    "/get-property-analysis": {
+      "get": {
+        "summary": "Property Analyst's cached output",
+        "description": "Returns the cached strict JSON output produced by the Property Analyst agent for the same orgId + listingId + window. Cache TTL is 4 hours, written by the precompute orchestrator. Returns 404 if no fresh cache exists.",
+        "operationId": "get_property_analysis",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organisation",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Window start (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "Window end (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cached Property Analyst JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status", "data", "metadata"],
+                  "properties": {
+                    "status": { "type": "string", "enum": ["success"] },
+                    "data": {
+                      "type": "object",
+                      "description": "Property Analyst strict JSON — see 02-property-analyst.md"
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "computed_at": { "type": "string", "format": "date-time" },
+                        "age_minutes": { "type": "integer" },
+                        "cache_state": { "type": "string", "enum": ["fresh", "stale"] }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "No cached Property Analyst output for this scope. Fall back to /get-property-reservations." }
+        }
+      }
+    },
+    "/get-property-reservations": {
+      "get": {
+        "summary": "Raw reservations (fallback when cache is empty)",
+        "description": "Returns active (non-cancelled) reservations overlapping the window. Use only when /get-property-analysis returns 404 or its active_reservations array is empty.",
+        "operationId": "get_property_reservations",
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the organisation",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "listingId",
+            "in": "query",
+            "description": "MongoDB ObjectId of the listing",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "description": "Window start (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "description": "Window end (YYYY-MM-DD)",
+            "required": true,
+            "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of reservations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["count", "reservations"],
+                  "properties": {
+                    "count": { "type": "integer" },
+                    "reservations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["guestName", "channel", "checkIn", "checkOut", "nights", "totalPrice", "status"],
+                        "properties": {
+                          "guestName": { "type": "string" },
+                          "channel": { "type": "string" },
+                          "checkIn": { "type": "string" },
+                          "checkOut": { "type": "string" },
+                          "nights": { "type": "integer" },
+                          "totalPrice": { "type": "number" },
+                          "status": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Listing not found" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "anomaly-detector-tools",
+    "version": "1.0.0",
+    "description": "Anomaly Detector tools: calendar metrics, reservations, comps, regime, audit. All GET, verified live (HTTP 200)."
+  },
+  "servers": [
+    { "url": "https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1" }
+  ],
+  "paths": {
+    "/get-property-calendar-metrics": {
+      "get": {
+        "operationId": "get_property_calendar_metrics",
+        "summary": "Occupancy, booked/blocked nights, ADR, revenue for a window (staleness + velocity context).",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "Calendar metrics." } }
+      }
+    },
+    "/get-property-reservations": {
+      "get": {
+        "operationId": "get_property_reservations",
+        "summary": "Reservations overlapping a window — used for velocity-drop detection.",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "dateFrom", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "dateTo", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Reservations list." } }
+      }
+    },
+    "/comps_get_state": {
+      "get": {
+        "operationId": "comps_get_state",
+        "summary": "Comp-set median/p25/p75 — used for price-outlier detection. REAL.",
+        "parameters": [
+          { "name": "orgId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "listingId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "bedrooms", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "marketId", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{median, p25, p75, wow_change_pct, movers}" } }
+      }
+    },
+    "/regime_classify": {
+      "get": {
+        "operationId": "regime_classify",
+        "summary": "Market regime score — used for regime-adjusted revenue baseline. STUB (neutral).",
+        "parameters": [
+          { "name": "city", "in": "query", "required": false, "schema": { "type": "string" } },
+          { "name": "date", "in": "query", "required": false, "schema": { "type": "string", "format": "date" } }
+        ],
+        "responses": { "200": { "description": "{regime_score, regime_label, trend}" } }
+      }
+    },
+    "/audit_log_decision": {
+      "get": {
+        "operationId": "audit_log_decision",
+        "summary": "Persist this agent's decision; returns audit_decision_id.",
+        "parameters": [
+          { "name": "agent_name", "in": "query", "required": false, "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "{status, audit_decision_id}" } }
+      }
+    }
+  }
+}

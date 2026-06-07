@@ -1,0 +1,91 @@
+=== Fix tool descriptions + ngrok URL - LIVE ===
+  set openapi-contract server -> https://sadistically-calycine-carry.ngrok-free.dev/api/agent-tools/v1
+  [200] register priceos-pms: 10 tools
+  [200] register priceos-v3-svc: 8 tools
+
+  [aria] 6a1bd495f0b2191493afbd2f: 1 tool_configs
+     openapi-priceos-v3-svc-audit_log_decision -> Persist this agent's decision to the PriceOS audit log. Call as the FI...
+     PUT [200] {"message": "Agent updated successfully"}
+
+  [property_analyst] 6a1bd49747b7d74ea04f2d8f: 4 tool_configs
+     openapi-priceos-pms-get_property_profile -> Property identity and pricing limits. Call when you need name/type/are...
+     openapi-priceos-pms-get_property_calendar_metrics -> Forward calendar state for a property. Call for occupancy, gaps, block...
+     openapi-priceos-pms-get_property_reservations -> The booking list for a property. Call for velocity, length-of-stay, ch...
+     openapi-priceos-v3-svc-audit_log_decision -> Persist this agent's decision to the PriceOS audit log. Call as the FI...
+     PUT [200] {"message": "Agent updated successfully"}
+
+  [booking_intelligence] 6a1bd4989229784f9cc33487: 3 tool_configs
+     openapi-priceos-pms-get_property_reservations -> The booking list for a property. Call for velocity, length-of-stay, ch...
+     openapi-priceos-pms-get_property_benchmark -> Competitor rate percentiles and positioning. Call to compare a propert...
+     openapi-priceos-v3-svc-audit_log_decision -> Persist this agent's decision to the PriceOS audit log. Call as the FI...
+     PUT [200] {"message": "Agent updated successfully"}
+
+  [market_research] 6a1bd499a3488db280be7363: 6 tool_configs
+     openapi-priceos-v3-svc-regime_classify -> Daily market regime score (0-1) for a city. Call FIRST in any market a...
+     openapi-priceos-v3-svc-comps_get_state -> Live comp-set state for a property. Call for competitive context in pr...
+     openapi-priceos-v3-svc-events_get_validated -> Verified demand events in a window. Call to factor confirmed events in...
+     openapi-priceos-v3-svc-source_market_get_modifier -> Property-specific demand modifier from its source-market mix. Call to ...
+     openapi-priceos-v3-svc-guest_signals_get_summary -> Trailing guest sentiment for a property. Call to let guest experience ...
+     openapi-priceos-v3-svc-audit_log_decision -> Persist this agent's decision to the PriceOS audit log. Call as the FI...
+     PUT [200] {"message": "Agent updated successfully"}
+
+  [priceguard] 6a1bd49aaac62a8c643f19ad: 3 tool_configs
+     openapi-priceos-v3-svc-elasticity_predict -> P(book) and expected RevPAR for candidate prices from the learned dema...
+     openapi-priceos-v3-svc-exploration_select -> Thompson-sampling bandit decision to probe a non-greedy price. Call af...
+     openapi-priceos-v3-svc-audit_log_decision -> Persist this agent's decision to the PriceOS audit log. Call as the FI...
+     PUT [200] {"message": "Agent updated successfully"}
+
+  [anomaly_detector] 6a1bd49c9229784f9cc33489: 5 tool_configs
+     openapi-priceos-pms-get_property_calendar_metrics -> Forward calendar state for a property. Call for occupancy, gaps, block...
+     openapi-priceos-pms-get_property_reservations -> The booking list for a property. Call for velocity, length-of-stay, ch...
+     openapi-priceos-v3-svc-comps_get_state -> Live comp-set state for a property. Call for competitive context in pr...
+     openapi-priceos-v3-svc-regime_classify -> Daily market regime score (0-1) for a city. Call FIRST in any market a...
+     openapi-priceos-v3-svc-audit_log_decision -> Persist this agent's decision to the PriceOS audit log. Call as the FI...
+     PUT [200] {"message": "Agent updated successfully"}
+
+  [atlas] 6a1bd49ddac02513529cfda7: 4 tool_configs
+     openapi-priceos-pms-get_portfolio_overview -> Cross-property portfolio summary. Call for portfolio-level occupancy, ...
+     openapi-priceos-pms-get_portfolio_revenue_snapshot -> Portfolio revenue roll-up for a window. Call for revenue totals across...
+     openapi-priceos-pms-get_property_calendar_metrics -> Forward calendar state for a property. Call for occupancy, gaps, block...
+     openapi-priceos-v3-svc-audit_log_decision -> Persist this agent's decision to the PriceOS audit log. Call as the FI...
+     PUT [200] {"message": "Agent updated successfully"}
+
+  [event_intelligence] 6a1bd3ea564d7dbff2c157be: 1 tool_configs
+     openapi-priceos-v3-svc-audit_log_decision -> Persist this agent's decision to the PriceOS audit log. Call as the FI...
+     PUT [200] {"message": "Agent updated successfully"}
+
+=== SUMMARY ===
+{
+  "aria": {
+    "put": 200,
+    "configs": 1
+  },
+  "property_analyst": {
+    "put": 200,
+    "configs": 4
+  },
+  "booking_intelligence": {
+    "put": 200,
+    "configs": 3
+  },
+  "market_research": {
+    "put": 200,
+    "configs": 6
+  },
+  "priceguard": {
+    "put": 200,
+    "configs": 3
+  },
+  "anomaly_detector": {
+    "put": 200,
+    "configs": 5
+  },
+  "atlas": {
+    "put": 200,
+    "configs": 4
+  },
+  "event_intelligence": {
+    "put": 200,
+    "configs": 1
+  }
+}

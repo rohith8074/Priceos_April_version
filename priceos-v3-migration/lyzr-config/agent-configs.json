@@ -1,0 +1,144 @@
+{
+  "$schema": "https://priceos.io/schemas/agent-configs-v1.json",
+  "version": "v3.0",
+  "description": "Per-agent Lyzr Studio config: model, temperature, max_tokens, tools. Tool lists mirror workflow-registry.json. Apply alongside the system prompts in prompts/.",
+  "defaults": {
+    "prompt_caching": true,
+    "final_tool_call": "audit_log_decision",
+    "output_requires": ["audit_decision_id"],
+    "schema_validation": { "retries": 2, "on_fail": "hard_error" }
+  },
+  "agents": {
+    "aria": {
+      "display_name": "Aria (CRO Router)",
+      "model": "claude-haiku-4",
+      "temperature": 0.2,
+      "max_tokens": 2000,
+      "tools": ["audit_log_decision"],
+      "role": "router",
+      "prompt_file": "prompts/01-aria.md",
+      "notes": "No PMS tools. Classifies intent, looks up workflow-registry.json, composes."
+    },
+    "property_analyst": {
+      "display_name": "Property Analyst",
+      "model": "claude-haiku-4",
+      "temperature": 0.1,
+      "max_tokens": 2000,
+      "tools": [
+        "get_property_profile",
+        "get_property_calendar_metrics",
+        "get_property_reservations",
+        "audit_log_decision"
+      ],
+      "prompt_file": "prompts/02-property-analyst.md"
+    },
+    "booking_intelligence": {
+      "display_name": "Booking Intelligence",
+      "model": "claude-haiku-4",
+      "temperature": 0.1,
+      "max_tokens": 2000,
+      "tools": [
+        "get_property_reservations",
+        "get_property_benchmark",
+        "audit_log_decision"
+      ],
+      "prompt_file": "prompts/03-booking-intelligence.md"
+    },
+    "market_research": {
+      "display_name": "Market Research",
+      "model": "claude-sonnet-4.6",
+      "temperature": 0.1,
+      "max_tokens": 2500,
+      "tools": [
+        "regime_classify",
+        "comps_get_state",
+        "events_get_validated",
+        "source_market_get_modifier",
+        "guest_signals_get_summary",
+        "audit_log_decision"
+      ],
+      "prompt_file": "prompts/04-market-research.md",
+      "notes": "No more news_factor. Reads regime classifier + source-market + guest signals."
+    },
+    "priceguard": {
+      "display_name": "PriceGuard",
+      "model": "claude-sonnet-4.6",
+      "temperature": 0.0,
+      "max_tokens": 2000,
+      "tools": [
+        "elasticity_predict",
+        "exploration_select",
+        "audit_log_decision"
+      ],
+      "prompt_file": "prompts/05-priceguard.md",
+      "notes": "No formula, no veto. Selects max-expected-RevPAR over the elasticity model."
+    },
+    "anomaly_detector": {
+      "display_name": "Anomaly Detector",
+      "model": "claude-haiku-4",
+      "temperature": 0.0,
+      "max_tokens": 1500,
+      "tools": [
+        "get_property_calendar_metrics",
+        "get_property_reservations",
+        "comps_get_state",
+        "regime_classify",
+        "audit_log_decision"
+      ],
+      "prompt_file": "prompts/06-anomaly-detector.md",
+      "notes": "Rule 6 is regime-adjusted."
+    },
+    "atlas": {
+      "display_name": "Atlas (Dashboard)",
+      "model": "claude-sonnet-4.6",
+      "temperature": 0.3,
+      "max_tokens": 2500,
+      "tools": [
+        "get_portfolio_overview",
+        "get_portfolio_revenue_snapshot",
+        "get_property_calendar_metrics",
+        "audit_log_decision"
+      ],
+      "prompt_file": "prompts/07-atlas.md",
+      "notes": "Drops the [SYSTEM CONTEXT] injection pattern. Calls tools directly."
+    },
+    "event_intelligence": {
+      "display_name": "Event Intelligence",
+      "model": "perplexity-sonar-pro",
+      "temperature": 0.2,
+      "max_tokens": 2500,
+      "tools": ["internet_search", "audit_log_decision"],
+      "prompt_file": "prompts/08-event-intelligence.md",
+      "notes": "Confidence >= 0.7 -> events_validated; < 0.7 -> events_pending."
+    },
+    "maya": {
+      "display_name": "Maya (Guest)",
+      "model": "claude-haiku-4",
+      "temperature": 0.0,
+      "max_tokens": 2000,
+      "tools": [
+        "readThread",
+        "getPropertyData",
+        "sendGuestMessage",
+        "createOpsTicket",
+        "escalateThread",
+        "sendAccessDetails",
+        "sendUpsellOffer",
+        "closeThread",
+        "audit_log_decision"
+      ],
+      "prompt_file": "prompts/09-maya.md",
+      "notes": "Keep existing v2 prompt. Add audit_log_decision as final tool + audit_decision_id in schema."
+    },
+    "conversation_summary": {
+      "display_name": "Conversation Summary",
+      "model": "claude-haiku-4",
+      "temperature": 0.2,
+      "max_tokens": 1500,
+      "tools": ["get_guest_conversations", "audit_log_decision"],
+      "prompt_file": "prompts/10-conversation-summary.md",
+      "notes": "Keep existing v2 prompt. Add audit_log_decision as final tool + audit_decision_id in schema."
+    }
+  }
+}
+
