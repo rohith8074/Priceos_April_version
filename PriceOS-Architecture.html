@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PriceOS — Architecture & Agent Intelligence</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: "base", themeVariables: {
+    primaryColor: "#fff4e6", primaryBorderColor: "#e8943a", primaryTextColor: "#1f2937",
+    lineColor: "#9ca3af", fontFamily: "Inter, system-ui, sans-serif", fontSize: "14px"
+  }});
+</script>
+<style>
+  :root{
+    --orange:#e8943a; --orange-dark:#c9742a; --ink:#1f2937; --muted:#6b7280;
+    --bg:#fbfaf8; --card:#ffffff; --border:#e7e2da; --green:#16a34a; --red:#dc2626;
+    --amber:#d97706; --blue:#2563eb; --code-bg:#1e293b; --code-fg:#e2e8f0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.6;}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px 80px;}
+  header.hero{background:linear-gradient(135deg,#1f2937 0%,#374151 100%);color:#fff;
+    padding:54px 24px;text-align:center;border-bottom:4px solid var(--orange);}
+  header.hero h1{margin:0;font-size:40px;letter-spacing:-1px;}
+  header.hero h1 .os{color:var(--orange);}
+  header.hero p{margin:10px 0 0;color:#cbd5e1;font-size:18px;}
+  .pill{display:inline-block;background:rgba(232,148,58,.18);color:#f6c990;
+    border:1px solid rgba(232,148,58,.4);border-radius:999px;padding:4px 14px;font-size:13px;margin-top:18px;}
+  nav.toc{background:var(--card);border:1px solid var(--border);border-radius:14px;
+    padding:20px 26px;margin:32px 0;column-count:2;column-gap:32px;}
+  nav.toc a{display:block;color:var(--ink);text-decoration:none;padding:5px 0;font-size:14px;
+    border-bottom:1px dashed transparent;}
+  nav.toc a:hover{color:var(--orange-dark);border-bottom-color:var(--orange);}
+  nav.toc .num{color:var(--orange);font-weight:700;margin-right:8px;}
+  h2{font-size:27px;margin:54px 0 16px;padding-bottom:10px;border-bottom:2px solid var(--border);}
+  h2 .n{color:var(--orange);}
+  h3{font-size:19px;margin:30px 0 10px;color:var(--ink);}
+  h4{font-size:15px;margin:20px 0 6px;color:var(--orange-dark);text-transform:uppercase;letter-spacing:.4px;}
+  p,li{font-size:15px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px 26px;margin:18px 0;
+    box-shadow:0 1px 3px rgba(0,0,0,.03);}
+  .mermaid{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;margin:22px 0;text-align:center;}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;background:var(--card);
+    border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  th{background:#f3efe9;text-align:left;padding:11px 14px;font-weight:600;border-bottom:2px solid var(--border);}
+  td{padding:10px 14px;border-bottom:1px solid var(--border);vertical-align:top;}
+  tr:last-child td{border-bottom:none;}
+  code{background:#f1ede7;color:#9a3412;padding:1.5px 6px;border-radius:5px;font-size:13px;
+    font-family:"SF Mono",ui-monospace,Menlo,monospace;}
+  pre{background:var(--code-bg);color:var(--code-fg);padding:18px 20px;border-radius:12px;overflow-x:auto;
+    font-size:13px;line-height:1.55;font-family:"SF Mono",ui-monospace,Menlo,monospace;}
+  pre code{background:none;color:inherit;padding:0;}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:6px;letter-spacing:.3px;text-transform:uppercase;}
+  .tag.real{background:#dcfce7;color:#166534;}
+  .tag.stub{background:#fef3c7;color:#92400e;}
+  .tag.cache{background:#dbeafe;color:#1e40af;}
+  .callout{border-left:4px solid var(--orange);background:#fff8f0;padding:14px 20px;border-radius:0 10px 10px 0;margin:18px 0;}
+  .callout.warn{border-left-color:var(--amber);background:#fffbeb;}
+  .callout.tip{border-left-color:var(--green);background:#f0fdf4;}
+  .callout.dev{border-left-color:var(--blue);background:#eff6ff;}
+  .callout b{display:block;margin-bottom:4px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  .badge{font-size:12px;background:#f3efe9;border:1px solid var(--border);border-radius:6px;padding:2px 8px;color:var(--muted);}
+  .agent-card{border:1px solid var(--border);border-radius:12px;padding:16px 18px;background:var(--card);}
+  .agent-card h4{margin-top:0;color:var(--ink);text-transform:none;font-size:16px;letter-spacing:0;}
+  .agent-card .role{color:var(--muted);font-size:13.5px;margin:4px 0 10px;}
+  .step{display:flex;gap:14px;margin:14px 0;align-items:flex-start;}
+  .step .circle{flex:0 0 32px;height:32px;width:32px;border-radius:50%;background:var(--orange);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;}
+  .footer{text-align:center;color:var(--muted);font-size:13px;margin-top:60px;padding-top:24px;border-top:1px solid var(--border);}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;margin:10px 0;}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .dot{width:11px;height:11px;border-radius:50%;display:inline-block;}
+  @media(max-width:720px){nav.toc{column-count:1}.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>Price<span class="os">OS</span></h1>
+  <p>AI Revenue Management for Dubai Short-Term Rentals</p>
+  <div class="pill">Architecture &amp; Agent Intelligence — Client + Developer Guide</div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc">
+  <a href="#what"><span class="num">1</span>What PriceOS Does</a>
+  <a href="#stack"><span class="num">2</span>Technology Stack</a>
+  <a href="#bigpicture"><span class="num">3</span>The Big Picture</a>
+  <a href="#agents"><span class="num">4</span>The Agent Team</a>
+  <a href="#tools"><span class="num">5</span>Tools &amp; Data Sources</a>
+  <a href="#flows"><span class="num">6</span>The Two Core Flows</a>
+  <a href="#dataflow"><span class="num">7</span>Data Flow &amp; Storage</a>
+  <a href="#example"><span class="num">8</span>Worked Example</a>
+  <a href="#intelligence"><span class="num">9</span>"Run Intelligence" Explained</a>
+  <a href="#guardrails"><span class="num">10</span>Guardrails &amp; Safety</a>
+  <a href="#dev"><span class="num">11</span>Developer Reference</a>
+  <a href="#glossary"><span class="num">12</span>Glossary</a>
+</nav>
+
+<!-- 1 -->
+<h2 id="what"><span class="n">1.</span> What PriceOS Does</h2>
+<div class="card">
+<p><b>PriceOS</b> is an AI-powered revenue manager for property managers running short-term rentals (Airbnb / Booking.com / direct) in Dubai. It continuously answers the question every host loses sleep over: <em>"What should I charge tonight — and for every night in the next few months — to make the most money without leaving the calendar empty?"</em></p>
+<p>It does this by combining four kinds of intelligence and turning them into concrete, one-click price proposals:</p>
+<ul>
+  <li><b>Property intelligence</b> — your calendar, occupancy, gap nights, and revenue forecast.</li>
+  <li><b>Booking intelligence</b> — how fast you're selling, length-of-stay patterns, channel mix.</li>
+  <li><b>Market intelligence</b> — competitor rates, demand "regime", festivals/events, and risk news (flight disruptions, advisories).</li>
+  <li><b>Pricing intelligence</b> — a guard-railed engine that picks the revenue-maximising price and flags risky moves for human review.</li>
+</ul>
+<p>A conversational agent named <b>Aria</b> ties it all together — the property manager simply chats: <em>"How should I price next month to fill the calendar?"</em> and gets a structured strategy with approve/reject proposal cards.</p>
+</div>
+
+<div class="callout"><b>Who is this for?</b>Property managers running 15–50 Dubai units who want institutional-grade revenue management without a dedicated revenue analyst on payroll.</div>
+
+<!-- 2 -->
+<h2 id="stack"><span class="n">2.</span> Technology Stack</h2>
+<table>
+  <tr><th>Layer</th><th>Technology</th><th>Notes</th></tr>
+  <tr><td>Frontend</td><td>Next.js 16 (App Router, Turbopack), React, Tailwind CSS v4, shadcn/ui</td><td>Chat UI, dashboards, calendar, proposal cards</td></tr>
+  <tr><td>Backend / API</td><td>Next.js API routes (Node runtime)</td><td>All agent tools served under <code>/api/agent-tools/v1</code></td></tr>
+  <tr><td>Database</td><td>MongoDB (Mongoose)</td><td>Source of truth: listings, reservations, calendar, caches, events</td></tr>
+  <tr><td>AI Orchestration</td><td>Lyzr Agent Studio (Manager–Worker pattern)</td><td>8 agents; OpenAPI tool integration</td></tr>
+  <tr><td>LLM Models</td><td>Claude (Haiku/Sonnet), with GPT-4.1 fallback</td><td>Aria on Claude Haiku; workers tiered Haiku/Sonnet</td></tr>
+  <tr><td>External Data</td><td>Hostaway (PMS), SERP API, Ticketmaster, Airbtics</td><td>Calendar, events, news, competitor rates</td></tr>
+  <tr><td>Tunneling (dev)</td><td>ngrok</td><td>Exposes local tool API to Lyzr cloud agents</td></tr>
+</table>
+
+<!-- 3 -->
+<h2 id="bigpicture"><span class="n">3.</span> The Big Picture</h2>
+<p>PriceOS has three planes: a <b>data plane</b> (real data from PMS + external APIs into MongoDB), an <b>intelligence plane</b> (8 Lyzr agents that reason over the data), and an <b>experience plane</b> (the chat UI + proposal cards the manager interacts with).</p>
+
+<div class="mermaid">
+flowchart TB
+  subgraph EXP["🖥️ EXPERIENCE PLANE — Next.js UI"]
+    UI["Agent Chat · Calendar · Proposal Cards"]
+    BTN["Run Intelligence button"]
+  end
+  subgraph INTEL["🧠 INTELLIGENCE PLANE — Lyzr Agents"]
+    ARIA["Aria · CRO Router (Manager)"]
+    WORKERS["7 Worker Agents<br/>Property · Booking · Market · PriceGuard · Anomaly · Atlas · Event Intel"]
+  end
+  subgraph DATA["💾 DATA PLANE — MongoDB + APIs"]
+    MONGO[("MongoDB<br/>listings · reservations · inventory<br/>MarketEvent · AgentCache · comps")]
+    EXT["External APIs<br/>Hostaway · SERP · Ticketmaster · Airbtics"]
+  end
+  UI --> ARIA
+  BTN --> WORKERS
+  BTN --> EXT
+  ARIA -->|delegates| WORKERS
+  ARIA -->|tool calls| MONGO
+  WORKERS -->|tool calls| MONGO
+  EXT --> MONGO
+  ARIA --> UI
+</div>
+
+<!-- 4 -->
+<h2 id="agents"><span class="n">4.</span> The Agent Team</h2>
+<p>PriceOS uses a <b>Manager–Worker</b> pattern. <b>Aria</b> is the manager who talks to the user and decides who does what; seven specialist workers each own a narrow slice of intelligence.</p>
+
+<div class="grid2">
+  <div class="agent-card">
+    <h4>👑 Aria <span class="badge">Manager · Claude Haiku</span></h4>
+    <div class="role">The Chief Revenue Officer. Talks to the manager, reads precomputed analyses, delegates to workers, consolidates everything into one structured answer with proposal cards. Never prices on its own.</div>
+  </div>
+  <div class="agent-card">
+    <h4>🏠 Property Analyst <span class="badge">Claude Haiku</span></h4>
+    <div class="role">One property's calendar: occupancy, gap nights, LOS/min-stay recommendations, revenue forecast.</div>
+  </div>
+  <div class="agent-card">
+    <h4>📈 Booking Intelligence <span class="badge">Claude Haiku</span></h4>
+    <div class="role">Booking velocity, length-of-stay distribution, channel mix, day-of-week premium, ADR vs benchmark.</div>
+  </div>
+  <div class="agent-card">
+    <h4>🌍 Market Research <span class="badge">Claude Sonnet</span></h4>
+    <div class="role">Demand regime, competitor comp-set, validated events, source-market mix, guest sentiment.</div>
+  </div>
+  <div class="agent-card">
+    <h4>🛡️ PriceGuard <span class="badge">Claude Sonnet</span></h4>
+    <div class="role">The pricing optimizer. Picks the max-RevPAR price over an elasticity model and issues a guardrail verdict (approved / flag / hard-block).</div>
+  </div>
+  <div class="agent-card">
+    <h4>🔍 Anomaly Detector <span class="badge">Claude Sonnet</span></h4>
+    <div class="role">Post-execution monitor. Scores anomalies (velocity drops, price outliers, staleness) and recommends rollback on critical.</div>
+  </div>
+  <div class="agent-card">
+    <h4>🗂️ Atlas <span class="badge">Claude Sonnet</span></h4>
+    <div class="role">Portfolio view: cross-property revenue/occupancy comparisons, auto-flags under-performers.</div>
+  </div>
+  <div class="agent-card">
+    <h4>📡 Event Intelligence <span class="badge">Sonar Pro</span></h4>
+    <div class="role">Web sweep for events, holidays, geopolitics &amp; risk news. Used as a fallback when SERP is rate-limited.</div>
+  </div>
+</div>
+
+<div class="callout dev"><b>Developer note — why a Manager–Worker split?</b>
+Each worker has a narrow prompt + a small toolset, so it stays accurate and cheap. Aria orchestrates and is the only agent that returns the user-facing <code>cro_router_response</code> schema. Workers return their own strict JSON schemas which Aria consolidates.</div>
+
+<!-- 5 -->
+<h2 id="tools"><span class="n">5.</span> Tools &amp; Data Sources</h2>
+<p>Agents never touch the database directly — they call <b>OpenAPI tools</b> served by the Next.js app at <code>/api/agent-tools/v1/*</code>. Tools are grouped into three registered sets.</p>
+
+<div class="legend">
+  <span><span class="dot" style="background:#16a34a"></span> Real data</span>
+  <span><span class="dot" style="background:#d97706"></span> Stub (neutral until ML deployed)</span>
+  <span><span class="dot" style="background:#2563eb"></span> Cache reader</span>
+</div>
+
+<h3>priceos-pms — live property data</h3>
+<table>
+  <tr><th>Tool</th><th>Returns</th><th>Status</th></tr>
+  <tr><td><code>get_property_profile</code></td><td>name, area, bedrooms, base/floor/ceiling price</td><td><span class="tag real">Real</span></td></tr>
+  <tr><td><code>get_property_calendar_metrics</code></td><td>occupancy, booked/blocked nights, ADR, revenue</td><td><span class="tag real">Real</span></td></tr>
+  <tr><td><code>get_property_reservations</code></td><td>guest, dates, nights, price, channel, status</td><td><span class="tag real">Real</span></td></tr>
+  <tr><td><code>get_property_benchmark</code></td><td>competitor P25/P50/P75/P90 + positioning</td><td><span class="tag real">Real</span></td></tr>
+  <tr><td><code>get_portfolio_overview</code></td><td>per-property occupancy/revenue + totals</td><td><span class="tag real">Real</span></td></tr>
+</table>
+
+<h3>priceos-v3-svc — market &amp; pricing services</h3>
+<table>
+  <tr><th>Tool</th><th>Returns</th><th>Status</th></tr>
+  <tr><td><code>comps_get_state</code></td><td>comp-set median/p25/p75, movers (Airbtics)</td><td><span class="tag real">Real</span></td></tr>
+  <tr><td><code>events_get_validated</code></td><td>verified events with confidence (SERP + Ticketmaster)</td><td><span class="tag real">Real</span></td></tr>
+  <tr><td><code>guest_signals_get_summary</code></td><td>trailing guest sentiment</td><td><span class="tag real">Real</span></td></tr>
+  <tr><td><code>regime_classify</code></td><td>market regime score (0–1)</td><td><span class="tag stub">Stub</span></td></tr>
+  <tr><td><code>source_market_get_modifier</code></td><td>demand modifier by source market</td><td><span class="tag stub">Stub</span></td></tr>
+  <tr><td><code>elasticity_predict</code></td><td>P(book) &amp; RevPAR per candidate price</td><td><span class="tag stub">Stub</span></td></tr>
+  <tr><td><code>exploration_select</code></td><td>bandit probe of non-greedy price</td><td><span class="tag stub">Stub</span></td></tr>
+  <tr><td><code>audit_log_decision</code></td><td>persists a decision, returns an id</td><td><span class="tag stub">Stub</span></td></tr>
+</table>
+
+<h3>priceos-cache — precompute readers (Aria)</h3>
+<table>
+  <tr><th>Tool</th><th>Returns</th><th>Status</th></tr>
+  <tr><td><code>get_cache_status</code></td><td>which analyses are fresh/stale/missing</td><td><span class="tag cache">Cache</span></td></tr>
+  <tr><td><code>get_property_analysis</code></td><td>cached Property Analyst output</td><td><span class="tag cache">Cache</span></td></tr>
+  <tr><td><code>get_booking_intelligence</code></td><td>cached Booking output</td><td><span class="tag cache">Cache</span></td></tr>
+  <tr><td><code>get_market_research</code></td><td>cached Market output</td><td><span class="tag cache">Cache</span></td></tr>
+  <tr><td><code>get_price_guard_report</code></td><td>cached PriceGuard decision</td><td><span class="tag cache">Cache</span></td></tr>
+  <tr><td><code>get_anomaly_report</code></td><td>cached Anomaly report</td><td><span class="tag cache">Cache</span></td></tr>
+</table>
+
+<div class="callout warn"><b>Why some tools are stubs</b>
+<code>elasticity_predict</code>, <code>regime_classify</code> and friends return safe neutral values until the machine-learning service is deployed. When PriceGuard's elasticity tool is a stub, it correctly returns a <code>hold_for_review</code> verdict instead of guessing — so the human RM stays in control. This is by design, not a defect.</div>
+
+<!-- 6 -->
+<h2 id="flows"><span class="n">6.</span> The Two Core Flows</h2>
+<p>Everything in PriceOS runs through one of two flows. Understanding this split is the key to the whole system.</p>
+
+<div class="grid2">
+  <div class="card">
+    <h3>🔥 Precompute (the "oven")</h3>
+    <p>Triggered by <b>Run Intelligence</b>. Runs the 5 worker agents <b>sequentially</b>, each receiving raw DB data so it doesn't have to loop on tool calls. Results are cached for 4 hours.</p>
+    <p><span class="badge">POST /api/precompute-property</span></p>
+    <p>Property → Booking → Market → PriceGuard → Anomaly</p>
+  </div>
+  <div class="card">
+    <h3>💬 Live Chat (the "waiter")</h3>
+    <p>Triggered by a chat message. Hits <b>Aria</b>, who reads the precompute cache (and live tools), then returns a consolidated answer with proposal cards. Fire-and-forget job, polled by the UI.</p>
+    <p><span class="badge">POST /api/chat</span></p>
+    <p>Aria → cache tools + delegation → structured JSON</p>
+  </div>
+</div>
+
+<div class="mermaid">
+flowchart LR
+  subgraph WARM["PRECOMPUTE — on Run Intelligence"]
+    direction TB
+    RP["fetchRawData()<br/>listing+inventory+reservations+events"] --> P1[Property] --> P2[Booking] --> P3[Market] --> P4[PriceGuard] --> P5[Anomaly] --> C[(AgentCache · 4h TTL)]
+  end
+  subgraph CHAT["LIVE CHAT — on each message"]
+    direction TB
+    Q["User query + listingId + dates"] --> A["Aria (Manager)"]
+    A -->|reads| C
+    A -->|live tools| TOOLS["events_get_validated<br/>comps_get_state<br/>guest_signals"]
+    A --> OUT["Structured answer<br/>+ proposal cards"]
+  end
+  C -.fallback injected into prompt.-> A
+</div>
+
+<!-- 7 -->
+<h2 id="dataflow"><span class="n">7.</span> Data Flow &amp; Storage</h2>
+<table>
+  <tr><th>Collection</th><th>Holds</th><th>Fed by</th><th>Read by</th></tr>
+  <tr><td><code>listings</code></td><td>property profile, floor/ceiling, priceOverrides</td><td>Hostaway sync</td><td>profile + calendar tools</td></tr>
+  <tr><td><code>reservations</code></td><td>bookings (guest, dates, channel, price)</td><td>Hostaway sync</td><td>calendar + booking tools</td></tr>
+  <tr><td><code>inventory_masters</code></td><td>per-night status &amp; price (canonical calendar)</td><td>Hostaway calendar sync</td><td>calendar metrics tool</td></tr>
+  <tr><td><code>MarketEvent</code></td><td>events + risk news with confidence</td><td>SERP + Ticketmaster + Event Intel</td><td><code>events_get_validated</code></td></tr>
+  <tr><td><code>CompetitorListing / AirbticsCache</code></td><td>competitor rates &amp; occupancy</td><td>SERP comps + Airbtics</td><td><code>comps_get_state</code></td></tr>
+  <tr><td><code>GuestSummary</code></td><td>trailing guest sentiment</td><td>guest pipeline</td><td><code>guest_signals_get_summary</code></td></tr>
+  <tr><td><code>AgentCache</code></td><td>precomputed worker outputs (4h TTL)</td><td>precompute pipeline</td><td>Aria cache readers</td></tr>
+</table>
+
+<div class="callout tip"><b>Occupancy is reservation-aware</b>
+If the per-night calendar (<code>inventory_masters</code>) is empty/un-synced, the calendar-metrics tool <b>derives booked nights from reservations</b> so occupancy still matches the dashboard. This is why a freshly-imported listing still reports correct numbers.</div>
+
+<!-- 8 -->
+<h2 id="example"><span class="n">8.</span> Worked Example</h2>
+<p>Let's follow a real request end-to-end: the manager opens <b>NH Luxury 1BR — Marina View</b>, sets the date range <b>Jun 7 – Jul 7, 2026</b>, and types:</p>
+<pre><code>"Give me the pricing strategy for next month to fill all the gaps
+ and increase occupancy."</code></pre>
+
+<div class="step"><div class="circle">1</div><div><b>Run Intelligence (data refresh)</b><br/>
+The button fires <code>runAllIntelligence()</code> — in parallel it refreshes events (SERP Google Events + News + Ticketmaster, with date-verification), competitor rates (SERP/Airbtics comps), and guest sentiment. All land in MongoDB.</div></div>
+
+<div class="step"><div class="circle">2</div><div><b>Precompute pipeline runs the 5 workers</b><br/>
+The orchestrator pre-fetches raw data once (<code>0 inventory rows, 2 reservations, 3 market events</code>), then runs Property → Booking → Market → PriceGuard → Anomaly. Each gets the raw data + upstream outputs injected, returns strict JSON, and is cached.</div></div>
+
+<div class="step"><div class="circle">3</div><div><b>Property Analyst output (cached)</b><br/>
+Computes <b>25.8% occupancy</b>, two confirmed reservations, a 3-night gap (Jun 12–14) and a 20-night gap (Jun 18–Jul 7), season = <em>shoulder</em>, floor = AED 502.</div></div>
+
+<div class="step"><div class="circle">4</div><div><b>Market Research output (cached)</b><br/>
+Reads SERP/Ticketmaster events with <em>verified</em> dates — Eid Al Adha (protected), Dubai Summer Surprises (+12%). Reads Airbtics comp-set (median ≈ AED 592). Flags risk-news if any.</div></div>
+
+<div class="step"><div class="circle">5</div><div><b>PriceGuard output (cached)</b><br/>
+Elasticity model is a stub → returns <code>hold_for_review</code> with a floor of AED 502 and a calibrated ceiling. No price is auto-applied; every proposal needs human sign-off.</div></div>
+
+<div class="step"><div class="circle">6</div><div><b>Aria consolidates &amp; answers</b><br/>
+The chat message hits Aria with <code>org_id, listing_id, dates, property_name</code> + a fallback cache block. Aria reads the cache, surfaces PriceGuard's <code>hold_for_review</code> at the top, and builds a gap-fill strategy: protect Eid dates, relax LOS on the 3-night gap with up to 10% off, aggressive fill on the 20-night gap at ~AED 853.</div></div>
+
+<div class="step"><div class="circle">7</div><div><b>UI renders proposal cards</b><br/>
+Aria's <code>cro_router_response</code> JSON → the <code>narrative</code> becomes the chat bubble, and the <code>proposals[]</code> become Approve/Reject cards with current vs proposed price, verdict, and confidence.</div></div>
+
+<div class="mermaid">
+sequenceDiagram
+  participant U as Manager
+  participant API as /api/chat
+  participant Aria as Aria (Manager)
+  participant Cache as AgentCache
+  participant Tools as Live Tools (SERP/Airbtics)
+  U->>API: "price next month to fill gaps"
+  API-->>U: { jobId } (instant)
+  API->>Aria: org_id, listing_id, dates + fallback cache
+  Aria->>Cache: get_property_analysis / market / price_guard
+  Cache-->>Aria: 25.8% occ, gaps, events, hold_for_review
+  Aria->>Tools: events_get_validated / comps_get_state
+  Tools-->>Aria: verified events + comp median
+  Aria->>Aria: consolidate → cro_router_response JSON
+  Aria-->>API: narrative + proposals[]
+  loop poll every 2s
+    U->>API: GET /api/jobs/:id
+  end
+  API-->>U: strategy + Approve/Reject cards
+</div>
+
+<!-- 9 -->
+<h2 id="intelligence"><span class="n">9.</span> "Run Intelligence" Explained</h2>
+<p>The single most important action. One click refreshes <b>all data sources and all agents</b> for the selected property + date window.</p>
+<table>
+  <tr><th>Step</th><th>What fires</th><th>Writes to</th></tr>
+  <tr><td>Events</td><td>SERP Google Events ×2 + SERP News + SERP Risk + Ticketmaster → date-verified → Event Intelligence fallback if SERP rate-limited</td><td><code>MarketEvent</code></td></tr>
+  <tr><td>Competitors</td><td>SERP comps + Airbtics for the property's area/bedrooms</td><td><code>CompetitorListing</code></td></tr>
+  <tr><td>Guest signals</td><td>trailing sentiment summary</td><td><code>GuestSummary</code></td></tr>
+  <tr><td>Agents</td><td>5-worker precompute pipeline</td><td><code>AgentCache</code></td></tr>
+</table>
+<div class="callout"><b>SERP-primary, Event-Intelligence-fallback.</b>
+SERP API is the primary source for events and risk news. If SERP hits a rate limit, the Lyzr Event Intelligence agent runs a verified web sweep instead — so the system degrades gracefully rather than going blind.</div>
+
+<!-- 10 -->
+<h2 id="guardrails"><span class="n">10.</span> Guardrails &amp; Safety</h2>
+<ul>
+  <li><b>Human-in-the-loop pricing.</b> No price is pushed live automatically. Every proposal is <em>hold_for_review / flag_review / approved</em> and surfaced as an Approve/Reject card.</li>
+  <li><b>Price floor &amp; ceiling.</b> Proposals never go below the configured floor (e.g. AED 502) or above the calibrated ceiling.</li>
+  <li><b>Protected event dates.</b> LOS/price are locked on high-confidence events (e.g. Eid).</li>
+  <li><b>No fabrication.</b> Agents are instructed to never invent occupancy, comps, regime, or event numbers — if a value is unavailable, they say so and record it in <code>data_warnings</code>.</li>
+  <li><b>Date verification.</b> Festival/holiday dates are validated against a known UAE calendar before they reach pricing.</li>
+  <li><b>Anomaly monitoring.</b> Post-execution checks (velocity drop, price outlier, staleness) recommend rollback on critical severity.</li>
+</ul>
+
+<!-- 11 -->
+<h2 id="dev"><span class="n">11.</span> Developer Reference</h2>
+
+<h3>Key paths</h3>
+<table>
+  <tr><th>Path</th><th>Purpose</th></tr>
+  <tr><td><code>src/app/api/chat/route.ts</code></td><td>Live chat → Aria. Builds envelope + fallback cache block.</td></tr>
+  <tr><td><code>src/app/api/precompute-property/route.ts</code></td><td>Run Intelligence entry — triggers <code>runAllIntelligence</code> + precompute.</td></tr>
+  <tr><td><code>src/lib/services/precompute-orchestrator.ts</code></td><td>The 5-worker sequential pipeline + <code>deriveMetrics()</code>.</td></tr>
+  <tr><td><code>src/lib/events/run-intelligence-events.ts</code></td><td>Fires all data-source APIs (events/comps/guest) in parallel.</td></tr>
+  <tr><td><code>src/lib/events/event-feed-syncer.ts</code></td><td>SERP + Ticketmaster fetch, date verification, MarketEvent upsert.</td></tr>
+  <tr><td><code>src/app/api/agent-tools/v1/[...path]/route.ts</code></td><td>All OpenAPI tools (PMS, v3-svc, cache readers).</td></tr>
+  <tr><td><code>src/lib/sync-server-utils.ts</code></td><td>Hostaway sync → inventory_masters + priceOverrides.</td></tr>
+</table>
+
+<h3>Environment variables (agent IDs)</h3>
+<pre><code>LYZR_CRO_ROUTER_AGENT_ID          # Aria (manager)
+LYZR_PROPERTY_AGENT_ID            # Property Analyst
+LYZR_BOOKING_AGENT_ID             # Booking Intelligence
+LYZR_MARKET_RESEARCH_AGENT_ID     # Market Research
+LYZR_PRICE_GUARD_AGENT_ID         # PriceGuard
+LYZR_ANOMALY_AGENT_ID             # Anomaly Detector
+LYZR_ATLAS_AGENT_ID               # Atlas
+LYZR_EVENT_INTELLIGENCE_AGENT_ID  # Event Intelligence (SERP fallback)
+SERP_API_KEY · TICKETMASTER_API_KEY · MONGODB_URI · LYZR_API_KEY</code></pre>
+
+<h3>Structured output contract</h3>
+<p>Every agent enforces a strict JSON schema via Lyzr's <code>response_format</code>. Aria returns <code>cro_router_response</code>:</p>
+<pre><code>{
+  "intent": "pricing_decision",
+  "answered_directly": false,
+  "agents_consulted": ["PropertyAnalyst","MarketResearch","PriceGuard"],
+  "narrative": "…markdown the user sees…",
+  "proposals": [{ "proposal_id","date","current_price","proposed_price",
+                  "change_pct","guard_verdict","expected_revpar","rationale" }],
+  "action_buttons": ["approve","reject"],
+  "escalations": [],
+  "audit_decision_id": ""
+}</code></pre>
+
+<div class="callout dev"><b>Why Aria gets a "fallback cache block".</b>
+A Lyzr <em>manager</em> agent tends to delegate rather than call its own attached tools. To guarantee correct numbers, the chat route reads <code>AgentCache</code> server-side and injects it as a <em>fallback</em> block — Aria prefers a live tool call, but always has the precomputed values to fall back on. This prevents the "0% occupancy / data unavailable" failure mode.</div>
+
+<div class="callout warn"><b>Known operational gotchas</b>
+<ul style="margin:6px 0 0">
+  <li><b>ngrok URL</b> must point at the running dev server (port 3000) or every tool call 404s. Update the <code>servers[0].url</code> in the OpenAPI specs when ngrok restarts.</li>
+  <li><b>Tool registration</b> — a ⚠️ on a tool in Lyzr Studio means the name exists but the OpenAPI schema isn't registered; re-add via <em>+ Add → OpenAPI Schema</em>.</li>
+  <li><b>Model drift</b> — agent models can revert when edited in Studio; re-pin after UI saves.</li>
+  <li><b>Cache TTL</b> is 4h — cache readers return 404 <code>CACHE_MISS</code> when cold; click Run Intelligence to warm it.</li>
+</ul></div>
+
+<!-- 12 -->
+<h2 id="glossary"><span class="n">12.</span> Glossary</h2>
+<table>
+  <tr><th>Term</th><th>Meaning</th></tr>
+  <tr><td><b>Occupancy</b></td><td>Booked nights ÷ bookable nights (%). How full the calendar is.</td></tr>
+  <tr><td><b>ADR</b></td><td>Average Daily Rate — revenue ÷ booked nights.</td></tr>
+  <tr><td><b>RevPAR</b></td><td>Revenue per Available Rental night — blends occupancy &amp; rate. The headline metric.</td></tr>
+  <tr><td><b>LOS</b></td><td>Length of Stay — nights per reservation.</td></tr>
+  <tr><td><b>Gap night</b></td><td>An unbooked night wedged between bookings — prime candidate for LOS relaxation / discount.</td></tr>
+  <tr><td><b>Comp-set</b></td><td>The set of competitor listings used to benchmark your rate.</td></tr>
+  <tr><td><b>Regime</b></td><td>A 0–1 score describing overall market demand strength.</td></tr>
+  <tr><td><b>Elasticity</b></td><td>How booking probability responds to price — the core of RevPAR-optimal pricing.</td></tr>
+  <tr><td><b>Precompute</b></td><td>Running the worker agents ahead of time and caching results for fast chat answers.</td></tr>
+</table>
+
+<div class="footer">
+  PriceOS — AI Revenue Management · Architecture &amp; Agent Intelligence Guide<br/>
+  Manager–Worker orchestration on Lyzr · Next.js 16 · MongoDB · SERP / Ticketmaster / Airbtics / Hostaway
+</div>
+
+</div>
+</body>
+</html>
